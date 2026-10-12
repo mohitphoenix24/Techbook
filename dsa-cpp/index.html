@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlgoLab — DSA in C++ for interviews</title>
+  <meta name="description" content="Data structures and algorithms in C++, from zero to interview-ready: complexity with real math, every core pattern, 150+ classic interview problems with solutions, step-by-step visualizers, and C++ you can edit and run right here.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ea580c'/%3E%3Cstop offset='1' stop-color='%23db2777'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='url(%23g)'/%3E%3Ctext x='16' y='21.5' font-family='Arial' font-weight='700' font-size='12' fill='white' text-anchor='middle'%3EC++%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/dsa.css">
+  <style>
+    :root { --accent: #c2410c; --accent-2: #db2777; --accent-3: #7c3aed; }
+    :root[data-theme="dark"] { --accent: #fb923c; --accent-2: #f472b6; --accent-3: #a78bfa; }
+    .brand-logo { font-family: "Space Grotesk", sans-serif; letter-spacing: -0.5px; font-size: 12.5px; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo">C++</span><span class="brand-text">AlgoLab<small>DSA in C++ for interviews</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, problems, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/cpp-for-dsa" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Problems</span></a>
+      <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Unchanged examples show output verified with g++ when the course was built. Edited code is compiled and run live with GCC on Compiler Explorer (godbolt.org)."><span class="dot"></span><span class="rt-label">C++: ready</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, problems and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/clike.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/mode/python.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "AlgoLab",
+      storageKey: "dsacpp",
+      langName: "C++",
+      heroStatus: "✓ compiled with g++ -std=c++20",
+      glossaryHint: "Filter terms… (e.g. heap, amortized, invariant)",
+      tagline: "DSA in C++ for interviews",
+      badge: "C++20",
+      eyebrow: "C++ → Complexity → Patterns → Trees & Graphs → DP → Interview-ready",
+      heroTitle: 'Master <span class="grad">Data Structures & Algorithms</span> in C++.',
+      heroSub: "From your first vector to segment trees, Dijkstra and dynamic programming. Every idea comes with the reasoning and the math behind it, a step-by-step visualizer, and C++ you can edit and run. More than 250 classic interview problems are solved and grouped by pattern.",
+      heroNote: "Nothing to install. Unchanged examples show output verified with g++, and edited code compiles live with GCC.",
+      pathGoal: "interview-ready",
+      runTitle: "Try it yourself",
+      localHint: "Run this on your computer with g++",
+      tocTip: "Every ▶ Run block is editable. Change the input, break it, fix it: that's how patterns stick.",
+      footer: "Built for learning. Edited code is sent to Compiler Explorer (godbolt.org) to compile; nothing else leaves your browser.",
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Each idea starts with the intuition and a small example. The formal version comes after." },
+        { icon: "chart", title: "Math done properly", text: "Big-O definitions, sums, recurrences, the Master theorem and correctness proofs, worked step by step." },
+        { icon: "eye", title: "See it run", text: "Step-by-step visualizers for sorting, search, trees, graphs and DP. Play, pause, rewind, or use your own input." },
+        { icon: "target", title: "Interview patterns", text: "Every pattern has classic problems that go from brute force to the best solution. Track them in one list." },
+      ],
+      hero: {
+        file: "two_sum.cpp",
+        lang: "cpp",
+        code: `#include <bits/stdc++.h>
+using namespace std;
+
+// O(n) time, O(n) space: one pass with a hash map
+vector<int> twoSum(const vector<int>& nums, int target) {
+    unordered_map<int, int> seen;            // value -> index
+    for (int i = 0; i < (int)nums.size(); i++) {
+        int need = target - nums[i];
+        if (seen.count(need)) return {seen[need], i};
+        seen[nums[i]] = i;
+    }
+    return {};
+}
+
+int main() {
+    auto ans = twoSum({2, 7, 11, 15}, 9);
+    cout << "indices: " << ans[0] << ", " << ans[1] << "\\n";
+}`,
+        output: `indices: 0, 1`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-cpp.js"></script>
+  <script src="assets/js/viz.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>

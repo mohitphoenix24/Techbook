@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ThreeLab — 3D web with Three.js, R3F & WebXR</title>
+  <meta name="description" content="Learn 3D on the web from zero: Three.js, React Three Fiber, shaders, physics, WebGPU and WebXR (VR & AR), with live 3D previews and projects for real industries.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23059669'/%3E%3Cstop offset='1' stop-color='%234f46e5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cg fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M25 11 16 6 7 11v10l9 5 9-5z'/%3E%3Cpath d='m7 11 9 5 9-5M16 16v10'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://esm.sh" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <style>
+    :root { --accent: #059669; --accent-2: #4f46e5; --accent-3: #db2777; }
+    :root[data-theme="dark"] { --accent: #34d399; --accent-2: #818cf8; --accent-3: #f472b6; }
+    .preview { position: relative; }
+    .preview iframe { min-height: 120px; background: var(--code-bg); }
+    .preview-wrap .preview .out-head .btn { margin-left: 0; }
+    .preview-wrap .preview .out-head .act-full { margin-left: auto; }
+    .preview-wrap .preview .out-head .btn[hidden] { display: none; }
+    .preview-stopped { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 28px 16px; color: var(--muted); font-size: 14px; border-top: 1px dashed var(--border); }
+    .preview-stopped[hidden] { display: none; }
+    .preview-stopped .icon { width: 18px; height: 18px; }
+    .console .out-head .btn { margin-left: auto; }
+    .console .out-body > div { padding: 1px 0; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="cube" style="font-size:19px"></span><span class="brand-text">ThreeLab<small>3D web · Three.js, R3F & WebXR</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, APIs, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/foundations" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Code is compiled in your browser with Babel; three.js, React Three Fiber and friends load from esm.sh"><span class="dot"></span><span class="rt-label">3D: idle</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, projects and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
+  <script src="../shared/vendor/cm/mode/xml.min.js"></script>
+  <script src="../shared/vendor/cm/mode/jsx.min.js"></script>
+  <script src="../shared/vendor/cm/mode/css.min.js"></script>
+  <script src="../shared/vendor/cm/mode/htmlmixed.min.js"></script>
+  <script src="../shared/vendor/cm/mode/clike.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "ThreeLab",
+      storageKey: "threelab",
+      glossaryHint: "Filter terms… (e.g. mesh, quaternion, hit test)",
+      tagline: "3D web with Three.js, R3F & WebXR",
+      badge: "three r186",
+      eyebrow: "Three.js → React Three Fiber → WebGPU → WebXR → real products",
+      heroTitle: 'Build <span class="grad">3D for the web</span>, from first cube to VR.',
+      heroSub: "Learn Three.js from the ground up, then React Three Fiber, shaders, physics, WebGPU and WebXR for VR and AR. Every example is a live 3D scene you can edit, and the projects come from real industries: product configurators, robot digital twins, data globes and AR placement.",
+      heroNote: "Nothing to install. Scenes render live in this page, and VR examples include a headset emulator.",
+      pathGoal: "3D products people use",
+      runTitle: "Live scene",
+      localHint: "Needs a project on your computer (Vite / Next.js), HTTPS, or a headset",
+      tocTip: "Press ▶ Run to render a scene. After that it re-renders as you type. Drag to orbit when the scene has controls.",
+      footer: "Built for learning. Your code compiles and runs in your browser. Nothing you type is sent anywhere; three.js and models load from public CDNs.",
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Every idea starts with what it is for and a simple analogy, then the math and the API." },
+        { icon: "cube", title: "Live 3D previews", text: "Edit any example and the scene updates. Fullscreen, console and orbit controls are built in." },
+        { icon: "vr", title: "WebXR without a headset", text: "VR and AR lessons run in an emulated Meta Quest, so you can enter VR and test controllers from a laptop." },
+        { icon: "rocket", title: "Real-world projects", text: "Configurators, digital twins, games, data globes, AR placement and an AI scene builder." },
+      ],
+      hero: {
+        file: "App.jsx",
+        lang: "jsx",
+        code: `import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls, Environment } from "@react-three/drei";
+import { useRef } from "react";
+
+function Spinner() {
+  const ref = useRef();
+  useFrame((_, dt) => (ref.current.rotation.y += dt));
+  return (
+    <mesh ref={ref}>
+      <torusKnotGeometry args={[1, 0.3, 200, 32]} />
+      <meshStandardMaterial color="#34d399" metalness={0.6} roughness={0.2} />
+    </mesh>
+  );
+}
+
+export default function App() {
+  return (
+    <Canvas camera={{ position: [0, 0, 5] }}>
+      <Spinner />
+      <Environment preset="city" />
+      <OrbitControls />
+    </Canvas>
+  );
+}`,
+        output: `▶ Live scene: a shiny green torus knot, spinning
+  at 1 radian per second. Drag to orbit, scroll to zoom.`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-three.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ScaleLab — System design for interviews</title>
+  <meta name="description" content="System design from zero to interview-ready: high-level design (load balancers, caches, databases, sharding, queues, consensus) and low-level design (OOP, SOLID, design patterns, concurrency) with C++ and JavaScript you can run, interactive architecture diagrams and simulators, and 40+ classic interview questions worked end to end.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%239333ea'/%3E%3Cstop offset='1' stop-color='%23f59e0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='url(%23g)'/%3E%3Cg fill='none' stroke='white' stroke-width='2'%3E%3Ccircle cx='9' cy='9' r='2.5'/%3E%3Ccircle cx='9' cy='23' r='2.5'/%3E%3Ccircle cx='23' cy='16' r='2.5'/%3E%3Cpath d='M11 10.5 20.5 15M11 21.5l9.5-4.5'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/sd.css">
+  <style>
+    :root { --accent: #7e22ce; --accent-2: #c2410c; --accent-3: #db2777; }
+    :root[data-theme="dark"] { --accent: #c084fc; --accent-2: #fbbf24; --accent-3: #f472b6; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="network" style="font-size:19px"></span><span class="brand-text">ScaleLab<small>System design for interviews</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, questions, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/foundations" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Questions</span></a>
+      <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="JavaScript runs live in your browser. Unchanged C++ examples show output verified with g++ when the course was built; edited C++ is compiled live with GCC on Compiler Explorer (godbolt.org)."><span class="dot"></span><span class="rt-label">C++ · JS ready</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, questions and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/clike.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/mode/python.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "ScaleLab",
+      storageKey: "scalelab",
+      langName: "C++ & JavaScript",
+      heroStatus: "✓ ran with Node 22",
+      glossaryHint: "Filter terms… (e.g. sharding, quorum, idempotency)",
+      tagline: "System design for interviews",
+      badge: "HLD + LLD",
+      eyebrow: "Foundations → Building blocks → Distributed systems → OOP & patterns → LLD → Case studies",
+      heroTitle: 'Design systems that <span class="grad">scale</span>. Ace the interview.',
+      heroSub: "System design from the first client–server request to consensus, sharding and multi-region failover. High-level design (HLD) is taught with interactive architecture diagrams and simulators. Low-level design (LLD) is taught with SOLID, design patterns and concurrency, in C++ and JavaScript you can edit and run. More than 40 classic interview questions are worked end to end.",
+      heroNote: "Nothing to install. JavaScript runs in your browser; C++ shows output verified with g++, and edited C++ compiles live with GCC.",
+      pathGoal: "interview-ready",
+      runTitle: "Try it yourself",
+      localHint: "Run this on your computer",
+      tocTip: "Every ▶ Run block is editable, and diagrams with ▶ replay a request step by step. Change the numbers, break things, and watch what happens.",
+      footer: "Built for learning. Edited C++ is sent to Compiler Explorer (godbolt.org) to compile; JavaScript runs in your browser; nothing else leaves it.",
+      problemStat: "interview questions, worked",
+      vizLabel: "interactive diagrams & simulators",
+      problemsHomeTitle: "{n} interview questions, HLD and LLD",
+      problemsHomeSub: "Each one is worked through in its lesson: requirements, estimates, the design, the trade-offs, and runnable code for the LLD ones.",
+      problemsTitle: "Interview questions, by topic",
+      problemsSub: "Every question is answered in its lesson: clarify the requirements, estimate, design, then go deep on the trade-offs. Try each one yourself first (sketch it on paper for 20 minutes), then read the walkthrough and tick it off.",
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Every concept starts with an everyday analogy and a picture. The precise definitions and the numbers come after." },
+        { icon: "network", title: "Diagrams that move", text: "Architecture diagrams replay a request hop by hop. Simulators let you kill servers, partition networks and flood rate limiters." },
+        { icon: "code", title: "LLD in C++ and JavaScript", text: "Every pattern and LLD problem is implemented in both languages, side by side. Pick one and the whole course follows." },
+        { icon: "target", title: "Interview method", text: "A repeatable framework (requirements, estimates, API, design, deep dives), what interviewers grade, and 40+ worked questions." },
+      ],
+      hero: {
+        file: "rate_limiter.js",
+        lang: "js",
+        code: `// Token bucket: allow bursts of 3, refill 1 token per second
+class TokenBucket {
+  constructor(capacity, refillPerSec) {
+    this.capacity = capacity;
+    this.tokens = capacity;
+    this.rate = refillPerSec;
+    this.last = 0;
+  }
+  allow(now) {
+    const elapsed = (now - this.last) / 1000;
+    this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.rate);
+    this.last = now;
+    if (this.tokens < 1) return false;
+    this.tokens -= 1;
+    return true;
+  }
+}
+
+const limiter = new TokenBucket(3, 1);
+for (const t of [0, 100, 200, 300, 1300, 1400]) {
+  console.log(\`t=\${t}ms ->\`, limiter.allow(t) ? "200 OK" : "429 Too Many Requests");
+}`,
+        output: `t=0ms -> 200 OK
+t=100ms -> 200 OK
+t=200ms -> 200 OK
+t=300ms -> 429 Too Many Requests
+t=1300ms -> 200 OK
+t=1400ms -> 429 Too Many Requests`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-cpp.js"></script>
+  <script src="assets/js/runner-js.js"></script>
+  <script src="assets/js/viz-sd.js"></script>
+  <script src="assets/js/sims-sd.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>
