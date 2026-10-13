@@ -476,6 +476,7 @@
     pattern: { icon: "puzzle", label: "Pattern" },
     interview: { icon: "message", label: "Interview tip" },
     edge: { icon: "alert", label: "Edge cases" },
+    resources: { icon: "book", label: "Go deeper" },
   };
 
   // "  Time | O(n log n) | why  " lines → complexity tiles

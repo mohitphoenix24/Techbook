@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GenLab — AI engineering, start to end</title>
+  <meta name="description" content="Everything an AI engineer needs, in one course: how LLMs work, prompting, structured output, tools, RAG, agents, evals, safety, fine-tuning, inference and serving, multimodal, LLMOps and interviews, with Python you can run in your browser, live simulators and a curated library of the best resources on the internet.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23f43f5e'/%3E%3Cstop offset='1' stop-color='%2314b8a6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M16 6l2.2 6.8L25 15l-6.8 2.2L16 24l-2.2-6.8L7 15l6.8-2.2z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/ai.css">
+  <style>
+    :root { --accent: #e11d48; --accent-2: #0d9488; --accent-3: #7c3aed; }
+    :root[data-theme="dark"] { --accent: #fb7185; --accent-2: #2dd4bf; --accent-3: #a78bfa; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="sparkles" style="font-size:19px"></span><span class="brand-text">GenLab<small>AI engineering, start to end</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, questions, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/foundations" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Interview Qs</span></a>
+      <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Python (with NumPy) runs inside your browser using Pyodide. Real LLM API calls are shown as 'Run locally' code because they need your own API key."><span class="dot"></span><span class="rt-label">Python: idle</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, questions and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/python.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "GenLab",
+      storageKey: "genlab",
+      langName: "Python",
+      heroStatus: "✓ ran in your browser",
+      glossaryHint: "Filter terms… (e.g. embedding, RAG, KV cache, LoRA)",
+      tagline: "AI engineering, start to end",
+      badge: "2026",
+      eyebrow: "LLM foundations → Prompting → RAG → Agents → Evals → Fine-tuning → Serving → LLMOps",
+      heroTitle: 'Become an <span class="grad">AI engineer</span>. Start to end.',
+      heroSub: "The complete path into generative-AI engineering. How LLMs really work, how to build with them (prompting, structured output, tools, RAG, agents, MCP), how to prove they work (evals), keep them safe, adapt them (fine-tuning), run them fast and cheap (inference and serving), ship them (LLMOps), and talk about all of it in an interview. Plain English first, then code you can edit and run, live simulators, and a hand-picked library of the best resources on the internet.",
+      heroNote: "Nothing to install. Python and NumPy run in your browser; calls to real model APIs are shown as 'Run locally' code so you can copy them.",
+      pathGoal: "AI engineer",
+      runTitle: "Try it yourself",
+      localHint: "Run this on your computer (needs an API key or a GPU)",
+      tocTip: "Every ▶ Run block is editable. Change the numbers, break things on purpose, and watch what happens. Simulators respond to the sliders.",
+      footer: "Built for learning. Python runs in your browser with Pyodide; nothing you type is sent anywhere. Resource links go to third-party sites.",
+      problemStat: "interview questions, worked",
+      vizLabel: "interactive diagrams & simulators",
+      problemsHomeTitle: "{n} AI-engineering interview questions",
+      problemsHomeSub: "Concepts, design questions and debugging scenarios, each with hints and a model answer in its lesson.",
+      problemsTitle: "AI-engineering interview questions, by topic",
+      problemsSub: "Answer each one out loud first (two minutes), then open the hint and the model answer, then tick it off. Design questions: sketch the architecture on paper.",
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Every idea starts with an everyday analogy and a picture. The math and the jargon come after you already get it." },
+        { icon: "cpu", title: "Build it from scratch", text: "Tokenizers, attention, samplers, BM25, vector search, an agent loop and an eval harness: all written in a few dozen lines you can run and edit." },
+        { icon: "network", title: "Diagrams that move", text: "Architecture diagrams replay a request step by step. Simulators let you turn the knobs: temperature, chunk size, quantization bits, batch size, GPU count." },
+        { icon: "book", title: "The best resources, curated", text: "Every lesson ends with hand-picked papers, docs, videos and courses, and there is a full library of books, courses, blogs and tools to go deeper." },
+      ],
+      hero: {
+        file: "next_token.py",
+        lang: "python",
+        code: `import numpy as np
+
+# A language model only ever answers one question:
+# "given the text so far, how likely is each possible next token?"
+vocab  = ["cat", "dog", "pizza", "the", "sat"]
+logits = np.array([2.0, 1.5, -1.0, 0.2, 1.0])
+
+def softmax(z, temperature=1.0):
+    z = z / temperature
+    e = np.exp(z - z.max())
+    return e / e.sum()
+
+for t in (0.5, 1.0, 2.0):
+    p = softmax(logits, t)
+    print(f"T={t}:", {w: round(float(x), 2) for w, x in zip(vocab, p)})`,
+        output: `T=0.5: {'cat': 0.65, 'dog': 0.24, 'pizza': 0.0, 'the': 0.02, 'sat': 0.09}
+T=1.0: {'cat': 0.46, 'dog': 0.28, 'pizza': 0.02, 'the': 0.08, 'sat': 0.17}
+T=2.0: {'cat': 0.33, 'dog': 0.26, 'pizza': 0.07, 'the': 0.13, 'sat': 0.2}`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-python.js"></script>
+  <script src="assets/js/viz-ai.js"></script>
+  <script src="assets/js/sims-llm.js"></script>
+  <script src="assets/js/sims-api.js"></script>
+  <script src="assets/js/sims-rag.js"></script>
+  <script src="assets/js/sims-agents.js"></script>
+  <script src="assets/js/sims-ft.js"></script>
+  <script src="assets/js/sims-ops.js"></script>
+  <script src="assets/js/sims-media.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>

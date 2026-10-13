@@ -10,6 +10,7 @@ One static website that holds every course. The home page (`index.html`) lists t
 | ThreeLab | `threejs/` | Three.js, React Three Fiber & WebXR: 3D for the web, its industries and 12 projects |
 | AlgoLab | `dsa-cpp/` | Data structures & algorithms in C++ for interviews |
 | ScaleLab | `system-design/` | System design (HLD + LLD) for interviews, with C++ & JS code, live diagrams and 12 projects |
+| GenLab | `ai-engineering/` | AI engineering start to end: LLMs, APIs, RAG, agents, evals, safety, fine-tuning, inference, multimodal, LLMOps, interviews, a verified resource library and hands-on projects |
 
 ## Open it
 

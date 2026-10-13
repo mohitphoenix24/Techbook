@@ -94,4 +94,18 @@ window.COURSES = [
     description: "System design from zero to interview-ready: high-level design (caching, databases, sharding, queues, consensus, reliability) with interactive diagrams and simulators, and low-level design (OOP, SOLID, design patterns, concurrency) in C++ and JavaScript, plus 40+ worked interview questions.",
     topics: ["HLD", "LLD", "Distributed systems", "Design patterns", "C++ & JS", "Case studies"],
   },
+  {
+    path: "ai-engineering",
+    storageKey: "genlab",
+    name: "GenLab",
+    title: "AI engineering, start to end",
+    tagline: "AI engineering, start to end",
+    logo: "",
+    logoIcon: "sparkles",
+    colors: ["#f43f5e", "#14b8a6"],
+    level: "Beginner → Interview-ready",
+    runtime: "Python + NumPy in your browser, live diagrams and simulators",
+    description: "Everything for becoming an AI engineer: how LLMs work, APIs and tools, context engineering, RAG, agents and MCP, evals, safety and security, fine-tuning, inference, multimodal, LLMOps, interview prep and a curated, link-checked resource library, with runnable code and projects.",
+    topics: ["LLM fundamentals", "RAG", "Agents & MCP", "Evals", "Safety", "Inference & LLMOps"],
+  },
 ];

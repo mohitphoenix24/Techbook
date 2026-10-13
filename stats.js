@@ -41,5 +41,12 @@ window.COURSE_STATS = {
     "projects": 12,
     "examples": 239,
     "problems": 43
+  },
+  "ai-engineering": {
+    "modules": 13,
+    "lessons": 114,
+    "projects": 14,
+    "examples": 374,
+    "problems": 132
   }
 };
