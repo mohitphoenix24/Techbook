@@ -7,7 +7,7 @@ One static website that holds every course. The home page (`index.html`) lists t
 | PyGenAI | `python/` | Python for AI, ML, deep learning and Generative AI |
 | TypeLab | `typescript/` | TypeScript, from zero to AI apps with the Claude SDK |
 | ReactLab | `react/` | Modern React 19 for AI products |
-| ThreeLab | `threejs/` | Three.js, React Three Fiber & WebXR: 3D for the web, its industries and 12 projects |
+| ThreeLab | `threejs/` | Three.js, React Three Fiber & WebXR: 3D for the web, its industries and 12 projects, plus a 270-page downloadable PDF notebook (`threejs/notes/`) |
 | AlgoLab | `dsa-cpp/` | Data structures & algorithms in C++ for interviews |
 | ScaleLab | `system-design/` | System design (HLD + LLD) for interviews, with C++ & JS code, live diagrams and 12 projects |
 | GenLab | `ai-engineering/` | AI engineering start to end: LLMs, APIs, RAG, agents, evals, safety, fine-tuning, inference, multimodal, LLMOps, interviews, a verified resource library and hands-on projects |

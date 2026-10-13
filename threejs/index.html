@@ -44,6 +44,7 @@
       <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
       <a href="#/m/foundations" data-nav="learn" data-icon="cap"><span>Learn</span></a>
       <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/notebook" data-nav="notebook" data-icon="file"><span>Notebook</span></a>
       <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
     </nav>
     <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Code is compiled in your browser with Babel; three.js, React Three Fiber and friends load from esm.sh"><span class="dot"></span><span class="rt-label">3D: idle</span></span>
@@ -93,6 +94,15 @@
       runTitle: "Live scene",
       localHint: "Needs a project on your computer (Vite / Next.js), HTTPS, or a headset",
       tocTip: "Press ▶ Run to render a scene. After that it re-renders as you type. Drag to orbit when the scene has controls.",
+      notebook: {
+        title: "The ThreeLab Notebook",
+        cta: "Notebook (PDF)",
+        sub: "Complete study notes for three.js, React Three Fiber and 3D graphics: concepts and definitions, the maths with worked calculations, three.js and R3F implementations, modern GPU techniques and a full interview question bank. Dark-mode A4 PDF, made for reading on an iPad.",
+        note: "Tip: on an iPad, tap Download PDF and save it to Books or Files. The PDF has clickable contents and bookmarks for every chapter and section.",
+        pdf: "notes/ThreeLab-Notebook.pdf",
+        file: "ThreeLab-Notebook.pdf",
+        html: "notes/notebook.html",
+      },
       footer: "Built for learning. Your code compiles and runs in your browser. Nothing you type is sent anywhere; three.js and models load from public CDNs.",
       features: [
         { icon: "smile", title: "Plain English first", text: "Every idea starts with what it is for and a simple analogy, then the math and the API." },
@@ -132,6 +142,7 @@ export default function App() {
       },
     };
   </script>
+  <script src="notes/notebook-meta.js"></script>
   <script src="assets/js/content.js"></script>
   <script src="assets/js/runner-three.js"></script>
   <script src="../courses.js"></script>

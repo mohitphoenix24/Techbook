@@ -678,6 +678,7 @@
             <a class="btn btn-lg primary" href="#/l/${esc((last || first).id)}">${icon(last ? "play" : "rocket")} ${last ? "Continue: " + esc(last.title) : "Start learning"}</a>
             ${problems.length ? `<a class="btn btn-lg" href="#/problems">${icon("target")} ${problems.length} Problems</a>` : ""}
             ${projectModule ? `<a class="btn btn-lg" href="#/projects">${icon("flask")} Project Lab</a>` : ""}
+            ${SITE.notebook ? `<a class="btn btn-lg" href="#/notebook">${icon("file")} ${esc(SITE.notebook.cta || "Notebook (PDF)")}</a>` : ""}
           </div>
           <div class="hero-note">${icon("zap")} ${esc(SITE.heroNote)}</div>
         </div>
@@ -913,6 +914,46 @@
     $("#gl-q").oninput = (e) => draw(e.target.value);
   }
 
+  /* Notebook page: a downloadable PDF study notebook built outside the lesson bundle.
+     SITE.notebook = { pdf, html, title, sub }; window.NOTEBOOK (optional, from notebook-meta.js) adds
+     the version, page count and chapter list. The ?v= query busts caches after each rebuild. */
+  function renderNotebook() {
+    setLayout({ sidebar: true });
+    setActiveNav("notebook");
+    renderSidebar(null);
+    const nb = SITE.notebook, meta = window.NOTEBOOK || {};
+    document.title = `${nb.title || "Notebook"} — ${SITE.name}`;
+    const v = meta.version ? `?v=${encodeURIComponent(meta.version)}` : "";
+    const pdf = nb.pdf + v;
+    const parts = [];
+    (meta.chapters || []).forEach((c) => {
+      if (c.part || !parts.length) parts.push({ name: c.part || "", items: [] });
+      parts[parts.length - 1].items.push(c);
+    });
+    const built = meta.built ? new Date(meta.built) : null;
+    main.innerHTML = `<div class="wide nb">
+      <div class="page-hero"><div class="kicker">Notebook</div><h1>${esc(nb.title || "The course notebook")}</h1><p>${esc(nb.sub || "")}</p></div>
+      <div class="nb-actions">
+        <a class="btn btn-lg primary" href="${esc(pdf)}" download="${esc(nb.file || nb.pdf.split("/").pop())}">${icon("file")} Download PDF</a>
+        <a class="btn btn-lg" href="${esc(pdf)}" target="_blank" rel="noopener">Open PDF ${icon("right")}</a>
+        ${nb.html ? `<a class="btn btn-lg" href="${esc(nb.html + v)}" target="_blank" rel="noopener">Read as a web page</a>` : ""}
+      </div>
+      ${meta.pages ? `<div class="nb-stats">
+        <div><b>${meta.pages}</b><span>pages</span></div>
+        <div><b>${(meta.chapters || []).length}</b><span>chapters</span></div>
+        ${meta.figures ? `<div><b>${meta.figures}</b><span>diagrams</span></div>` : ""}
+        ${meta.questions ? `<div><b>${meta.questions}</b><span>interview Q&amp;As</span></div>` : ""}
+        <div><b>${esc(String(meta.sizeMB || "?"))} MB</b><span>${built ? "updated " + esc(built.toLocaleString()) : "PDF size"}</span></div>
+      </div>` : ""}
+      ${nb.note ? `<p class="nb-note">${esc(nb.note)}</p>` : ""}
+      <div class="nb-grid">
+        <div class="nb-toc">${parts.map((p) => `${p.name ? `<div class="nb-part">${esc(p.name)}</div>` : ""}${p.items.map((c) => `
+          <a class="nb-ch" href="${esc(nb.pdf + v)}#page=${esc(String(c.page || 1))}" target="_blank" rel="noopener"><span class="n">${String(c.n).padStart(2, "0")}</span><span class="t">${esc(c.title)}<small>${esc(c.summary || "")}</small></span><span class="p">p.${esc(String(c.page || "–"))}</span></a>`).join("")}`).join("") || `<p style="color:var(--muted)">The chapter list appears after the notebook is built.</p>`}</div>
+        <div class="nb-preview"><iframe src="${esc(pdf)}#view=FitH" title="Notebook preview" loading="lazy"></iframe></div>
+      </div>
+    </div>`;
+  }
+
   function renderProblems() {
     setLayout({ sidebar: true });
     setActiveNav("problems");
@@ -980,6 +1021,7 @@
     else if (parts[0] === "projects") renderProjects();
     else if (parts[0] === "problems") renderProblems();
     else if (parts[0] === "glossary") renderGlossary();
+    else if (parts[0] === "notebook" && SITE.notebook) renderNotebook();
     else render404();
     if (!anchor) window.scrollTo(0, 0);
   }

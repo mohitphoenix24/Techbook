@@ -28,6 +28,10 @@ python3 -m http.server 8000      # from the repo root, then open http://localhos
 
 Features: Ctrl+K search, a glossary of every definition, progress tracking, quizzes, exercises, light/dark themes (synced into the previews), and a mobile layout.
 
+## The ThreeLab Notebook (PDF)
+
+The **Notebook** tab (`#/notebook`) offers a downloadable study notebook: a 270-page dark-mode A4 PDF made for reading on an iPad, with clickable contents and bookmarks for every section. It covers concepts and definitions, the maths with worked calculations, three.js and R3F implementations, advanced graphics (clustered shading, global illumination, OIT, volumetrics, SDF raymarching, path tracing, Gaussian splatting, large-world precision) and an interview bank, in 27 chapters with 62 diagrams. Sources and the build live in [`notes/`](notes/README.md); rebuild with `python3 notes/build_notes.py`.
+
 The live editors include three.js r186 (WebGL and WebGPU renderers, TSL, all addons), React 19.3, React Three Fiber 9.8, drei 10, @react-three/xr 6 and handle, Rapier, @react-three/postprocessing, uikit, leva, maath, zustand, GSAP, Zod, urdf-loader and the IWER WebXR emulator. `js` blocks are plain three.js (top-level `await` works); `jsx`/`tsx` blocks mount the `App` component automatically. Every XR example runs in a **built-in headset emulator** when no real device is present, so VR and AR lessons work on an ordinary laptop. Off-screen previews pause, and at most six previews run at once. AI examples use an offline planner in the browser, so nothing costs money; the lessons also show the real backend code with the official Anthropic SDK and `claude-opus-5-5`, keeping the API key on the server.
 
 ## Editing content
