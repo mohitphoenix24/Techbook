@@ -13,6 +13,12 @@
    language is remembered site-wide and every tab group follows it.
    Optional SITE text for the problem tracker: problemStat, problemsHomeTitle,
    problemsHomeSub, problemsTitle, problemsSub ("{n}" = count), vizLabel.
+   Course extensions (window.EXT, set by a script that loads BEFORE this file):
+     EXT.pages  { name: (parts, anchor, api) => void }   extra hash routes, e.g. #/sheets/two-sum
+     EXT.search (terms) => [{ title, sub, href, icon, lvl }]   extra Ctrl+K results
+     EXT.icons  { name: "<svg paths>" }                   extra icons
+   `api` gives a page everything it needs to look like the rest of the site.
+   SITE.ctas [{ href, icon, label }] adds buttons to the home hero.
    ========================================================================== */
 (function () {
   "use strict";
@@ -123,6 +129,24 @@
     cube: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
     vr: '<path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3.5l-2.2-2.6a1.7 1.7 0 0 0-2.6 0L8.5 17H5a2 2 0 0 1-2-2z"/><circle cx="8" cy="11" r="1.6"/><circle cx="16" cy="11" r="1.6"/>',
   };
+  Object.assign(ICONS, {
+    star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3L7 14.2 2 9.3l6.9-1z"/>',
+    pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+    skipback: '<path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>',
+    skipfwd: '<path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/>',
+    stepback: '<path d="m15 18-6-6 6-6"/>',
+    stepfwd: '<path d="m9 18 6-6-6-6"/>',
+    bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    zoomin: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>',
+    zoomout: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/>',
+    maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>',
+    history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    flag: '<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>',
+    sheet: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.2-.3-4.2 2-6 .5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.4 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+    split: '<path d="M16 3h5v5M8 3H3v5M12 22v-8.3a4 4 0 0 0-1.2-2.8L3 3M15 9l6-6"/>',
+  });
   const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.book}</svg>`;
 
   function toast(msg) {
@@ -678,6 +702,7 @@
             <a class="btn btn-lg primary" href="#/l/${esc((last || first).id)}">${icon(last ? "play" : "rocket")} ${last ? "Continue: " + esc(last.title) : "Start learning"}</a>
             ${problems.length ? `<a class="btn btn-lg" href="#/problems">${icon("target")} ${problems.length} Problems</a>` : ""}
             ${projectModule ? `<a class="btn btn-lg" href="#/projects">${icon("flask")} Project Lab</a>` : ""}
+            ${(SITE.ctas || []).map((c) => `<a class="btn btn-lg" href="${esc(c.href)}">${icon(c.icon)} ${esc(c.label)}</a>`).join("")}
             ${SITE.notebook ? `<a class="btn btn-lg" href="#/notebook">${icon("file")} ${esc(SITE.notebook.cta || "Notebook (PDF)")}</a>` : ""}
           </div>
           <div class="hero-note">${icon("zap")} ${esc(SITE.heroNote)}</div>
@@ -1009,12 +1034,24 @@
     main.innerHTML = `<div class="page no-toc"><article class="article"><div class="lesson-head"><h1>Page not found</h1><p class="summary">That page does not exist (yet). Try the search, or head back home.</p><a class="btn" href="#/">${icon("home")} Home</a></div></article></div>`;
   }
 
+  /* ------------------------------------------------------------ course extensions */
+  const EXT = window.EXT || (window.EXT = {});
+  if (EXT.icons) Object.assign(ICONS, EXT.icons);
+  const API = {
+    SITE, KEY, store, $, $$, el, esc, slugify, md, mdInline, tex, icon, toast, copyText, highlight, main, lvlChip,
+    Runner, MODES, LANG_LABEL, setLayout, setActiveNav,
+    sidebar: () => $("#sidebar"),
+    reroute: () => route(),
+  };
+  window.TechApp = API;
+
   /* ------------------------------------------------------------ router */
   function route() {
     const hash = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
     const [path, anchor] = hash.split("~");
     const parts = path.split("/").filter(Boolean);
     if (Runner && Runner.cleanup) Runner.cleanup();
+    if (EXT.leave) EXT.leave(parts[0]);
     if (!parts.length) renderHome();
     else if (parts[0] === "l") renderLesson(parts.slice(1).join("/"), anchor);
     else if (parts[0] === "m") renderModule(parts[1]);
@@ -1022,6 +1059,7 @@
     else if (parts[0] === "problems") renderProblems();
     else if (parts[0] === "glossary") renderGlossary();
     else if (parts[0] === "notebook" && SITE.notebook) renderNotebook();
+    else if (EXT.pages && EXT.pages[parts[0]]) { EXT.pages[parts[0]](parts.slice(1), anchor, API); }
     else render404();
     if (!anchor) window.scrollTo(0, 0);
   }
@@ -1079,6 +1117,14 @@
     const probHits = terms.length ? problems.filter((p) => terms.every((t) => (p.title + " " + p.tags.join(" ")).toLowerCase().includes(t))).slice(0, 8) : [];
     palItems = [];
     let html = "";
+    const extHits = terms.length && EXT.search ? EXT.search(terms) : [];
+    if (extHits.length) {
+      html += `<div class="grp">${esc(EXT.searchLabel || "More")}</div>`;
+      extHits.forEach((h) => {
+        palItems.push(h.href);
+        html += `<a class="res" href="${esc(h.href)}"><span class="r-icon">${icon(h.icon || "sheet")}</span><span class="r-main"><div class="r-title">${hl(h.title, terms)}</div><div class="r-sub">${esc(h.sub || "")}</div></span>${h.lvl ? lvlChip(h.lvl) : ""}</a>`;
+      });
+    }
     if (probHits.length) {
       html += `<div class="grp">Problems</div>`;
       probHits.forEach((p) => {

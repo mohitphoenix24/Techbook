@@ -43,6 +43,29 @@ Totals: **68 lessons + 10 projects**, **269 interview problems** (each with hint
 
 Other features: the **Problems** page (a tracker with difficulty and status filters, saved in your browser), Ctrl+K search over lessons, problems and definitions, a glossary of every definition, progress tracking, quizzes, light/dark themes, and a mobile layout.
 
+## DSA Sheets: an interactive Blind 75 (`#/sheets`)
+
+Open **Sheets** in the top bar (or `dsa-cpp/index.html#/sheets`). It is a separate, fully interactive platform inside AlgoLab: the **75 Blind 75 problems** plus *Binary Search* as a warm-up (76 lessons), each with C++ **and** JavaScript solutions.
+
+Every problem page has 12 sections: the statement; guided "think first" questions; brute force, why it is slow, the key observation and the optimal solution; the pattern and how to recognise it; the algorithm with its invariant and correctness argument; a **test lab**; the time and space complexity **derived with mathematics** and checked by a doubling experiment; common mistakes; interview follow-ups with code; related problems; takeaways.
+
+The **test lab** is the heart of it:
+
+- **723 test cases** (normal, edge and corner), each with a "why this case matters" note, plus a *Custom* input with friendly validation.
+- **20 specialised visualizers** (array, sliding window, two pointers, binary search, hash map, stack, queue, linked list, tree, recursion with call stack, graph, heap, DP table, matrix, backtracking, trie, interval, bit, greedy, union-find) with spring animation, a timeline scrubber, play/pause/step/speed, keyboard control, and **code line ↔ variables ↔ structure ↔ explanation** kept in sync. The player (variables, picture and controls) stays pinned in the window while you step.
+- The animation is the trace of the **reference algorithm** on your input (clearly labelled). The **Run** button executes your code for real: JavaScript in a Web Worker, C++ through the verified-output cache or Compiler Explorer. Program output and the educational trace are always shown separately.
+- A dashboard with progress, bookmarks, search, filters (category, pattern, difficulty, status), recently viewed, and a sidebar. Everything is saved in your browser.
+
+### How it is verified
+
+`node dsa-cpp/sheets/build.mjs` is the gate every lesson passes (`--only=id1,id2`, `--no-cpp`, `--fuzz=N`): the data model and placeholders, the tracer against the JS solution, the C++ solution (`g++ -std=c++20`, AddressSanitizer + UBSan) and both brute forces on every test, random fuzzing against the brute force, every animation frame rendered on a mock stage, every test input accepted by the lesson's own input check, the claimed complexity against the measured step counts, and the follow-up code (compiled or parsed). It writes `assets/js/sheets/ready.js` and `verified.js`.
+
+`python3 dsa-cpp/sheets/browser_test.py` (Playwright + Chrome, with the site served on port 8766) then plays every frame of every case in a real browser and runs both languages on all cases (`--only=ids`, `--shots=DIR`, `--theme=light`, `--mobile`).
+
+### Adding a problem
+
+Copy `assets/js/sheets/problems/two-sum.js`, fill in the fields (statement, intuition, brute, pattern, optimal, `cpp`/`js` with `//@tag` markers, tests, `trace`, `fuzz`, `gen`, complexity, mistakes, follow-ups), list it in `assets/js/sheets/catalog.js` and run the build.
+
 ## Editing content
 
 Lessons are Markdown files in `content/`. After editing, rebuild:
@@ -87,4 +110,7 @@ content/                   all lessons and projects (Markdown)
 assets/css/dsa.css         additions: math, derivations, problems, visualizers, compile diagnostics
 assets/js/runner-cpp.js    verified-output cache, live compile (Compiler Explorer / Wandbox), diagnostics
 assets/js/viz.js           39 algorithm visualizers + growth chart + Master-theorem calculator
+assets/js/sheets/          DSA Sheets: engine (core, stage, lab, lesson, pages), viz/*.js, catalog.js, problems/*.js (76)
+assets/css/sheets.css      DSA Sheets styles
+sheets/                    build.mjs (verifier) and browser_test.py (real-browser test) for DSA Sheets
 ```

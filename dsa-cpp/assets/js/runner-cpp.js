@@ -211,6 +211,9 @@
   /* ---------------------------------------------------------------- runner API */
   const Runner = {
     name: "C++",
+    // for pages that run C++ without a code card (DSA Sheets): compile + run, normalised result
+    compile: (code, stdin) => compileRun(code, stdin),
+    helpFor, exitText,
     canRun: (lang) => lang === "cpp" || lang === "c++",
     onStatus(fn) { listeners.push(fn); fn(...state); },
     fnv,

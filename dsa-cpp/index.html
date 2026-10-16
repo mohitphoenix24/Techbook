@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
   <link rel="stylesheet" href="../shared/css/style.css">
   <link rel="stylesheet" href="assets/css/dsa.css">
+  <link rel="stylesheet" href="assets/css/sheets.css">
   <style>
     :root { --accent: #c2410c; --accent-2: #db2777; --accent-3: #7c3aed; }
     :root[data-theme="dark"] { --accent: #fb923c; --accent-2: #f472b6; --accent-3: #a78bfa; }
@@ -35,6 +36,7 @@
     <nav class="topnav">
       <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
       <a href="#/m/cpp-for-dsa" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/sheets" data-nav="sheets" data-icon="sheet"><span>Sheets</span></a>
       <a href="#/problems" data-nav="problems" data-icon="target"><span>Problems</span></a>
       <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
       <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
@@ -63,6 +65,7 @@
   <script src="../shared/vendor/cm/codemirror.min.js"></script>
   <script src="../shared/vendor/cm/mode/clike.min.js"></script>
   <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
   <script src="../shared/vendor/cm/mode/python.min.js"></script>
   <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
   <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
@@ -82,6 +85,7 @@
       heroSub: "From your first vector to segment trees, Dijkstra and dynamic programming. Every idea comes with the reasoning and the math behind it, a step-by-step visualizer, and C++ you can edit and run. More than 250 classic interview problems are solved and grouped by pattern.",
       heroNote: "Nothing to install. Unchanged examples show output verified with g++, and edited code compiles live with GCC.",
       pathGoal: "interview-ready",
+      ctas: [{ href: "#/sheets", icon: "sheet", label: "DSA Sheets · Blind 75" }],
       runTitle: "Try it yourself",
       localHint: "Run this on your computer with g++",
       tocTip: "Every ▶ Run block is editable. Change the input, break it, fix it: that's how patterns stick.",
@@ -120,6 +124,19 @@ int main() {
   <script src="assets/js/content.js"></script>
   <script src="assets/js/runner-cpp.js"></script>
   <script src="assets/js/viz.js"></script>
+  <script src="assets/js/sheets/stage.js"></script>
+  <script src="assets/js/sheets/core.js"></script>
+  <script src="assets/js/sheets/catalog.js"></script>
+  <script src="assets/js/sheets/kit.js"></script>
+  <script src="assets/js/sheets/ready.js"></script>
+  <script src="assets/js/sheets/verified.js"></script>
+  <script src="assets/js/sheets/viz/parts.js"></script>
+  <script src="assets/js/sheets/viz/linear.js"></script>
+  <script src="assets/js/sheets/viz/nonlinear.js"></script>
+  <script src="assets/js/sheets/viz/more.js"></script>
+  <script src="assets/js/sheets/lab.js"></script>
+  <script src="assets/js/sheets/lesson.js"></script>
+  <script src="assets/js/sheets/pages.js"></script>
   <script src="../courses.js"></script>
   <script src="../shared/js/app.js"></script>
 </body>
