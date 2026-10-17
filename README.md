@@ -11,6 +11,7 @@ One static website that holds every course. The home page (`index.html`) lists t
 | AlgoLab | `dsa-cpp/` | Data structures & algorithms in C++ for interviews, plus **DSA Sheets**: an interactive Blind 75 with C++ and JS solutions, 20 visualizers and a test lab (`#/sheets`) |
 | ScaleLab | `system-design/` | System design (HLD + LLD) for interviews, with C++ & JS code, live diagrams and 12 projects |
 | GenLab | `ai-engineering/` | AI engineering start to end: LLMs, APIs, RAG, agents, evals, safety, fine-tuning, inference, multimodal, LLMOps, interviews, a verified resource library and hands-on projects |
+| ProjectLab | `projects/` | Six complete full-stack Gen AI apps (React + FastAPI + Claude): a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL agent, a code-aware RAG explorer and a production-style support copilot. Real tested code, an offline mode, a source explorer and zip downloads (`projects/code/`) |
 
 ## Open it
 

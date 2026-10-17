@@ -39,6 +39,7 @@ def stats_for(path: str):
         "modules": len(learn),
         "lessons": sum(len(m["lessons"]) for m in learn),
         "projects": sum(len(m["lessons"]) for m in modules if m.get("kind") == "projects"),
+        "apps": sum(1 for m in modules if m.get("project")),                     # modules that build one complete app (ProjectLab)
         "examples": sum(len(RUN_FENCE.findall(b)) for b in bodies),
         "problems": sum(len(PROBLEM.findall(b)) for b in bodies),
     }

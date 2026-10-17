@@ -1,0 +1,132 @@
+/* region: tokens */
+/* Design tokens first: change a colour here and the whole app follows. */
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7fb;
+  --panel-2: #eceef6;
+  --text: #171a2b;
+  --muted: #6a7190;
+  --border: #dfe2ee;
+  --accent: #5b5bf0;
+  --accent-text: #ffffff;
+  --user: #eef0ff;
+  --danger: #c62d3f;
+  --code-bg: #14172a;
+  --code-text: #e6e9f7;
+  --radius: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1220;
+    --panel: #161a2e;
+    --panel-2: #1e2340;
+    --text: #e8eaf6;
+    --muted: #8f97bb;
+    --border: #272d4d;
+    --accent: #8083ff;
+    --accent-text: #0b0d1a;
+    --user: #1f2447;
+    --danger: #ff7a89;
+    --code-bg: #0a0c18;
+    color-scheme: dark;
+  }
+}
+/* endregion: tokens */
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 16px/1.55 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* Layout: sidebar + main column. On phones the sidebar slides over the chat. */
+.app { display: grid; grid-template-columns: 270px minmax(0, 1fr); height: 100%; }
+.sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+
+.new-chat { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 600; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sidebar li { display: flex; align-items: center; border-radius: 9px; }
+.sidebar li:hover, .sidebar li.active { background: var(--panel-2); }
+.conv { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn { background: none; border: 0; color: var(--muted); border-radius: 8px; padding: 6px 9px; }
+.icon-btn:hover { color: var(--text); background: var(--panel-2); }
+.del { opacity: 0; }
+.sidebar li:hover .del, .sidebar li.active .del, .del:focus-visible { opacity: 1; }
+
+.topbar { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); }
+.topbar h1 { font-size: 17px; margin: 0; flex: 1; }
+.menu-btn { display: none; }
+.provider-pill { font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--panel-2); color: var(--muted); }
+
+.messages { flex: 1; overflow-y: auto; padding: 22px 18px 8px; }
+.thread { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+.msg { display: flex; gap: 12px; align-items: flex-start; }
+.avatar { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--panel-2); color: var(--muted); }
+.msg.assistant .avatar { background: var(--accent); color: var(--accent-text); }
+.bubble { min-width: 0; flex: 1; }
+.msg.user .bubble { background: var(--user); border-radius: var(--radius); padding: 10px 14px; flex: 0 1 auto; max-width: 100%; }
+.msg.user { flex-direction: row-reverse; }
+.user-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.prose p, .prose ul, .prose ol, .prose table { margin: 0 0 12px; }
+.prose code { font: 0.9em "JetBrains Mono", ui-monospace, monospace; background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+.prose table { border-collapse: collapse; display: block; overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+.prose th { background: var(--panel); }
+.prose a { color: var(--accent); }
+.code-block { margin: 0 0 12px; border-radius: 12px; overflow: hidden; background: var(--code-bg); color: var(--code-text); }
+.code-head { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 12px; background: rgba(255, 255, 255, 0.06); }
+.code-head button { background: none; border: 0; color: inherit; opacity: 0.8; }
+.code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 13.5px/1.55 "JetBrains Mono", ui-monospace, monospace; }
+.prose .code-block code { background: none; padding: 0; font: inherit; }
+
+.caret { display: inline-block; width: 8px; height: 1.05em; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.typing { display: inline-flex; gap: 4px; padding: 8px 0; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite ease-in-out; }
+.typing i:nth-child(2) { animation-delay: 0.15s; }
+.typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-5px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .caret, .typing i { animation: none; } }
+
+.meta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.link { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.link:hover { color: var(--text); }
+.usage { margin-left: auto; font-variant-numeric: tabular-nums; }
+.flag { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.flag.error { color: var(--danger); }
+.flag .link { margin-left: 10px; color: inherit; }
+
+.empty { flex: 1; display: grid; align-content: center; justify-items: center; text-align: center; padding: 20px; gap: 6px; }
+.empty h2 { margin: 0; font-size: 28px; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 14px; max-width: 640px; }
+.chip { background: var(--panel); border: 1px solid var(--border); border-radius: 99px; padding: 8px 16px; font-size: 14px; }
+.chip:hover { border-color: var(--accent); }
+
+.composer { padding: 10px 18px 16px; max-width: 816px; width: 100%; margin: 0 auto; }
+.composer-box { display: flex; gap: 10px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 8px 8px 14px; }
+.composer-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.composer textarea { flex: 1; border: 0; background: none; resize: none; outline: none; max-height: 200px; padding: 6px 0; }
+.send { border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--accent); color: var(--accent-text); }
+.send:disabled { opacity: 0.4; cursor: not-allowed; }
+.send.stop { background: var(--danger); color: #fff; }
+.composer-row { display: flex; gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.persona { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.persona select { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.notice { margin: 0 0 8px; font-size: 13px; color: var(--muted); background: var(--panel); border-radius: 8px; padding: 6px 10px; }
+
+button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 780px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 10; transform: translateX(-100%); transition: transform 0.2s; }
+  .menu-open .sidebar { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.4); }
+  .menu-btn { display: block; }
+  .del { opacity: 1; }
+}

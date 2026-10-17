@@ -108,4 +108,18 @@ window.COURSES = [
     description: "Everything for becoming an AI engineer: how LLMs work, APIs and tools, context engineering, RAG, agents and MCP, evals, safety and security, fine-tuning, inference, multimodal, LLMOps, interview prep and a curated, link-checked resource library, with runnable code and projects.",
     topics: ["LLM fundamentals", "RAG", "Agents & MCP", "Evals", "Safety", "Inference & LLMOps"],
   },
+  {
+    path: "projects",
+    storageKey: "projectlab",
+    name: "ProjectLab",
+    title: "Full-stack Gen AI projects",
+    tagline: "Full-stack Gen AI projects",
+    logo: "",
+    logoIcon: "rocket",
+    colors: ["#c026d3", "#f97316"],
+    level: "Beginner → Advanced",
+    runtime: "Real React + FastAPI projects, with Python and React demos in your browser",
+    description: "Six complete full-stack generative-AI apps built with React, FastAPI and Claude: a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL data agent, a code-aware RAG explorer and a production-style support copilot. Real tested code, an offline mode that needs no API key, and a source explorer.",
+    topics: ["React + TypeScript", "FastAPI", "Streaming (SSE)", "RAG", "Code search", "Agents & tools", "Evals & tracing"],
+  },
 ];

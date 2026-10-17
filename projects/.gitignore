@@ -1,0 +1,4 @@
+# generated caches and local tooling output
+.build-cache/
+__pycache__/
+*.pyc

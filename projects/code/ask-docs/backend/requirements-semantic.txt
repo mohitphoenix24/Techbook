@@ -1,0 +1,4 @@
+# Optional: real semantic embeddings that run on your own computer (no API key).
+# The first run downloads a ~70 MB model. Then set EMBEDDINGS_PROVIDER=fastembed in .env.
+-r requirements.txt
+fastembed>=0.7

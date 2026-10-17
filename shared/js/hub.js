@@ -56,7 +56,7 @@
 
   function card(c) {
     const resume = c.last ? `${c.href}#/l/${encodeURIComponent(c.last)}` : c.href;
-    const third = c.s.problems ? [c.s.problems, "problems"] : [c.s.projects || 0, "projects"];
+    const third = c.s.problems ? [c.s.problems, "problems"] : [(c.s.projects || 0) + (c.s.apps || 0), "projects"];
     return `<article class="course-card" data-q="${esc([c.name, c.title, c.description, ...(c.topics || [])].join(" ").toLowerCase())}" style="--a:${esc(c.colors[0])};--b:${esc(c.colors[1])}">
       <div class="cc-top">${logo(c)}<div class="cc-name"><h3><a href="${esc(c.href)}">${esc(c.name)}</a></h3><div class="cc-sub">${esc(c.title)}</div></div></div>
       <div class="cc-body">
@@ -102,7 +102,7 @@
         <div class="stat"><b>${courses.length}</b><span>courses</span></div>
         <div class="stat"><b>${nf(sum("lessons"))}</b><span>in-depth lessons</span></div>
         <div class="stat"><b>${nf(sum("examples"))}+</b><span>runnable code examples</span></div>
-        <div class="stat"><b>${nf(sum("projects"))}</b><span>complete projects</span></div>
+        <div class="stat"><b>${nf(sum("projects") + sum("apps"))}</b><span>complete projects</span></div>
       </section>
 
       ${recent.length ? `<section class="section">

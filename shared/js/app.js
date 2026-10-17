@@ -19,6 +19,7 @@
      EXT.icons  { name: "<svg paths>" }                   extra icons
    `api` gives a page everything it needs to look like the rest of the site.
    SITE.ctas [{ href, icon, label }] adds buttons to the home hero.
+   SITE.levelLabels { easy: "Beginner" } renames level chips; SITE.stats(info) => [{ n, label }] replaces the home stat tiles.
    ========================================================================== */
 (function () {
   "use strict";
@@ -187,6 +188,7 @@
   const lcUrl = (lc) => (!lc ? "" : /^https?:/.test(lc) ? lc : `https://leetcode.com/problems/${lc}/`);
 
   const LEVEL_LABEL = { easy: "Easy", intermediate: "Intermediate", advanced: "Advanced", mixed: "All levels", medium: "Medium", hard: "Hard" };
+  Object.assign(LEVEL_LABEL, SITE.levelLabels || {});          // a course may say "Beginner" instead of "Easy"
   const lvlChip = (lv) => (lv && LEVEL_LABEL[lv] ? `<span class="lvl lvl-${lv}">${LEVEL_LABEL[lv]}</span>` : "");
 
   /* ------------------------------------------------------------ block parser
@@ -711,6 +713,8 @@
       </section>
 
       <section class="stats">
+        ${SITE.stats ? SITE.stats({ lessons: learnLessons.length, modules: learnMods.length, runnable: runnableCount, definitions: glossary.length, viz: vizCount, projects: projects.length })
+          .map((x) => `<div class="stat"><b>${esc(x.n)}</b><span>${esc(x.label)}</span></div>`).join("") : `
         <div class="stat"><b>${learnLessons.length}</b><span>in-depth lessons</span></div>
         ${problems.length ? `
         <div class="stat"><b>${problems.length}</b><span>${esc(SITE.problemStat || "interview problems, solved")}</span></div>
@@ -718,7 +722,7 @@
         <div class="stat"><b>${runnableCount}+</b><span>runnable ${esc(LANG)} examples</span></div>` : `
         <div class="stat"><b>${runnableCount}+</b><span>runnable code examples</span></div>
         <div class="stat"><b>${projects.length}</b><span>complete projects</span></div>
-        <div class="stat"><b>${glossary.length}</b><span>clear definitions</span></div>`}
+        <div class="stat"><b>${glossary.length}</b><span>clear definitions</span></div>`}`}
       </section>
 
       <section class="section">

@@ -4,6 +4,7 @@ window.COURSE_STATS = {
     "modules": 8,
     "lessons": 58,
     "projects": 12,
+    "apps": 0,
     "examples": 586,
     "problems": 0
   },
@@ -11,6 +12,7 @@ window.COURSE_STATS = {
     "modules": 5,
     "lessons": 32,
     "projects": 10,
+    "apps": 0,
     "examples": 157,
     "problems": 0
   },
@@ -18,6 +20,7 @@ window.COURSE_STATS = {
     "modules": 5,
     "lessons": 36,
     "projects": 10,
+    "apps": 0,
     "examples": 179,
     "problems": 0
   },
@@ -25,6 +28,7 @@ window.COURSE_STATS = {
     "modules": 6,
     "lessons": 56,
     "projects": 12,
+    "apps": 0,
     "examples": 242,
     "problems": 0
   },
@@ -32,6 +36,7 @@ window.COURSE_STATS = {
     "modules": 11,
     "lessons": 68,
     "projects": 10,
+    "apps": 0,
     "examples": 393,
     "problems": 269
   },
@@ -39,6 +44,7 @@ window.COURSE_STATS = {
     "modules": 15,
     "lessons": 102,
     "projects": 12,
+    "apps": 0,
     "examples": 239,
     "problems": 43
   },
@@ -46,7 +52,16 @@ window.COURSE_STATS = {
     "modules": 13,
     "lessons": 114,
     "projects": 14,
+    "apps": 0,
     "examples": 374,
     "problems": 132
+  },
+  "projects": {
+    "modules": 8,
+    "lessons": 73,
+    "projects": 0,
+    "apps": 6,
+    "examples": 81,
+    "problems": 0
   }
 };
