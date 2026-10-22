@@ -1,0 +1,119 @@
+[
+ {
+  "name": "astronaut",
+  "file": "astronaut.jpg",
+  "shape": [
+   384,
+   384,
+   3
+  ]
+ },
+ {
+  "name": "coffee",
+  "file": "coffee.jpg",
+  "shape": [
+   280,
+   420,
+   3
+  ]
+ },
+ {
+  "name": "cat",
+  "file": "cat.jpg",
+  "shape": [
+   279,
+   420,
+   3
+  ]
+ },
+ {
+  "name": "camera",
+  "file": "camera.jpg",
+  "shape": [
+   400,
+   400
+  ]
+ },
+ {
+  "name": "coins",
+  "file": "coins.jpg",
+  "shape": [
+   303,
+   384
+  ]
+ },
+ {
+  "name": "page",
+  "file": "page.png",
+  "shape": [
+   191,
+   384
+  ]
+ },
+ {
+  "name": "rocket",
+  "file": "rocket.jpg",
+  "shape": [
+   280,
+   420,
+   3
+  ]
+ },
+ {
+  "name": "retina",
+  "file": "retina.jpg",
+  "shape": [
+   360,
+   360,
+   3
+  ]
+ },
+ {
+  "name": "moon",
+  "file": "moon.jpg",
+  "shape": [
+   300,
+   300
+  ]
+ },
+ {
+  "name": "text",
+  "file": "text.png",
+  "shape": [
+   172,
+   448
+  ]
+ },
+ {
+  "name": "horse",
+  "file": "horse.png",
+  "shape": [
+   271,
+   330
+  ]
+ },
+ {
+  "name": "brick",
+  "file": "brick.jpg",
+  "shape": [
+   256,
+   256
+  ]
+ },
+ {
+  "name": "gravel",
+  "file": "gravel.jpg",
+  "shape": [
+   256,
+   256
+  ]
+ },
+ {
+  "name": "grass",
+  "file": "grass.jpg",
+  "shape": [
+   256,
+   256
+  ]
+ }
+]

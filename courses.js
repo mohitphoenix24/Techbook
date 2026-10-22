@@ -122,4 +122,18 @@ window.COURSES = [
     description: "Six complete full-stack generative-AI apps built with React, FastAPI and Claude: a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL data agent, a code-aware RAG explorer and a production-style support copilot. Real tested code, an offline mode that needs no API key, and a source explorer.",
     topics: ["React + TypeScript", "FastAPI", "Streaming (SSE)", "RAG", "Code search", "Agents & tools", "Evals & tracing"],
   },
+  {
+    path: "computer-vision",
+    storageKey: "visionlab",
+    name: "VisionLab",
+    title: "Computer vision, pixels to modern AI",
+    tagline: "Computer vision, pixels to modern AI",
+    logo: "",
+    logoIcon: "eye",
+    colors: ["#0284c7", "#84cc16"],
+    level: "Beginner → Interview-ready",
+    runtime: "Real OpenCV + NumPy in your browser, live image simulators",
+    description: "Computer vision from the first pixel to modern AI, in simple words: image processing, features, camera geometry and 3D, motion and tracking, CNNs, detection, segmentation, transformers, CLIP, SAM, diffusion, 3D deep learning and robot vision, deployment, and a full interview-prep module with question banks, coding rounds, maths and system design. Run real OpenCV code on real photos in your browser, and build thirteen hands-on projects.",
+    topics: ["Image processing", "Features & matching", "Camera geometry & 3D", "Tracking & video", "CNNs", "Detection & segmentation", "Transformers & foundation models", "Generative vision", "3D & robot vision", "Deployment", "Interview prep", "13 projects"],
+  },
 ];

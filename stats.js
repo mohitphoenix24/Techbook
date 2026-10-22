@@ -63,5 +63,13 @@ window.COURSE_STATS = {
     "apps": 6,
     "examples": 81,
     "problems": 0
+  },
+  "computer-vision": {
+    "modules": 17,
+    "lessons": 138,
+    "projects": 13,
+    "apps": 0,
+    "examples": 426,
+    "problems": 244
   }
 };

@@ -12,6 +12,7 @@ One static website that holds every course. The home page (`index.html`) lists t
 | ScaleLab | `system-design/` | System design (HLD + LLD) for interviews, with C++ & JS code, live diagrams and 12 projects |
 | GenLab | `ai-engineering/` | AI engineering start to end: LLMs, APIs, RAG, agents, evals, safety, fine-tuning, inference, multimodal, LLMOps, interviews, a verified resource library and hands-on projects |
 | ProjectLab | `projects/` | Six complete full-stack Gen AI apps (React + FastAPI + Claude): a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL agent, a code-aware RAG explorer and a production-style support copilot. Real tested code, an offline mode, a source explorer and zip downloads (`projects/code/`) |
+| VisionLab | `computer-vision/` | Computer vision from pixels to modern AI in simple words: image processing, features, camera geometry and 3D, tracking, CNNs, detection, segmentation, transformers, CLIP, SAM, diffusion, 3D deep learning and robotics, deployment, and interview prep (question banks, coding rounds, maths, system design), with real OpenCV code running in the browser, live image simulators and 13 hands-on projects |
 
 ## Open it
 

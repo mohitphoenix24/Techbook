@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VisionLab — computer vision, from pixels to modern AI</title>
+  <meta name="description" content="Computer vision from the first pixel to modern AI, in simple words: image processing, features, camera geometry and 3D, CNNs, detection, segmentation, transformers, CLIP, SAM, diffusion, deployment and interview prep, with real OpenCV code that runs in your browser, live simulators and a curated resource library.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230284c7'/%3E%3Cstop offset='1' stop-color='%2384cc16'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M5 16s4-7 11-7 11 7 11 7-4 7-11 7S5 16 5 16z' fill='none' stroke='white' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='3.4' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/cv.css">
+  <style>
+    :root { --accent: #0369a1; --accent-2: #65a30d; --accent-3: #7c3aed; }
+    :root[data-theme="dark"] { --accent: #38bdf8; --accent-2: #a3e635; --accent-3: #a78bfa; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="eye" style="font-size:19px"></span><span class="brand-text">VisionLab<small>Computer vision, pixels to modern AI</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, questions, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/pixels" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Interview Qs</span></a>
+      <a href="#/projects" data-nav="projects" data-icon="flask"><span>Projects</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Python with OpenCV, NumPy and scikit-image runs inside your browser using Pyodide. Deep-learning code that needs PyTorch or a GPU is shown as 'Run locally' code."><span class="dot"></span><span class="rt-label">Python: idle</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, questions and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/python.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "VisionLab",
+      storageKey: "visionlab",
+      langName: "Python",
+      heroStatus: "✓ ran in your browser",
+      glossaryHint: "Filter terms… (e.g. convolution, homography, NMS, IoU, ViT)",
+      tagline: "Computer vision, pixels to modern AI",
+      badge: "2026",
+      eyebrow: "Pixels → Filters → Features → 3D geometry → CNNs → Detection → Transformers → Generative → Deployment",
+      heroTitle: 'See like a <span class="grad">vision engineer</span>. Pixels to modern AI.',
+      heroSub: "The full path through computer vision, in simple words. Start with what a pixel is. Build filters, edges and features by hand. Learn how cameras and 3D geometry work. Then move to CNNs, detection, segmentation, transformers, CLIP, SAM and diffusion, and finish with deployment and interview practice. Every idea has a picture, an everyday example and code you can run on real photos.",
+      heroNote: "Nothing to install. Python, OpenCV, NumPy and scikit-image run in your browser. Code that needs PyTorch or a GPU is shown as 'Run locally' code and was tested on a real machine.",
+      pathGoal: "vision engineer",
+      runTitle: "Try it on a real photo",
+      localHint: "Run this on your computer (needs PyTorch, and a GPU for training)",
+      tocTip: "Every ▶ Run block is editable. Change the numbers, break things on purpose, and watch the picture change. Simulators respond to the sliders.",
+      footer: "Built for learning. Python runs in your browser with Pyodide; nothing you type or load is sent anywhere. Sample photos are public domain or CC0 (from scikit-image). Resource links go to third-party sites.",
+      problemStat: "interview questions, worked",
+      vizLabel: "interactive diagrams & simulators",
+      problemsHomeTitle: "{n} computer-vision interview questions",
+      problemsHomeSub: "Concept questions, coding-round problems and design questions, each with hints and a model answer in its lesson.",
+      problemsTitle: "Computer-vision interview questions, by topic",
+      problemsSub: "Say your answer out loud first (two minutes). Then open the hint and the model answer, and tick the question off. For design questions, draw the pipeline on paper.",
+      features: [
+        { icon: "smile", title: "Simple words, deep ideas", text: "Short sentences and everyday examples first. The maths comes after the idea is clear, and every term is explained the first time you meet it." },
+        { icon: "eye", title: "Real OpenCV, in your browser", text: "Edit and run OpenCV, NumPy and scikit-image on real photos. Blur, edges, features, calibration, stereo, tracking: you see the picture change as you type." },
+        { icon: "layers", title: "Classical to modern", text: "Pixels, filters and features first, then camera geometry and 3D, then CNNs, detection, segmentation, transformers, CLIP, SAM and diffusion. You learn why each idea was invented." },
+        { icon: "target", title: "Built for interviews", text: "Hundreds of worked questions, coding-round problems (IoU, NMS, convolution from scratch), design questions for real systems, cheat sheets and a study plan." },
+      ],
+      hero: {
+        file: "edges.py",
+        lang: "python",
+        code: `import cv2, cvlab
+
+img   = cvlab.image("astronaut")                  # a photo, as a NumPy array
+gray  = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)     # colour -> brightness only
+blur  = cv2.GaussianBlur(gray, (5, 5), 1.4)       # smooth away the noise
+edges = cv2.Canny(blur, 60, 140)                  # keep the strong outlines
+
+cvlab.show(img, "Photo", edges, "Edges")
+print(img.shape, "->", edges.shape)
+print("edge pixels:", int((edges > 0).sum()))`,
+        output: `(384, 384, 3) -> (384, 384)
+edge pixels: 10937`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-python.js"></script>
+  <script src="assets/js/viz-cv.js"></script>
+  <script src="assets/js/cvalgo.js"></script>
+  <script src="assets/js/sims-image.js"></script>
+  <script src="assets/js/sims-filter.js"></script>
+  <script src="assets/js/sims-geom.js"></script>
+  <script src="assets/js/sims-3d.js"></script>
+  <script src="assets/js/sims-motion.js"></script>
+  <script src="assets/js/sims-dl.js"></script>
+  <script src="assets/js/sims-det.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>
