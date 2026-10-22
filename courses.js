@@ -119,8 +119,8 @@ window.COURSES = [
     colors: ["#c026d3", "#f97316"],
     level: "Beginner → Advanced",
     runtime: "Real React + FastAPI projects, with Python and React demos in your browser",
-    description: "Six complete full-stack generative-AI apps built with React, FastAPI and Claude: a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL data agent, a code-aware RAG explorer and a production-style support copilot. Real tested code, an offline mode that needs no API key, and a source explorer.",
-    topics: ["React + TypeScript", "FastAPI", "Streaming (SSE)", "RAG", "Code search", "Agents & tools", "Evals & tracing"],
+    description: "Ten complete full-stack generative-AI apps built with React, FastAPI and Claude: a streaming chat, a structured-data extractor, a RAG assistant with citations, a text-to-SQL data agent, a code-aware RAG explorer, a production-style support copilot, and four beginner agents (a to-do assistant, a weather advisor, a notes keeper that cannot write, and a web research assistant that cites its sources). Real tested code, an offline mode for the first six, and a source explorer.",
+    topics: ["React + TypeScript", "FastAPI", "Streaming (SSE)", "RAG", "Code search", "Agents & tools", "Web search & citations", "Agent safety", "Evals & tracing"],
   },
   {
     path: "computer-vision",

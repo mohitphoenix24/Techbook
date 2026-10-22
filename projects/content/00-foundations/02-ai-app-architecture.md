@@ -55,7 +55,7 @@ We use **Server-Sent Events (SSE)**, a plain-text format over normal HTTP. It is
 The browser is the **customer**, the server is the **waiter**, the model is the **kitchen**. The customer never walks into the kitchen (secrets and rules), the waiter checks the order, brings back the dishes as they are ready (streaming), and writes everything on the bill (logging and cost).
 :::
 
-## The six projects are the same picture with more boxes
+## The ten projects are the same picture with more boxes
 
 ```viz algo=arch title="What each project adds" dir=down
 web    React UI | all projects [browser] @0,0
@@ -63,8 +63,8 @@ api    FastAPI | all projects [service] @1,0
 llm    Claude | all projects [llm] @2,0
 db     SQLite / SQL | 1, 3, 4, 5 [db] @2,1.4
 vec    Search index | 3, 5, 6 [vector] @1,1.4
-tool   Tools: SQL, orders | 4, 5 [tool] @3,1.4
-guard  Guardrails | 2, 5 [guard] @0,1.4
+tool   Tools: SQL, orders, files, web | 4, 5, 7 to 10 [tool] @3,1.4
+guard  Guardrails | 2, 5, 9 [guard] @0,1.4
 mon    Traces and evals | 5 [monitor] @3,0
 --
 web -> api
@@ -101,7 +101,7 @@ Save | store the reply and its token usage
 - The browser must never hold secrets or build the real prompt. The server does both.
 - Models are stateless: the server owns the conversation and the budget.
 - Streaming (SSE) makes long answers feel instant, and it affects both server and UI code.
-- The six projects reuse this picture and add one new box each.
+- The ten projects reuse this picture and add one new box each.
 :::
 
 ```quiz

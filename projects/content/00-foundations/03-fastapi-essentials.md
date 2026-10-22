@@ -2,7 +2,7 @@
 title: FastAPI essentials
 level: easy
 time: 35
-summary: Everything about FastAPI you need for the six projects: routes, Pydantic validation, dependencies, async, streaming responses and tests. Pydantic runs live in your browser.
+summary: Everything about FastAPI you need for the ten projects: routes, Pydantic validation, dependencies, async, streaming responses and tests. Pydantic runs live in your browser.
 ---
 
 **FastAPI** is a Python framework for building web APIs. It reads your **type hints** and uses them three ways at once: to validate every request, to convert data to and from JSON, and to write interactive documentation. For AI apps it has two more strengths: it is *async* (one server can wait on many slow model calls at once) and it can *stream* responses.

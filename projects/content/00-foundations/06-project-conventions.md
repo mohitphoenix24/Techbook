@@ -2,10 +2,10 @@
 title: Conventions every project shares
 level: easy
 time: 30
-summary: The folder layout, settings, provider interface, offline model, test strategy and security habits that all six projects use, so each new project feels familiar.
+summary: The folder layout, settings, provider interface, offline model, test strategy and security habits that the projects share, and how the four beginner agents (Projects 7 to 10) deliberately differ: the real Claude, no mock.
 ---
 
-Six projects would be exhausting if each had its own structure. They share a small set of conventions. Learn them here once; every later lesson becomes easier to read.
+Ten projects would be exhausting if each had its own structure. They share a small set of conventions. Learn them here once; every later lesson becomes easier to read.
 
 ## Folder layout
 
@@ -87,6 +87,19 @@ The `MockClient` is a **test double**, not a smaller model. It recognises a few 
 
 Every lesson tells you which behaviours need a real model. If you want real answers, add a key and restart; nothing else changes.
 
+## Projects 7 to 10 do it differently, on purpose
+
+The four beginner agent projects (TaskPal, WeatherWise, NoteKeeper, ResearchBuddy) follow the same layout and settings, but they **drop the provider interface and the mock**:
+
+| | Projects 1 to 6 | Projects 7 to 10 |
+|---|---|---|
+| Model access | an interface with `AnthropicClient` and `MockClient`, chosen at start-up | the official `anthropic` SDK, called directly in a short `agent.py` loop |
+| Without an API key | the offline model answers | the app starts, shows a banner, and answers with an honest `no_key` error |
+| `llm/` folder | `base.py`, `anthropic_client.py`, `mock_client.py`, `factory.py` | one small `llm.py`: build the client, turn SDK errors into plain messages |
+| Testing the loop | the offline model makes it deterministic | the loop is not tested with a stand-in; the code *around* it is (tools, parsing, API, interface), and real prompts are tried by hand from a checklist |
+
+The reason is the subject. An agent's behaviour (which tool it chooses, how it recovers from an error, whether text in a note fools it) is exactly what those projects teach, and a scripted stand-in would hide it. So they pay for a few cents of real calls, and put their testing effort into everything that does *not* depend on the model, which is most of the code.
+
 ## Pure core, impure shell
 
 The easiest code to test and to reuse has no side effects: it takes values and returns values. Keep the decision-making in such functions (trimming history, chunking text, ranking results, validating SQL) and keep input and output (HTTP, the database, the model) in a thin outer layer.
@@ -105,7 +118,7 @@ print(sse("delta", {"text": "नमस्ते"}))
 |---|---|---|
 | Pure functions | plain `pytest`, no setup | `trim_history`, chunking, SQL guard |
 | API routes | `TestClient` + the offline model | send a chat, parse the SSE events |
-| The Claude adapter | the real SDK against a tiny **fake Anthropic server** in the tests | proves we parse a real stream and map errors |
+| The Claude adapter | the real SDK against a tiny **fake Anthropic server** in the tests (Projects 1 to 6 only) | proves we parse a real stream and map errors |
 | React state | `vitest` on reducers and the SSE parser | chunks split mid-event |
 | Whole app | a browser script (Playwright) driving React + FastAPI together | type, send, stop, reload |
 

@@ -2,7 +2,7 @@
 title: React and TypeScript essentials
 level: easy
 time: 40
-summary: The React and TypeScript ideas the six front ends use: state, reducers, loading and error states, cancelling a request, and typed events. All examples run live against a fake server in the page.
+summary: The React and TypeScript ideas the ten front ends use: state, reducers, loading and error states, cancelling a request, and typed events. All examples run live against a fake server in the page.
 ---
 
 You do not need to be a React expert for this course, but a few ideas appear in every project. This lesson covers exactly those, with **live** examples. Each preview below runs in your browser and talks to a *fake server* defined in the example itself, using the same `fetch` code you will write against the real FastAPI back end.

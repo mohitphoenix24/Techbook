@@ -2,14 +2,14 @@
 title: How this course works
 level: easy
 time: 15
-summary: What you will build, how every project is taught, what to install, and how to run everything for free with the built-in offline model.
+summary: What you will build, how every project is taught, what to install, and which projects run for free on a built-in offline model and which four (the beginner agents) use the real Claude.
 ---
 
-Most AI tutorials stop at a notebook. Real AI products are **applications**: a screen people use, a server that protects your secrets and your budget, and a model in the middle. This course teaches you to build that whole stack, six times, with more depth each time.
+Most AI tutorials stop at a notebook. Real AI products are **applications**: a screen people use, a server that protects your secrets and your budget, and a model in the middle. This course teaches you to build that whole stack, ten times, with more depth each time.
 
 **The stack:** React and TypeScript for the front end, FastAPI (Python) for the back end, and Claude as the language model. The ideas carry over to any model and any framework.
 
-## The six projects
+## The ten projects
 
 | # | Project | Level | You will learn |
 |---|---|---|---|
@@ -19,8 +19,12 @@ Most AI tutorials stop at a notebook. Real AI products are **applications**: a s
 | 4 | **DataPilot**: ask questions of a database in plain English | Intermediate | tool use, the agent loop, safe SQL, streaming agent steps, tables and charts |
 | 5 | **SupportPilot**: an AI copilot for a support team | Advanced | multi-step pipelines, an LLM gateway, tracing, guardrails, human approval, evals, auth |
 | 6 | **RepoChat**: ask a code repository questions and get answers that cite exact lines | Intermediate | RAG for source code: chunking by structure, identifier-aware search, the call graph, checked line citations, safe ZIP uploads, secret masking |
+| 7 | **TaskPal**: a to-do assistant | Beginner | your first agent: tools, the loop, tool descriptions, validation, a task board that follows the agent |
+| 8 | **WeatherWise**: a weather advisor with live forecasts | Beginner | tools that call a real web service: parsing, ids not coordinates, parallel tool calls, failure handling, forecast cards |
+| 9 | **NoteKeeper**: an agent that cannot write | Beginner | least privilege and human approval: a file sandbox, proposals with diffs, stale-edit protection, prompt injection |
+| 10 | **ResearchBuddy**: a research agent that cites its sources | Beginner | server tools: web search, paused turns, citations, a safe calculator, safe links |
 
-Each project is a module in the sidebar, and a final module, *Shipping and what comes next*, covers costs, CI, what the six share, and ten projects to build next. The modules are in the order they were built, and each says its level, so you can start with the one that matches your experience: Projects 1 and 2 first if you are new to this, Project 3 or 6 if retrieval is what you want, Project 4 for agents, Project 5 for production concerns.
+Each project is a module in the sidebar, and a final module, *Shipping and what comes next*, covers costs, CI, what the ten share, and ten projects to build next. The modules are in the order they were built, and each says its level, so you can start with the one that matches your experience: Projects 1 and 2 first if you are new to this, Project 3 or 6 if retrieval is what you want, Projects 7 to 10 if you want to start with **agents** (four small ones, one new idea each), Project 4 for a bigger agent, Project 5 for production concerns.
 
 ## How a project is taught
 
@@ -48,14 +52,18 @@ You can build along (type the code yourself, which is the best way to learn) or 
 | Python | 3.11 or newer | the FastAPI back end |
 | Node.js | 22.12 or newer (24 LTS is fine) | the React front end (Vite 8 needs it) |
 | A code editor | VS Code is a good choice | you will edit Python and TypeScript |
-| An Anthropic API key | **optional** | real Claude answers; get one at [console.anthropic.com](https://console.anthropic.com) |
+| An Anthropic API key | optional for Projects 1 to 6, **required** for 7 to 10 | real Claude answers; get one at [console.anthropic.com](https://console.anthropic.com) |
 
-You do **not** need an API key to follow this course.
+You do **not** need an API key to follow Projects 1 to 6. The four beginner agent projects (7 to 10) are different, and the note below says why.
 
 :::note Offline mode: no key, no cost
 Every project includes a small **offline model** (we call it the *mock*). It is not intelligent. It recognises a handful of requests and answers from templates. What it does faithfully is *behave like a streaming API*: it sends words a few at a time, reports token usage, can fail, and can be stopped. Everything you build around it (the server, the database, the interface, the tests) works exactly the same when you later switch to Claude.
 
-So you can finish all six projects for free, and flip one setting (`ANTHROPIC_API_KEY`) to get real answers. The lessons always say which parts need a real model.
+So you can finish Projects 1 to 6 for free, and flip one setting (`ANTHROPIC_API_KEY`) to get real answers. The lessons always say which parts need a real model.
+:::
+
+:::warn Projects 7 to 10 have no offline mode
+The four beginner agents (TaskPal, WeatherWise, NoteKeeper, ResearchBuddy) call the **real Claude** through the official SDK, and have no mock and no fake model. An agent's behaviour (which tool it picks, how it recovers, whether it is fooled) is the thing being taught, and a scripted stand-in would hide exactly that. Without a key, those apps still start, show a banner, and answer with an honest error. Their tests never call the model; they test everything *around* it. Each project's first lesson tells you what a request costs (a cent or two) and how to cap it.
 :::
 
 ## Running a project
@@ -86,9 +94,9 @@ To use Claude instead of the offline model, create `backend/.env` containing `AN
 - Blocks labelled **Run locally** are parts of the project that need FastAPI or an API key. Copy them, or open the project's source.
 
 :::keypoints
-- You build six complete full-stack AI apps: React + FastAPI + Claude.
+- You build ten complete full-stack AI apps: React + FastAPI + Claude.
 - Every project is real, tested code; the lessons quote it from the actual files.
-- An offline model means you need no API key and spend nothing while learning.
+- Projects 1 to 6 have an offline model, so you need no API key and spend nothing while learning. Projects 7 to 10 use the real Claude and need a key.
 - You can read along, build along, or download a project as a zip and run it.
 :::
 

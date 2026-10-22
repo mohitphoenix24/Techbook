@@ -57,11 +57,11 @@ window.COURSE_STATS = {
     "problems": 132
   },
   "projects": {
-    "modules": 8,
-    "lessons": 73,
+    "modules": 12,
+    "lessons": 102,
     "projects": 0,
-    "apps": 6,
-    "examples": 81,
+    "apps": 10,
+    "examples": 103,
     "problems": 0
   },
   "computer-vision": {

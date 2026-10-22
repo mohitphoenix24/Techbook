@@ -40,8 +40,9 @@ def wait_for(url: str, timeout: float = 40.0):
 
 
 @contextlib.contextmanager
-def stack(project: str, env: dict | None = None, backend_port: int | None = None):
-    """Yield the frontend URL with backend + frontend running. `env` overrides backend environment variables."""
+def stack(project: str, env: dict | None = None, backend_port: int | None = None, backend_cmd=None):
+    """Yield the frontend URL with backend + frontend running. `env` overrides backend environment variables.
+    `backend_cmd(port)` may return a different command line than the default `uvicorn app.main:app` (cwd is still backend/)."""
     backend_dir = CODE / project / "backend"
     frontend_dir = CODE / project / "frontend"
     bport, fport = backend_port or free_port(), free_port()
@@ -49,8 +50,8 @@ def stack(project: str, env: dict | None = None, backend_port: int | None = None
     clean = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     clean.update({"PYTHONNOUSERSITE": "1", "LLM_PROVIDER": "mock", "DATABASE_PATH": f"{tmp}/e2e.db", "MOCK_DELAY_MS": "8"})
     clean.update(env or {})
-    api = subprocess.Popen([PYTHON, "-m", "uvicorn", "app.main:app", "--port", str(bport), "--log-level", "warning"],
-                           cwd=backend_dir, env=clean, preexec_fn=os.setsid)
+    argv = backend_cmd(bport) if backend_cmd else [PYTHON, "-m", "uvicorn", "app.main:app", "--port", str(bport), "--log-level", "warning"]
+    api = subprocess.Popen(argv, cwd=backend_dir, env=clean, preexec_fn=os.setsid)
     fenv = dict(os.environ)
     if NODE_BIN:
         fenv["PATH"] = NODE_BIN + os.pathsep + fenv["PATH"]
