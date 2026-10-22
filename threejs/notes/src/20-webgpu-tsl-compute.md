@@ -1,6 +1,10 @@
 ---
 title: WebGPU, TSL and Compute
 summary: How WebGPU is organised (adapter, device, pipelines, bind groups, command encoders), what WebGPURenderer changes in three.js, writing materials and effects in TSL (three.js's shading language in JavaScript), compute shaders with storage buffers and workgroup maths, a 100,000-particle simulation, a migration checklist from WebGL, and WebGPU in R3F.
+difficulty: Advanced
+prereqs: Chapters 2 and 18
+time: 75–90 minutes
+outcome: Set up WebGPURenderer, write materials and effects in TSL, run compute shaders on storage buffers, and plan a migration from WebGL.
 ---
 
 ## How WebGPU is organised
@@ -26,7 +30,7 @@ fn main(@builtin(global_invocation_id) id : vec3u) {
 
 You rarely write WGSL by hand with three.js: TSL generates it (or GLSL for the WebGL 2 fallback).
 
-## WebGPURenderer in three.js
+## WebGPURenderer in three.js {intermediate}
 
 | Topic | WebGLRenderer | WebGPURenderer |
 |---|---|---|
@@ -50,6 +54,9 @@ Custom `ShaderMaterial`s, `onBeforeCompile` hacks, `EffectComposer` passes and l
 :::def TSL (Three.js Shading Language)
 A way to write shaders as JavaScript function calls that build a **node graph**. Nothing runs in JavaScript at draw time: three.js compiles the graph to WGSL (WebGPU) or GLSL (WebGL 2). Because it is JavaScript, shader code can be composed, imported, parameterised and tree-shaken like any other module, and the same code runs on both backends.
 :::
+
+@fig(tsl_pipeline) How TSL becomes a shader. The node graph is compiled per backend, so the same material runs on WebGPU and on the WebGL 2 fallback.
+
 
 | GLSL | TSL |
 |---|---|
@@ -93,8 +100,16 @@ material.positionNode = positionLocal.add(normalLocal.mul(wave));               
 At $t = 0.5$ s, a vertex with local $y = 0.2$ and normal $(0, 0, 1)$: $\sin(0.2\times8 + 0.5\times3) = \sin(3.1) = 0.0416$, times $0.08$ gives $0.0033$, so the vertex moves 3.3 mm outwards along its normal. Every vertex evaluates the same graph in parallel on the GPU.
 :::
 
-:::new TSL changes to know (r181–r186)
-`PI2` was renamed `TWO_PI` (r181). `directionToColor`/`colorToDirection` became `packNormalToRGB`/`unpackRGBToNormal` (r185). In a `positionNode`, `positionLocal` no longer includes skinning; use `positionGeometry` for the raw vertex (r185). `rangeFog` and `viewportResolution` were removed (use `fog(color, rangeFogFactor(near, far))` and `screenSize`) in r186. Node materials and TSL also run on `WebGLRenderer` through a compatibility layer since r184.
+:::apichange TSL renames and removals
+Older tutorials: `PI2`, `directionToColor()` / `colorToDirection()`, `rangeFog(color, near, far)`, `viewportResolution`.
+Current approach: `TWO_PI`, `packNormalToRGB()` / `unpackRGBToNormal()`, `fog(color, rangeFogFactor(near, far))`, `screenSize`.
+Version: `PI2` renamed in r181; the normal-packing functions renamed in r185; `rangeFog` deprecated in r172 and no longer exported in r186; `viewportResolution` no longer exported in r186.
+:::
+
+:::apichange positionLocal no longer includes skinning in positionNode
+Older tutorials: reading `positionLocal` inside `material.positionNode` on a `SkinnedMesh` to get the skinned position.
+Current approach: inside `positionNode`, `positionLocal` does not apply internal vertex transformations such as skinning; read `positionGeometry` for the raw, pre-transformed vertex.
+Version: r185. Node materials and TSL also run on `WebGLRenderer` through a compatibility layer since r184.
 :::
 
 ## Compute shaders
@@ -208,6 +223,12 @@ export default function App() {
 
 For compute in R3F, build the buffers and kernels in `useMemo`, run the init kernel once the renderer is ready (`useEffect(() => gl.compute(init), [gl])`), and dispatch the update kernel in `useFrame((state) => state.gl.compute(update))`. For post-processing, build a `RenderPipeline` in `useMemo` and render it from a `useFrame` with **priority 1**, which tells R3F not to render the scene itself.
 
+:::lens Adopting WebGPU
+Junior: Swaps in `WebGPURenderer` and is surprised that a `ShaderMaterial` no longer renders.
+Mid-level: Ports custom materials to TSL node slots, rebuilds post-processing as a `RenderPipeline`, and checks `backend.isWebGPUBackend`.
+Senior: Decides with profiling data whether WebGPU pays off for this product, plans the migration behind a feature flag with the WebGL 2 fallback tested on target devices, pre-compiles pipelines during loading, and moves suitable work (particles, culling, simulation) into compute.
+:::
+
 :::keypoints
 - WebGPU: adapter → device → buffers/textures → bind groups → pipelines → command encoder → queue; validation happens at creation.
 - `WebGPURenderer` (`three/webgpu`): async init, automatic WebGL 2 fallback, node materials, TSL, compute, `RenderPipeline`, clustered lighting, WebXR.
@@ -216,6 +237,18 @@ For compute in R3F, build the buffers and kernels in `useMemo`, run the init ker
 - Compute: `instancedArray` storage buffers + `Fn(...)().compute(count)` + `renderer.compute()`; workgroups of 64; data stays on the GPU.
 - `ShaderMaterial`, `onBeforeCompile` and `EffectComposer` must be ported; profile before migrating for speed.
 - R3F 9: async `gl` factory, `extend(THREE)` from `three/webgpu`, `useFrame` for compute and pipelines.
+:::
+
+:::build GPU particle system
+Problem: Simulate 200,000 particles in a compute shader: emitted from a ring, pushed by a curl-noise field, attracted to the mouse, and coloured by speed.
+Requirements:
+- Positions and velocities in storage buffers; the CPU only updates uniforms.
+- Respawn particles that live longer than their lifetime.
+- Fall back gracefully (fewer particles) on the WebGL backend.
+Constraints: no per-particle JavaScript in the frame loop.
+Hints: store lifetime in the `w` of a `vec4`; `hash(instanceIndex)` for randomness; check `renderer.backend.isWebGPUBackend`.
+Relevant APIs: `instancedArray`, `Fn`, `compute`, `renderer.compute`, `SpriteNodeMaterial`, `positionNode`, `uniform`.
+Expected result: a smooth 60 fps particle stream that reacts to the cursor, with the CPU almost idle.
 :::
 
 ## Interview questions

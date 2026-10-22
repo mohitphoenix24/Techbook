@@ -1,6 +1,10 @@
 ---
 title: The GPU Rendering Pipeline
 summary: How triangles become pixels. The stages of the graphics pipeline, rasterisation and barycentric interpolation, the depth buffer, blending maths, draw calls, and what three.js does inside renderer.render() every frame.
+difficulty: Foundation
+prereqs: Chapter 1
+time: 60–75 minutes
+outcome: Trace a vertex from a buffer to a pixel, compute barycentric weights and blend results by hand, and explain why draw calls, overdraw and transparency cost what they cost.
 ---
 
 ## CPU and GPU: two processors, two jobs
@@ -25,6 +29,9 @@ One command from the CPU telling the GPU "draw this geometry with this shader an
 :::intuition A kitchen
 The CPU is the head chef reading orders and shouting instructions. The GPU is a kitchen with a thousand cooks who can only do simple steps, but all at once. Shouting one instruction ("chop all these 10,000 onions") is fast. Shouting 10,000 separate instructions ("chop this onion", "chop this onion"…) wears the chef out long before the cooks are busy. That is why draw calls matter more than triangle counts in many scenes.
 :::
+
+@fig(cpu_gpu_drawcalls) The same 1,000 objects submitted as separate meshes and as one instanced mesh. The GPU work is similar; the CPU work, and the GPU idle time waiting for it, is not.
+
 
 ## The stages of the pipeline
 
@@ -53,7 +60,7 @@ A candidate pixel produced by rasterising a triangle: it has a screen position, 
 GPUs try to run the depth test **before** the fragment shader ("early-z"), so hidden fragments are rejected cheaply. Writing `gl_FragDepth`, using `discard` or alpha testing can disable it. This is why three.js draws opaque objects **front to back**: near objects fill the depth buffer first and the far ones behind them are rejected before shading.
 :::
 
-## Rasterisation and barycentric coordinates
+## Rasterisation and barycentric coordinates {intermediate}
 
 To fill a triangle, the GPU must know, for each pixel centre $\mathbf{p}$, whether it is inside and how much each of the three vertices contributes to it. Both answers come from **barycentric coordinates**.
 
@@ -157,7 +164,7 @@ Knowing the steps inside `renderer.render(scene, camera)` explains most performa
 `renderer.info.render.calls`, `.triangles`, `.points`, `.lines` and `renderer.info.memory.geometries` / `.textures` / `renderer.info.programs.length` tell you what the last frame cost. For `WebGPURenderer` the draw-call count is `renderer.info.render.drawCalls`. Watch them while you optimise.
 :::
 
-## WebGL and WebGPU
+## WebGL and WebGPU {intermediate}
 
 :::def WebGL 2
 A JavaScript binding of OpenGL ES 3.0, available in every browser since around 2021. It is a **global state machine**: you bind things, set states, then draw. Shaders are GLSL ES 3.0. No compute shaders.

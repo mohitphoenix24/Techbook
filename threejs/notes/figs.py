@@ -1999,3 +1999,336 @@ def _():
     s.text(x, 144, "stop when transmittance ≈ 0", SOFT, 11, "start")
     s.text(x, 178, "260 splats, rendered per pixel", MUTED, 10, "start")
     return s.svg()
+
+
+# ---------------------------------------------------------------- book edition: roadmap
+
+@fig("roadmap")
+def _():
+    stages = [
+        ("Foundations", "Ch 1–6", "3D mental model · GPU pipeline · vectors · matrices · quaternions · projection", EM),
+        ("three.js", "Ch 7–13", "scene & renderer · geometry · materials · lights & shadows · textures · colour · PBR", "#2dd4bf"),
+        ("Motion & interaction", "Ch 14–17", "raycasting & picking · animation & skinning · glTF assets · physics", CY),
+        ("Shaders & GPU", "Ch 18–20", "GLSL · render targets & post-processing · WebGPU · TSL · compute", SKY),
+        ("React Three Fiber", "Ch 21–22", "reconciler · hooks · events · state · drei ecosystem · app architecture", IN),
+        ("Production & performance", "Ch 23–24", "profiling · draw calls · LOD · memory · advanced rendering techniques", VI),
+        ("WebXR", "Ch 25", "VR & AR sessions · controllers & hands · hit testing · comfort budgets", "#e879f9"),
+        ("Projects", "Ch 26", "capstone briefs: configurator · digital twin · data globe · game · XR", PK),
+        ("Interview preparation", "Ch 27", "30-minute, 2-hour & 7-day plans · question bank · system design", "#fb923c"),
+        ("Reference", "Ch 28–30 · Glossary", "50 common problems · decision guides · formula & API sheets", AM),
+    ]
+    W, step = 660, 70
+    H = 30 + step * len(stages)
+    s = S(W, H)
+    x0 = 62
+    s.line(x0, 40, x0, H - 44, LINE, 2)
+    for i, (name, chs, topics, c) in enumerate(stages):
+        y = 30 + i * step
+        s.circle(x0, y + 25, 16, fill="#0c1222", stroke=c, w=2.5)
+        s.text(x0, y + 30, f"{i + 1:02d}", c, 11.5, weight=700, disp=True)
+        s.rect(96, y, 544, 54, fill=CARD, stroke=c, sw=1.3, rx=10, op=1)
+        s.add(f'<rect x="96" y="{y}" width="5" height="54" rx="2" fill="{c}"/>')
+        s.text(116, y + 22, name.upper(), c, 12.5, "start", 700, disp=True)
+        s.text(624, y + 22, chs, SOFT, 10.5, "end", 600, mono=True)
+        s.text(116, y + 41, topics, TXT, 10.5, "start", 500)
+    return s.svg()
+
+
+# ---------------------------------------------------------------- book edition: decision trees
+
+def _wrap(text, max_chars):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + (1 if cur else 0) > max_chars:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}" if cur else w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def decision_tree(tree, W=660):
+    """tree = (question, [(condition, node), ...]); node = (title, detail) for a leaf or a subtree.
+    Laid out left to right: questions in amber, answers in emerald, conditions on the connectors."""
+    def is_leaf(n):
+        return isinstance(n[1], str)
+
+    def depth(n):
+        return 0 if is_leaf(n) else 1 + max(depth(c) for _, c in n[1])
+
+    def leaves(n):
+        return 1 if is_leaf(n) else sum(leaves(c) for _, c in n[1])
+
+    D = depth(tree)
+    row = 50 if D == 1 else 58
+    H = leaves(tree) * row + 16
+    s = S(W, H)
+    qw = 132 if D == 1 else 112    # question box width
+    gap = 150 if D == 1 else 104   # horizontal space for the condition labels
+    cond_chars = 24 if D == 1 else 17
+    leaf_x = 8 + D * (qw + gap)
+    leaf_w = W - leaf_x - 6
+    counter = [0]
+
+    def place(n, d):
+        x = 8 + d * (qw + gap)
+        if is_leaf(n):
+            y = 8 + counter[0] * row + row / 2
+            counter[0] += 1
+            return y, x
+        ys = []
+        for cond, c in n[1]:
+            cy, cx = place(c, d + 1)
+            ys.append((cond, c, cy, cx))
+        y = (ys[0][2] + ys[-1][2]) / 2
+        # question box
+        lines = _wrap(n[0], 19)
+        h = 18 + 13 * len(lines)
+        s.rect(x, y - h / 2, qw, h, fill="#2a2210", stroke=AM, sw=1.4, rx=9)
+        for i, l in enumerate(lines):
+            s.text(x + qw / 2, y - h / 2 + 17 + 13 * i, l, "#fde68a", 10.5, weight=650, disp=True)
+        # connectors
+        for cond, c, cy, cx in ys:
+            x1, xm = x + qw, x + qw + 14
+            s.path(f"M {x1} {y} H {xm} V {cy} H {cx - 3}", stroke=LINE, w=1.4)
+            s.poly([(cx - 3, cy - 3.5), (cx + 1, cy), (cx - 3, cy + 3.5)], fill=LINE, stroke="none")
+            cl = _wrap(cond, cond_chars)
+            for i, l in enumerate(cl):
+                s.text(xm + 6, cy - 4 - 11 * (len(cl) - 1 - i), l, SOFT, 9.5, "start", 500)
+        return y, x
+
+    def leaves_draw(n, d):
+        if is_leaf(n):
+            return
+        for cond, c in n[1]:
+            if is_leaf(c):
+                pass
+            else:
+                leaves_draw(c, d + 1)
+
+    place(tree, 0)
+    # draw leaves (second pass so boxes sit on top of connectors)
+    counter[0] = 0
+
+    def draw_leaves(n):
+        if is_leaf(n):
+            y = 8 + counter[0] * row + row / 2
+            counter[0] += 1
+            title, detail = n
+            dl = _wrap(detail, int((leaf_w - 16) / 5.0))
+            bh = 26 + 12 * len(dl)
+            s.rect(leaf_x, y - bh / 2, leaf_w, bh, fill="#0f2a22", stroke=EM, sw=1.3, rx=8)
+            s.text(leaf_x + 10, y - bh / 2 + 16, title, "#a7f3d0", 11, "start", 700, disp=True)
+            for i, l in enumerate(dl):
+                s.text(leaf_x + 10, y - bh / 2 + 30 + 12 * i, l, SOFT, 9.4, "start", 500)
+            return
+        for _, c in n[1]:
+            draw_leaves(c)
+
+    draw_leaves(tree)
+    return s.svg()
+
+
+TREES = {
+    "tree_animation": ("What needs to move?", [
+        ("continuous, procedural motion", ("useFrame + delta", "spin, bob, follow; damp with MathUtils.damp / maath")),
+        ("UI-style transition on state change", ("react-spring or easing", "open/closed, hover, configurator swaps")),
+        ("choreographed sequence or scroll story", ("GSAP timeline / ScrollControls", "keyframed camera moves, story beats")),
+        ("authored in Blender", ("AnimationMixer clips", "glTF animations, cross-fades, additive layers")),
+        ("a character's body", ("skeletal animation (+ IK)", "SkinnedMesh, two-bone IK for feet and hands")),
+        ("faces, lip sync, shape keys", ("morph targets", "morphTargetInfluences by name")),
+        ("thousands of things at once", ("vertex shader or compute", "particles, grass, crowds on the GPU")),
+    ]),
+    "tree_many_objects": ("How should I draw many objects?", [
+        ("a few dozen, all different", ("separate meshes", "share materials and geometries")),
+        ("same geometry, many copies", ("InstancedMesh", "one draw call; per-instance matrix and colour")),
+        ("different shapes, one material, must move", ("BatchedMesh", "one multi-draw; per-instance culling")),
+        ("static, never moves", ("merge geometries", "mergeGeometries; one draw call")),
+        ("millions of points", ("Points + GPU", "point clouds, compute particles, octree LOD")),
+    ]),
+    "tree_perf": ("Where is the frame time going?", [
+        ("CPU-bound (resolution change does not help)", ("What is the CPU doing?", [
+            ("many draw calls", ("instance, batch, merge", "share materials; fewer shadow casters")),
+            ("React renders every frame", ("refs + transient store", "no setState in useFrame")),
+            ("JS simulation or parsing", ("workers, WASM, fixed step", "physics and loading off the main thread")),
+            ("regular hitches", ("stop per-frame allocation", "reuse vectors and matrices")),
+        ])),
+        ("GPU-bound (half resolution is much faster)", ("What is the GPU doing?", [
+            ("too many pixels", ("cap DPR, adapt quality", "PerformanceMonitor, upscaling")),
+            ("overdraw and heavy shaders", ("reduce layers, simplify", "alphaTest, cheaper materials")),
+            ("too many vertices", ("LOD and culling", "Detailed, impostors, smaller far meshes")),
+            ("post-processing and shadows", ("merge passes, half res", "bake, fewer casters, autoUpdate off")),
+        ])),
+    ]),
+    "tree_physics": ("What kind of motion or collision?", [
+        ("smooth follow or settle", ("damping or a spring", "no physics engine needed")),
+        ("projectiles without collisions", ("integrate it yourself", "semi-implicit Euler, fixed step")),
+        ("simple hits: ground, walls, pick", ("raycasts and shape tests", "Ray, Box3, Sphere, three-mesh-bvh")),
+        ("stacking, joints, many contacts", ("a physics engine", "Rapier (@react-three/rapier), Jolt")),
+        ("a player character", ("kinematic character controller", "slides on walls, climbs steps")),
+        ("cloth, rope, soft bodies", ("Verlet / position-based", "distance constraints, or GPU compute")),
+    ]),
+    "tree_renderer": ("Which renderer?", [
+        ("existing app with ShaderMaterial / EffectComposer", ("WebGLRenderer", "stable; migrate when there is a reason")),
+        ("new project", ("WebGPURenderer", "automatic WebGL 2 fallback; profile both")),
+        ("needs compute (particles, simulation)", ("WebGPURenderer + TSL", "storage buffers, renderer.compute()")),
+        ("relies on @react-three/postprocessing", ("WebGLRenderer", "or rebuild effects with RenderPipeline")),
+    ]),
+    "tree_shadows": ("What kind of shadows?", [
+        ("static scene and lights", ("bake lightmaps and AO", "free at runtime, includes bounce light")),
+        ("a product on a floor", ("ContactShadows / Accumulative", "soft grounding, no shadow camera")),
+        ("large world, roaming camera", ("SunLight (cascades)", "two cascades fitted to the view")),
+        ("small bounded stage", ("fitted DirectionalLight", "tight box, normalBias, 1–2K map")),
+        ("an indoor lamp", ("SpotLight, not PointLight", "one shadow render instead of six")),
+        ("stylised or casual game", ("blob shadow", "a dark radial texture on a plane")),
+    ]),
+    "tree_transparency": ("What is see-through?", [
+        ("cut-outs: leaves, fences, hair cards", ("alphaTest (or alphaHash)", "no sorting, depth works")),
+        ("glass, liquid, gems", ("MeshPhysicalMaterial transmission", "costs an extra pass")),
+        ("fading objects, ghosts, UI", ("opacity + transparent", "depthWrite: false; renderOrder")),
+        ("many overlapping layers", ("alphaHash + TAA, or OIT", "order-independent results")),
+        ("glowing particles", ("AdditiveBlending", "depthWrite: false; order does not matter")),
+    ]),
+    "tree_post": ("Which post-processing stack?", [
+        ("WebGLRenderer + React Three Fiber", ("@react-three/postprocessing", "merged effects, EffectComposer in JSX")),
+        ("WebGLRenderer, vanilla three.js", ("EffectComposer + OutputPass", "RenderPass, effects, then OutputPass")),
+        ("WebGPURenderer", ("RenderPipeline + TSL nodes", "pass(), bloom(), MRT; colour transform built in")),
+        ("only need tone mapping", ("no post-processing", "renderer.toneMapping is enough")),
+    ]),
+    "tree_state": ("Where should this R3F state live?", [
+        ("changes every frame", ("refs, typed arrays or the GPU", "mutate in useFrame; never setState")),
+        ("shared, changes occasionally", ("zustand with selectors", "only subscribed slices re-render")),
+        ("changes elsewhere, read every frame", ("store + getState()", "transient read inside useFrame")),
+        ("local and rare", ("useState", "menus, toggles, selection")),
+    ]),
+    "tree_assets": ("How should I ship this asset?", [
+        ("big static geometry, download dominates", ("glTF + Draco", "smallest geometry, slower decode")),
+        ("animated or mobile-first", ("glTF + Meshopt", "fast decode, stays quantised")),
+        ("textures", ("KTX2 / Basis", "ETC1S for colour, UASTC for normals")),
+        ("scans and point clouds", ("PLY / LAS + octree LOD", "stream by screen-space error")),
+        ("photoreal capture of a place", ("Gaussian splats", "GaussianSplat (r186) or Spark")),
+    ]),
+}
+
+for _name, _tree in TREES.items():
+    FIGS[_name] = (lambda t: (lambda: decision_tree(t)))(_tree)
+
+
+# ---------------------------------------------------------------- book edition: extra teaching diagrams
+
+@fig("cpu_gpu_drawcalls")
+def _():
+    s = S(660, 250)
+    s.text(165, 20, "1,000 meshes → 1,000 draw calls", RD, 12, weight=700)
+    s.text(495, 20, "1 InstancedMesh → 1 draw call", EM, 12, weight=700)
+    for side, ox, n, col in ((0, 20, 9, RD), (1, 350, 1, EM)):
+        s.rect(ox, 34, 290, 60, fill=CARD, stroke=SOFT, sw=1.2, rx=8)
+        s.text(ox + 10, 52, "CPU (JavaScript + driver)", SOFT, 10.5, "start", 650)
+        for k in range(n):
+            w = 26 if n > 1 else 270
+            x = ox + 10 + k * 30
+            s.rect(x, 60, w, 24, fill=col, stroke="none", rx=4, op=0.85)
+            s.text(x + w / 2, 76, "draw" if n > 1 else "draw(1,000 instances)", "#0a0e1a", 9.5 if n > 1 else 11, weight=700)
+        s.rect(ox, 150, 290, 70, fill=CARD, stroke=SOFT, sw=1.2, rx=8)
+        s.text(ox + 10, 168, "GPU (thousands of cores)", SOFT, 10.5, "start", 650)
+        if n > 1:
+            for k in range(9):
+                s.rect(ox + 10 + k * 30, 178, 26, 30, fill=col, stroke="none", rx=4, op=0.35)
+            s.text(ox + 145, 236, "busy with set-up, idle in between", RD, 10.5, weight=600)
+        else:
+            s.rect(ox + 10, 178, 270, 30, fill=col, stroke="none", rx=4, op=0.75)
+            s.text(ox + 145, 236, "one submission keeps every core busy", EM, 10.5, weight=600)
+        s.arrow(ox + 145, 96, ox + 145, 146, SOFT, 1.6)
+        s.text(ox + 152, 124, "command buffer", MUTED, 10, "start")
+    return s.svg()
+
+
+@fig("perspective_divide")
+def _():
+    s = S(640, 230)
+    E = (60, 170)
+    s.circle(*E, 5, fill=TXT, stroke="none"); s.text(E[0], E[1] + 20, "eye", SOFT, 11, weight=600)
+    s.line(E[0], E[1], 610, E[1], LINE, 1.4)
+    s.text(612, E[1] + 16, "−z (view direction)", MUTED, 10, "end")
+    xp, xo = 200, 520
+    s.line(xp, 30, xp, 200, IN, 2); s.text(xp, 22, "image plane (distance f)", IN, 10.5, weight=700)
+    P = (xo, 50)
+    s.line(xo, E[1], xo, P[1], AM, 2.2, dash="5 4")
+    s.circle(*P, 6, fill=AM, stroke="none"); s.text(P[0] + 10, P[1] + 4, "point (y, z)", AM, 11, "start", 700)
+    s.line(*E, *P, SOFT, 1.4)
+    yp = E[1] - (E[1] - P[1]) * (xp - E[0]) / (xo - E[0])
+    s.circle(xp, yp, 5.5, fill=PK, stroke="none"); s.text(xp + 10, yp - 6, "projected y′", PK, 11, "start", 700)
+    s.text(xo + 8, (E[1] + P[1]) / 2, "y", AM, 12, "start", 700, italic=True)
+    s.text((E[0] + xo) / 2 + 40, E[1] + 20, "z (distance)", SOFT, 11)
+    s.text((E[0] + xp) / 2, E[1] + 20, "f", IN, 12, weight=700, italic=True)
+    s.rect(360, 92, 250, 52, fill=CARD, stroke=LINE, sw=1, rx=8)
+    s.text(485, 113, "y′ = f · y / z", TXT, 13, weight=700, mono=True)
+    s.text(485, 133, "similar triangles: divide by distance", SOFT, 10.5)
+    return s.svg()
+
+
+@fig("pbr_pipeline")
+def _():
+    s = S(660, 270)
+    inputs = [("base colour", EM), ("metalness", SKY), ("roughness", VI), ("normal map", PK)]
+    for i, (t, c) in enumerate(inputs):
+        s.rect(10, 22 + i * 52, 104, 36, fill=CARD, stroke=c, sw=1.4, rx=8)
+        s.text(62, 44 + i * 52, t, TXT, 11, weight=650)
+    s.box(150, 40, 130, 52, "F0 & diffuse", "mix(0.04, base, m)", AM, size=12)
+    s.box(150, 132, 130, 52, "α = roughness²", "shading normal", VI, size=12)
+    for i in range(4):
+        s.arrow(116, 40 + i * 52, 148, 66 if i < 2 else 158, SOFT, 1.2, head=6)
+    s.box(318, 16, 150, 58, "direct lights", "Σ BRDF·E·(n·l)", SKY, size=12)
+    s.box(318, 96, 150, 58, "diffuse IBL", "irradiance", CY, size=12)
+    s.box(318, 176, 150, 58, "specular IBL", "PMREM × (F0·A + B)", CY, size=12)
+    for y in (45, 125, 205):
+        s.arrow(282, 66, 316, y, SOFT, 1.2, head=6)
+        s.arrow(282, 158, 316, y, SOFT, 1.2, head=6, op=0.6)
+    s.box(500, 96, 66, 58, "Σ", "linear HDR", EM, size=16)
+    for y in (45, 125, 205):
+        s.arrow(470, y, 498, 125, SOFT, 1.4, head=6)
+    s.box(586, 70, 68, 44, "tone map", None, AM, size=11)
+    s.box(586, 136, 68, 44, "→ sRGB", None, PK, size=11)
+    s.arrow(568, 118, 584, 92, SOFT, 1.2, head=5)
+    s.arrow(620, 116, 620, 134, SOFT, 1.2, head=5)
+    s.text(330, 262, "everything left of the tone mapper is linear light; the conversion to sRGB happens once", MUTED, 10.5)
+    return s.svg()
+
+
+@fig("texture_pipeline")
+def _():
+    s = S(660, 200)
+    steps = [("file", "PNG · JPEG · KTX2", SOFT, "download size"), ("decode", "worker / transcoder", SKY, "CPU time"),
+             ("upload", "to VRAM", IN, "VRAM: w·h·bpp·4/3"), ("mipmaps", "½ · ¼ · ⅛ …", VI, "+1/3 memory"),
+             ("sample", "filter · anisotropy", EM, "bandwidth per pixel")]
+    w, gap = 112, 17
+    for i, (t, sub, c, cost) in enumerate(steps):
+        x = 8 + i * (w + gap)
+        s.box(x, 40, w, 58, t, sub, c, size=13)
+        s.text(x + w / 2, 124, cost, AM, 10.5, weight=650)
+        if i < len(steps) - 1:
+            s.arrow(x + w + 2, 69, x + w + gap - 2, 69, SOFT, 1.6, head=6)
+    s.text(330, 22, "what a texture costs at each step", TXT, 12, weight=650)
+    s.text(330, 160, "PNG/JPEG are decoded to raw RGBA (4 bytes per texel) before upload;", SOFT, 11)
+    s.text(330, 178, "KTX2/Basis is transcoded to a GPU format and stays compressed in VRAM (0.5–1 byte per texel)", SOFT, 11)
+    return s.svg()
+
+
+@fig("tsl_pipeline")
+def _():
+    s = S(660, 220)
+    s.rect(8, 40, 150, 120, fill=CARD, stroke=AM, sw=1.4, rx=9)
+    s.text(83, 60, "TSL in JavaScript", AM, 11.5, weight=700)
+    for i, l in enumerate(["colorNode =", "  mix(a, b,", "    uv().y)", "positionNode = …"]):
+        s.text(18, 84 + i * 16, l, SOFT, 10, "start", mono=True)
+    s.box(190, 60, 120, 80, "node graph", "built once, lazily", VI, size=12.5)
+    s.arrow(160, 100, 188, 100, SOFT, 1.6)
+    s.box(342, 60, 120, 80, "NodeBuilder", "per backend", IN, size=12.5)
+    s.arrow(312, 100, 340, 100, SOFT, 1.6)
+    s.box(494, 22, 158, 64, "WGSL", "WebGPU backend", EM, size=13)
+    s.box(494, 114, 158, 64, "GLSL ES 3.0", "WebGL 2 fallback", SKY, size=13)
+    s.arrow(464, 92, 492, 56, SOFT, 1.6); s.arrow(464, 108, 492, 144, SOFT, 1.6)
+    s.text(330, 206, "the same material source compiles to either shading language; pipelines are cached per material variant", MUTED, 10.5)
+    return s.svg()

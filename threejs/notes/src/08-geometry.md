@@ -1,6 +1,10 @@
 ---
 title: Geometry and Meshes
 summary: How shapes are stored on the GPU. BufferGeometry and its attributes, indexed versus non-indexed meshes, normals and why a cube has 24 vertices, UV seams, built-in and procedural geometry, updating vertices efficiently, bounding volumes, merging, morph targets, points and lines.
+difficulty: Intermediate
+prereqs: Chapter 7
+time: 60–75 minutes
+outcome: Create and update BufferGeometry, explain vertex counts and memory, and choose between merging, instancing and batching.
 ---
 
 ## BufferGeometry: shapes as arrays
@@ -234,6 +238,18 @@ face.morphTargetInfluences[i] = 0.5;
 - Continuous vertex animation belongs in shaders; CPU edits are for occasional changes.
 - Merge static geometry, instance repeated geometry, batch varied geometry: each becomes one draw call.
 - Morph targets blend vertex offsets with weights; glTF stores them as relative offsets.
+:::
+
+:::build Procedural terrain
+Problem: Generate a 200 × 200-segment terrain from layered sine waves (or noise), colour it by height with vertex colours, and let the user raise the ground under the cursor.
+Requirements:
+- Indexed geometry built from a `PlaneGeometry`, rotated onto XZ.
+- Recompute normals and the bounding sphere after every edit.
+- Upload only the changed range of the position attribute.
+Constraints: editing must stay above 60 fps on a laptop.
+Hints: vertex index $k = j(N+1) + i$; use `addUpdateRange`; keep colours linear.
+Relevant APIs: `BufferAttribute.setY`, `needsUpdate`, `addUpdateRange`, `computeVertexNormals`, `computeBoundingSphere`, `MeshStandardMaterial({ vertexColors: true })`.
+Expected result: a lit terrain whose hills you can sculpt in real time, with correct lighting and no culling glitches.
 :::
 
 ## Interview questions

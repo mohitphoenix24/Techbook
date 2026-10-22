@@ -2,6 +2,10 @@
 title: Raycasting, Picking and Collision Maths
 part: Motion and Interaction
 summary: Rays and the four intersection tests every 3D developer should be able to derive (plane, sphere, box and triangle), each worked by hand and checked against three.js. Then the Raycaster API, BVH acceleration, GPU picking, R3F pointer events, dragging, and the basics of collision detection.
+difficulty: Intermediate
+prereqs: Chapters 3 and 6
+time: 75–90 minutes
+outcome: Derive and implement ray–plane, sphere, box and triangle tests, build fast picking and dragging, and explain basic collision detection.
 ---
 
 ## Rays
@@ -66,7 +70,7 @@ $\mathbf{o} = (0,0,0)$, $\hat{\mathbf{d}} = \text{normalise}(1, 0.25, 0) = (0.97
 
 The slab test needs only a few divisions (precompute $1/d$) and comparisons, which is why bounding boxes are the first test in every acceleration structure.
 
-## Ray–triangle (Möller–Trumbore)
+## Ray–triangle (Möller–Trumbore) {advanced}
 
 :::formula Möller–Trumbore
 For a triangle $\mathbf{v}_0, \mathbf{v}_1, \mathbf{v}_2$ with edges $\mathbf{e}_1 = \mathbf{v}_1 - \mathbf{v}_0$, $\mathbf{e}_2 = \mathbf{v}_2 - \mathbf{v}_0$, solve $\mathbf{o} + t\hat{\mathbf{d}} = (1-u-v)\mathbf{v}_0 + u\mathbf{v}_1 + v\mathbf{v}_2$ with Cramer's rule:
@@ -256,6 +260,18 @@ frustum.intersectsObject(mesh);                                     // manual vi
 - R3F events pass through objects: call `stopPropagation()`; `onPointerMissed` for empty clicks.
 - Drag = ray–plane intersection + grab offset + pointer capture + disabling controls.
 - Collision = broad phase (grid, sweep-and-prune, BVH) then narrow phase (exact shape tests, SAT).
+:::
+
+:::build Object picker with hover and drag
+Problem: Show 500 objects (an instanced mesh). Hovering highlights one, clicking selects it, and dragging moves it across the floor while the orbit camera stays usable.
+Requirements:
+- Hover from `pointermove`, at most one raycast per frame.
+- Dragging on the ground plane, keeping the grab offset.
+- An R3F version using its event system.
+Constraints: no React state updates per pointer move.
+Hints: use `e.instanceId`; store the hover id in a ref; disable controls during the drag and use pointer capture.
+Relevant APIs: `Raycaster.setFromCamera`, `InstancedMesh.setColorAt`, `Ray.intersectPlane`, `setPointerCapture`, `e.stopPropagation()`.
+Expected result: instant, flicker-free hover, precise dragging that never jumps, and no frame drops.
 :::
 
 ## Interview questions

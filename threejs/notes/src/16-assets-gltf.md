@@ -1,6 +1,10 @@
 ---
 title: Assets — glTF and the Loading Pipeline
 summary: The glTF format from the inside (scenes, nodes, meshes, accessors, buffers, extensions), loading with GLTFLoader plus Draco, Meshopt and KTX2, quantisation maths, an optimisation pipeline with gltf-transform and gltfjsx, other formats, and loading with Suspense in R3F.
+difficulty: Intermediate
+prereqs: Chapters 8 and 11
+time: 45–60 minutes
+outcome: Read a glTF file's structure, load compressed assets correctly, and run an optimisation pipeline that cuts download size and GPU memory.
 ---
 
 ## Why glTF
@@ -89,6 +93,13 @@ scene.add(model);
 :::tip Where the decoders run
 Draco and Basis transcoding run in **Web Workers** (WASM), so they do not freeze the page, but decoding still takes time on low-end phones. Host the decoder files yourself in production (same version as your three.js) instead of depending on a third-party CDN, and reuse **one** loader instance for all models so the workers are created once.
 :::
+
+:::apichange Loader changes worth knowing
+Older tutorials: `USDZLoader` for Apple's USDZ files; `draco.setDecoderConfig({ type: "js" })` to force the JavaScript decoder.
+Current approach: `USDLoader` (handles USD and USDZ). For Draco, set only the decoder path; `DRACOLoader` is moving to WASM-only decoding.
+Version: `USDZLoader` deprecated in r179; `DRACOLoader.setDecoderConfig()` deprecated in r185.
+:::
+
 
 ### Draco versus Meshopt
 
@@ -191,6 +202,12 @@ useGLTF.preload("/chair-transformed.glb");
 The generated component makes the model's structure explicit JSX: you can swap a material per instance (`material-color` overrides), add events to individual parts, animate a door node, or render many instances with drei's `<Merged>` for one draw call per part. `dispose={null}` keeps cached geometry alive when one instance unmounts.
 :::
 
+:::lens Asset pipelines
+Junior: Loads a `.glb` with `GLTFLoader` and adds `gltf.scene` to the scene.
+Mid-level: Adds Draco/Meshopt and KTX2, normalises scale and pivot, preloads, shows progress and disposes models on removal.
+Senior: Treats assets as a build product: an automated gltf-transform pipeline with size and triangle budgets enforced in CI, naming conventions agreed with artists, versioned and hashed files on a CDN, streaming and LOD for large worlds, and a fallback path for devices without the required texture formats.
+:::
+
 :::keypoints
 - glTF = JSON scene graph + binary buffers + PBR materials; `.glb` packs everything in one file.
 - Accessor bytes = count × components × component size; quantisation step = extent / $(2^b - 1)$.
@@ -198,6 +215,18 @@ The generated component makes the model's structure explicit JSX: you can swap a
 - Meshopt for fast decode and animated content; Draco for the smallest static geometry; KTX2 for textures.
 - Optimise in the build: `gltf-transform optimize`, then `gltfjsx --transform` for R3F.
 - R3F: `useGLTF` suspends and caches; preload; `<Clone>` for multiple copies; `useProgress` for loading UI.
+:::
+
+:::build glTF asset viewer
+Problem: Build a drag-and-drop viewer for `.glb` files that frames the model, lists its meshes, materials and animations, and reports triangles, draw calls and texture memory.
+Requirements:
+- Draco, Meshopt and KTX2 support.
+- Automatic framing and centring, whatever the model's scale.
+- Free all GPU memory when the next file is dropped.
+Constraints: decoders loaded once and reused.
+Hints: `URL.createObjectURL(file)` for local files; traverse to count geometry; check `renderer.info.memory` after disposal.
+Relevant APIs: `GLTFLoader`, `DRACOLoader`, `KTX2Loader`, `MeshoptDecoder`, `Box3`, `renderer.info`, `dispose()`.
+Expected result: any well-formed glTF opens framed and lit, with accurate statistics and no memory growth over many files.
 :::
 
 ## Interview questions

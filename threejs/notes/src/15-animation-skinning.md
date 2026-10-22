@@ -1,6 +1,10 @@
 ---
 title: Animation and Skinning
 summary: Keyframes and interpolation, easing curves, three.js's AnimationClip/Mixer/Action system with blending and cross-fades, skeletal animation and the linear blend skinning formula worked by hand, springs and two-bone IK for procedural motion, and R3F's useAnimations.
+difficulty: Intermediate
+prereqs: Chapters 5 and 7
+time: 60–75 minutes
+outcome: Play, blend and cross-fade clips, explain linear blend skinning, and add springs and two-bone IK for procedural motion.
 ---
 
 ## Kinds of animation
@@ -130,7 +134,7 @@ An elbow joint at $\mathbf{j} = (1, 0, 0)$. Vertex $\mathbf{v} = (1.2, 0, 0)$ wi
 `InstancedMesh` cannot skin per instance. Dozens of characters: separate `SkinnedMesh` clones (share geometry and materials). Hundreds or thousands: bake the animation into a texture (a **vertex animation texture**, VAT) and play it in a custom instanced vertex shader, or use the `InstancedMesh` + morph texture approach; add LOD and update far characters' mixers less often.
 :::
 
-## Procedural animation
+## Procedural animation {advanced}
 
 ### Springs
 
@@ -216,6 +220,18 @@ function Card({ open }) {
 - Clone skinned models with `SkeletonUtils.clone`; crowds need VATs or similar.
 - Springs: semi-implicit Euler, critical damping $c = 2\sqrt{k}$.
 - Two-bone IK solves with the law of cosines; longer chains with CCD/FABRIK.
+:::
+
+:::build Character animation controller
+Problem: Load a rigged glTF character with idle, walk and run clips and drive it from the keyboard with smooth transitions and a one-shot wave.
+Requirements:
+- A small state machine: idle ↔ walk ↔ run, plus a wave that returns to the previous state.
+- Cross-fades of 0.2–0.4 s with time warping between walk and run.
+- Three independent clones of the character.
+Constraints: one `AnimationMixer` per clone; clones must not share skeletons.
+Hints: `SkeletonUtils.clone`; `LoopOnce` + `clampWhenFinished`; listen for the mixer's `finished` event.
+Relevant APIs: `AnimationMixer`, `clipAction`, `crossFadeTo`, `setLoop`, `SkeletonUtils.clone`, drei `useAnimations`.
+Expected result: smooth gait changes without foot sliding pops, and three characters animating independently.
 :::
 
 ## Interview questions

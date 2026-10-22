@@ -2,6 +2,10 @@
 title: Scene Graph, Renderer and the Frame Loop
 part: Building Scenes with three.js
 summary: Object3D in detail, configuring WebGLRenderer and WebGPURenderer, timing and fixed-timestep loops, render-on-demand, pixel ratio maths, multiple views, disposing GPU memory properly, and how R3F's Canvas wraps all of it.
+difficulty: Intermediate
+prereqs: Chapters 1 and 4
+time: 60–75 minutes
+outcome: Configure the renderer for production, run fixed-step and on-demand loops, size the canvas correctly and free GPU memory reliably.
 ---
 
 ## Object3D: the base of everything
@@ -91,8 +95,11 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));   // setAnimati
 console.log(renderer.backend.isWebGPUBackend ? "WebGPU" : "WebGL 2 fallback");
 ```
 
-:::new Async methods
-Since r181 the `renderAsync()`/`computeAsync()` family is deprecated: initialise once (`await renderer.init()` or implicitly via `setAnimationLoop`) and then call the synchronous `render()`/`compute()`. `compileAsync()` stopped blocking rendering in r184, and r186 added `compileComputeAsync()` to pre-compile compute shaders and avoid first-use hitches.
+:::apichange WebGPURenderer: async rendering methods
+Older tutorials: `await renderer.renderAsync(scene, camera)` and `await renderer.computeAsync(node)` every frame.
+Current approach: initialise once (`await renderer.init()`, or implicitly through `setAnimationLoop`), then call the synchronous `render()` and `compute()`. Pre-compile with `compileAsync()` (non-blocking since r184) and `compileComputeAsync()` (r186).
+Why it changed: the renderer must be initialised before the synchronous methods can be used; after that, per-frame async calls are unnecessary (migration guide, r181).
+Version: deprecated in r181.
 :::
 
 ## The frame loop
@@ -102,6 +109,14 @@ Since r181 the `renderAsync()`/`computeAsync()` family is deprecated: initialise
 :::def THREE.Timer
 The time-keeping class (core since r179, replacing the deprecated `Clock`). Call `timer.update(timestamp)` once per frame, then read `getDelta()` (seconds since the previous update) and `getElapsed()` (seconds since start). `timer.connect(document)` uses the Page Visibility API so that a long hidden period does not produce one giant delta when the tab returns.
 :::
+
+:::apichange Clock → Timer
+Older tutorials: `const clock = new THREE.Clock();` then `clock.getDelta()` in the loop.
+Current approach: `const timer = new THREE.Timer(); timer.connect(document);` and, each frame, `timer.update(time)` followed by `timer.getDelta()`.
+Why it changed: `Timer` is updated explicitly once per frame (so every reader in that frame sees the same delta) and can use the Page Visibility API, so a hidden tab does not produce one enormous delta when it returns.
+Version: `Timer` moved into core in r179; `Clock` deprecated in r183.
+:::
+
 
 ### Fixed timestep for physics and game logic
 
@@ -278,6 +293,12 @@ When a JSX-created object unmounts, R3F calls `dispose()` on it (geometries, mat
 | lil-gui (vanilla) / leva (R3F) | Sliders for live tuning |
 | Spector.js, browser GPU profilers | Every WebGL call in a captured frame |
 
+:::lens GPU resources and the frame loop
+Junior: Gets a scene on screen with a renderer, a camera and `setAnimationLoop`, and resizes on `window.resize`.
+Mid-level: Caps DPR, renders on demand when nothing moves, uses `Timer` and a fixed step for simulation, and disposes geometries, materials and textures when content changes.
+Senior: Owns the resource lifecycle for the whole app: a shared asset cache with reference counting, one renderer reused across routes and views, context-loss handling, memory tests in CI (`renderer.info.memory` after N navigations), and a frame budget split between subsystems.
+:::
+
 :::keypoints
 - Everything is an `Object3D`: transform, tree, visibility, shadows, culling, `renderOrder`, `layers`, `userData`.
 - Configure the renderer once: antialias, pixel ratio ≤ 2, `SRGBColorSpace` output, a tone mapper, `PCFShadowMap`.
@@ -286,6 +307,18 @@ When a JSX-created object unmounts, R3F calls `dispose()` on it (geometries, mat
 - Render on demand for static viewers (`frameloop="demand"` + `invalidate()` in R3F).
 - Dispose geometries, materials, textures and render targets you no longer need; watch `renderer.info.memory`.
 - In R3F, `useFrame` with a positive priority takes over rendering; `<primitive>` objects are not auto-disposed.
+:::
+
+:::build Production-grade viewer shell
+Problem: Write the boilerplate you would reuse in every project: a canvas that resizes with its container, caps DPR, renders only on demand, and can be torn down without leaking.
+Requirements:
+- Resize from a `ResizeObserver`, not the window.
+- Render on demand while `OrbitControls` damping settles.
+- A `dispose()` function that frees every geometry, material, texture and the renderer.
+Constraints: `renderer.info.memory` must return to zero after `dispose()`.
+Hints: keep requesting frames while `controls.update()` returns true; traverse the scene to collect resources.
+Relevant APIs: `ResizeObserver`, `renderer.setSize(w, h, false)`, `controls.addEventListener("change")`, `renderer.info`, `dispose()`.
+Expected result: zero frames rendered while idle, a sharp canvas at any size, and no memory growth after ten create/destroy cycles.
 :::
 
 ## Interview questions

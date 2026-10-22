@@ -1,6 +1,10 @@
 ---
 title: Cameras and Projection
 summary: The pinhole camera, field of view and focal length, the perspective and orthographic projection matrices worked through with numbers, why depth precision is non-linear and how reversed-Z fixes it, frustum culling, converting between screen and world, and orbit-camera maths.
+difficulty: Intermediate
+prereqs: Chapters 3 and 4
+time: 75–90 minutes
+outcome: Frame any object, project points between world and screen, explain depth precision and reversed-Z, and pick the right camera and controls.
 ---
 
 ## The pinhole camera
@@ -71,9 +75,11 @@ const Viewer = () => (
 
 Photographers think in **focal length** (mm) instead of FOV. three.js models a 35 mm film (`camera.filmGauge = 35`), and `camera.setFocalLength(mm)` converts: $\text{fov}_v = 2\arctan\left(\frac{h_{\text{film}}/2}{\text{focal}}\right)$, where $h_{\text{film}} = 35/\text{aspect}$ for landscape canvases. A 50 mm lens on a 3:2 canvas gives $2\arctan(11.67/50) = 26.3°$. Matching focal lengths makes three.js views match product photography or Blender cameras.
 
-## The perspective projection matrix
+## The perspective projection matrix {advanced}
 
 The projection matrix maps view-space positions into **clip space**. After the GPU divides by $w$, the visible frustum becomes the NDC cube. three.js (WebGL convention) maps $x, y, z$ to $[-1, 1]$.
+
+@fig(perspective_divide) Perspective is a division by distance. By similar triangles, a point at height y and distance z appears on the image plane at y′ = f·y/z; the projection matrix arranges for the GPU to perform this division when it divides by w.
 
 :::formula Perspective matrix (three.js / OpenGL convention)
 With $s = 1/\tan(\text{fov}/2)$, aspect $a$, near $n$ and far $f$:
@@ -94,7 +100,7 @@ FOV 60°, 1920×1080 canvas ($a = 1.778$), $n = 0.1$, $f = 100$. A point in view
 WebGPU (and Direct3D, Metal, Vulkan) put NDC $z$ in $[0, 1]$, not $[-1, 1]$. three.js handles this: each camera has a `coordinateSystem` (`WebGLCoordinateSystem` or `WebGPUCoordinateSystem`) that `WebGPURenderer` sets, and `makePerspective` builds the matching matrix. Remember it when you reconstruct positions from a depth texture in custom shaders.
 :::
 
-## Depth precision is not linear
+## Depth precision is not linear {advanced}
 
 :::formula NDC depth as a function of distance
 For a point at distance $d$ in front of the camera:
@@ -263,6 +269,18 @@ Move the camera towards a subject while widening the FOV so the subject's on-scr
 - Frustum culling tests bounding spheres against six planes; shader-displaced geometry needs larger bounds or `frustumCulled = false`.
 - Pointer → NDC: $x = 2u - 1$, $y = 1 - 2v$; `vector.project(camera)` goes the other way.
 - Call `updateProjectionMatrix()` after changing `fov`, `aspect`, `near`, `far` or `zoom`.
+:::
+
+:::build Frame-to-object camera controller
+Problem: Clicking any object in a scene should smoothly fly an orbit camera so that object fills about 70% of the screen, on both landscape and portrait canvases.
+Requirements:
+- Compute the distance from the object's bounding sphere and the smaller of the two FOVs.
+- Animate position and orbit target together with frame-rate-independent damping.
+- Update `near` and `far` in proportion to the new distance.
+Constraints: the user can orbit normally while and after the camera moves.
+Hints: $d = r/\sin(\text{fov}/2)$; keep the current viewing direction; call `controls.update()` every frame.
+Relevant APIs: `Box3.setFromObject`, `Box3.getBoundingSphere`, `OrbitControls.target`, `MathUtils.damp`, `PerspectiveCamera.updateProjectionMatrix`.
+Expected result: any object, from a coin to a building, ends up framed the same way with no z-fighting.
 :::
 
 ## Interview questions

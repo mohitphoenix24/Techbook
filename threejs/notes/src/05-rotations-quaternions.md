@@ -1,9 +1,13 @@
 ---
 title: Rotations and Quaternions
 summary: Four ways to describe an orientation, why Euler angles suffer gimbal lock, the axis–angle formula, quaternions from first principles with hand-worked rotations, slerp for smooth turning, and how lookAt builds a rotation from a direction.
+difficulty: Advanced
+prereqs: Chapters 3 and 4
+time: 60–90 minutes
+outcome: Choose between Euler angles, matrices and quaternions, rotate and interpolate orientations by hand, and turn objects smoothly towards targets.
 ---
 
-## Four ways to describe a rotation
+## Four ways to describe a rotation {foundation}
 
 | Representation | Numbers | Strengths | Weaknesses | three.js |
 |---|---|---|---|---|
@@ -14,7 +18,7 @@ summary: Four ways to describe an orientation, why Euler angles suffer gimbal lo
 
 `object.rotation` and `object.quaternion` are **kept in sync** by three.js: change one and the other updates. Use Euler angles to set simple orientations and quaternions for anything animated, accumulated or interpolated.
 
-## Euler angles and gimbal lock
+## Euler angles and gimbal lock {foundation}
 
 :::def Euler angles
 An orientation given as three successive rotations about coordinate axes, plus the **order** in which they are applied. three.js's default order is `"XYZ"`: the rotation matrix is $R = R_x(\alpha)\,R_y(\beta)\,R_z(\gamma)$. Read as rotations about the object's own (moving) axes, it turns about X first, then about its new Y, then its new Z.
@@ -188,6 +192,18 @@ When the view direction is (almost) parallel to `object.up`, $\mathbf{up}\times\
 - Slerp gives constant-speed, shortest-path interpolation; negate when the dot product is negative.
 - `setFromUnitVectors`, `rotateTowards`, `slerp` with $1-e^{-\lambda\Delta t}$ cover most gameplay rotation needs.
 - lookAt builds $[\hat{\mathbf{x}}\ \hat{\mathbf{y}}\ \hat{\mathbf{z}}]$ with cross products; it breaks when looking along `up`.
+:::
+
+:::build Smooth turret
+Problem: A turret on a tank must track a moving target with a maximum turn speed of 120° per second; the barrel pitches separately from the base.
+Requirements:
+- Yaw the base about world Y and pitch the barrel about its local X.
+- Limit the barrel pitch to between −10° and +45°.
+- Never interpolate Euler angles.
+Constraints: identical behaviour at 30, 60 and 120 Hz.
+Hints: build the desired orientation with `Matrix4.lookAt` or `setFromUnitVectors`, then `rotateTowards` with `maxSpeed * dt`; split yaw and pitch by projecting the target direction onto the ground plane.
+Relevant APIs: `Quaternion.rotateTowards`, `Quaternion.setFromAxisAngle`, `Matrix4.lookAt`, `Vector3.projectOnPlane`, `MathUtils.clamp`.
+Expected result: the turret turns at a steady rate, takes the short way round, and stops exactly on target without jitter.
 :::
 
 ## Interview questions

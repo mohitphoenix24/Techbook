@@ -1,6 +1,10 @@
 ---
 title: Materials and Classic Lighting Models
 summary: What a material really is, the three.js material family and its cost, the Lambert, Phong, Blinn–Phong, hemisphere and toon lighting models derived and calculated by hand, and the material settings (side, transparency, depth, blending) that cause most visual bugs.
+difficulty: Intermediate
+prereqs: Chapters 3 and 8
+time: 60 minutes
+outcome: Compute Lambert and Blinn–Phong lighting by hand, choose the right material, and fix the material settings behind most visual bugs.
 ---
 
 ## What a material is

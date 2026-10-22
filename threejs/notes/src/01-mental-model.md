@@ -2,6 +2,10 @@
 title: The 3D Mental Model
 part: Foundations of 3D Graphics
 summary: What real-time rendering actually is, the handful of objects every 3D app is built from, the coordinate systems that a point travels through, and how three.js and React Three Fiber map onto all of it.
+difficulty: Foundation
+prereqs: Basic JavaScript
+time: 45–60 minutes
+outcome: Explain how a real-time 3D frame is produced, name the objects every scene needs, and write the same lit, animated scene in three.js and in React Three Fiber.
 ---
 
 ## What real-time rendering is

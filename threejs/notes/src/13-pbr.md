@@ -1,15 +1,22 @@
 ---
 title: Physically Based Rendering
 summary: The rendering equation, BRDFs and energy conservation, the Cook–Torrance microfacet model term by term (GGX distribution, Smith geometry, Schlick Fresnel) evaluated by hand, the metal–roughness workflow, image-based lighting with PMREM and the split-sum approximation, and every MeshPhysicalMaterial feature.
+difficulty: Advanced
+prereqs: Chapters 9, 11 and 12
+time: 90 minutes
+outcome: Evaluate the Cook–Torrance BRDF by hand, set metalness and roughness plausibly, light scenes with HDR environments and use MeshPhysicalMaterial features.
 ---
 
-## Why physically based?
+## Why physically based? {foundation}
 
 Classic models (Chapter 9) are tuned by eye: a Phong material that looks right under one light looks wrong under another. **Physically based rendering (PBR)** describes surfaces with measurable properties and follows the physics of light (energy conservation, Fresnel reflection, microscopic roughness), so one material looks correct under any lighting. That is what makes glTF assets portable between Blender, three.js, Unity and Unreal, and why `MeshStandardMaterial` is the default for realistic work.
 
 :::def Physically based rendering (PBR)
 A family of shading models built on (1) the rendering equation, (2) energy-conserving BRDFs, (3) microfacet theory for specular reflection, (4) Fresnel effects, and (5) real-world-like light units and environment lighting. Materials are described by a few intuitive, measurable parameters: base colour, metalness and roughness.
 :::
+
+@fig(pbr_pipeline) The PBR shading pipeline this chapter builds, from material inputs to the displayed pixel. Each box is a section of the chapter.
+
 
 ## The rendering equation
 
@@ -115,7 +122,7 @@ Surface normal $\hat{\mathbf{n}} = (0,1,0)$, light from $\hat{\mathbf{l}} = (0.7
 The same geometry with **gold** (metalness 1, $F_0 = (1.00, 0.71, 0.29)$, no diffuse): $F \approx (1.00, 0.71, 0.29)$, specular $\approx (1.90, 1.35, 0.55)$, so $L_o \approx (4.03, 2.86, 1.17)$: a bright, gold-tinted highlight that tone mapping then compresses.
 :::
 
-## The metal–roughness workflow
+## The metal–roughness workflow {foundation}
 
 | Parameter | Range | Meaning |
 |---|---|---|
@@ -147,8 +154,11 @@ Dielectrics: white-ish 4% specular and coloured diffuse. Metals: **no diffuse at
 Real albedos are never pure black or white: charcoal is about 0.04 and fresh snow about 0.9 (linear). Keep base colours roughly between 0.03 and 0.9 linear (about 50–240 in sRGB). Keep metalness at exactly 0 or 1 for clean materials. Most variety in real surfaces lives in the **roughness** map (fingerprints, scratches, wear), so spend texture effort there.
 :::
 
-:::new Energy conservation in r181–r186
-A single-scattering microfacet BRDF loses energy on rough surfaces, because light that bounces between facets more than once is ignored, so rough metals look too dark. three.js adds **multiple-scattering compensation**; r181 improved it so rough materials (roughness > 0.5) are a bit brighter, and r186 reworked the multi-scatter and energy-conservation terms for diffuse and sheen again. Expect slightly different looks when upgrading, and compare screenshots.
+:::apichange Behaviour change: energy conservation in PBR materials
+Older tutorials: screenshots and tuned values from before r181, where rough materials (roughness above 0.5) lost energy and looked darker.
+Current approach: three.js compensates for multiple scattering between microfacets, so rough materials are a little brighter. Re-check exposure and roughness values against reference screenshots after upgrading.
+Why it changed: a single-scattering microfacet BRDF ignores light that bounces between facets more than once; compensation restores that energy and is more physically correct.
+Version: improved in r181; diffuse, sheen and multiple-scattering terms reworked again in r186.
 :::
 
 ## Image-based lighting
@@ -192,6 +202,14 @@ scene.environmentRotation.y = Math.PI / 4;              // rotate the lighting (
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 ```
+
+:::apichange RGBELoader → HDRLoader
+Older tutorials: `import { RGBELoader } from "three/addons/loaders/RGBELoader.js"`.
+Current approach: `import { HDRLoader } from "three/addons/loaders/HDRLoader.js"` with the same `load`/`loadAsync` usage. `RGBMLoader` was removed; use `HDRLoader`, `EXRLoader`, `HDRCubeTextureLoader` or `UltraHDRLoader`.
+Why it changed: renamed after the `.hdr` (Radiance RGBE) files it loads; behaviour is unchanged.
+Version: r180.
+:::
+
 
 ```jsx title="R3F — drei Environment"
 import { Environment, Lightformer } from "@react-three/drei";
@@ -259,6 +277,18 @@ const Showcase = () => (
 - IBL = irradiance (diffuse) + PMREM (prefiltered specular) × BRDF scale/bias (split sum).
 - Always give PBR scenes an environment; metals depend on it.
 - Physical extras (clearcoat, sheen, transmission, iridescence, anisotropy, dispersion) map to glTF `KHR_materials_*` extensions; transmission costs an extra pass.
+:::
+
+:::build PBR material lab
+Problem: Recreate the metalness × roughness grid of [[fig:pbr_grid]] in three.js, then add clearcoat, sheen and transmission spheres beside it.
+Requirements:
+- An HDR environment with a background blur slider and an environment rotation slider.
+- Tone mapping selectable between ACES, AgX and Neutral.
+- Base colours in a plausible range (no pure black or white).
+Constraints: one material per sphere, created once; no recompiles while sliders move.
+Hints: change uniforms (`roughness`, `metalness`) rather than features; transmission adds a render pass, so keep only one transmissive sphere.
+Relevant APIs: `HDRLoader`, `scene.environment`, `scene.backgroundBlurriness`, `scene.environmentRotation`, `MeshPhysicalMaterial`, `renderer.toneMapping`.
+Expected result: rough metals that are bright enough, glass that reads as glass, and a clear sense of how each tone mapper changes the same scene.
 :::
 
 ## Interview questions

@@ -1,6 +1,10 @@
 ---
 title: Matrices and Transforms
 summary: How position, rotation and scale become one 4×4 matrix, why the order of operations matters, how the scene graph multiplies parent and child matrices, inverses and the view matrix, and the normal matrix that keeps lighting correct under non-uniform scale.
+difficulty: Foundation
+prereqs: Chapter 3
+time: 60–90 minutes
+outcome: Build and compose TRS matrices, predict what a transform order does, move between local and world space, and transform normals correctly.
 ---
 
 ## What a matrix does
@@ -146,7 +150,7 @@ The camera sits at $(0, 0, 5)$ with no rotation. Its world matrix is a translati
 - A point at $(1, 2, 3)$ → $(1, 2, -2)$: 2 m in front, 1 m right, 2 m up.
 :::
 
-## The normal matrix
+## The normal matrix {intermediate}
 
 Normals are not ordinary directions. Under a **non-uniform** scale, transforming a normal with the model matrix tilts it, and it is no longer perpendicular to its surface. Lighting then goes wrong.
 
@@ -206,6 +210,18 @@ three.js checks the sign of each object's world-matrix determinant and flips its
 - View matrix = inverse of the camera's world matrix; $(TRS)^{-1} = S^{-1}R^TT^{-1}$.
 - Normals use the inverse-transpose; it differs from $M$ only under non-uniform scale.
 - `Matrix4.elements` is column-major; `Matrix4.set()` is row-major.
+:::
+
+:::build Hinged door and solar system
+Problem: Build two small scene-graph rigs: a door that swings around its hinge, and a Sun–Earth–Moon system where the Moon orbits the Earth while the Earth orbits the Sun.
+Requirements:
+- Use nested groups, not hand-written trigonometry, for the orbits.
+- Show each object's local axes with `AxesHelper`.
+- Print the Moon's world position every second and check one value by hand.
+Constraints: the door geometry must stay centred on its own origin.
+Hints: put the pivot (hinge, orbit centre) in its own `Group` and offset the child inside it.
+Relevant APIs: `Group`, `Object3D.add`, `getWorldPosition`, `AxesHelper`, `Object3D.attach`.
+Expected result: rotating one group moves everything below it; your hand-calculated Moon position matches the logged one.
 :::
 
 ## Interview questions

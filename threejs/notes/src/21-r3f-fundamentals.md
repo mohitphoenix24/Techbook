@@ -2,6 +2,10 @@
 title: React Three Fiber in Depth
 part: React Three Fiber
 summary: How R3F works inside (a React reconciler whose host objects are three.js objects), the exact rules that map JSX to three.js (args, props, dash-piercing, attach, primitive, extend), the Canvas store, the frame loop and its priorities, the hooks, the event system, state management without re-renders, performance rules and TypeScript.
+difficulty: Intermediate
+prereqs: React hooks; Chapter 7
+time: 60–75 minutes
+outcome: Explain how R3F maps JSX to three.js, use its hooks and events correctly, and keep state changes from triggering unnecessary renders.
 ---
 
 ## A React renderer for three.js
@@ -17,7 +21,7 @@ Two consequences follow, and they explain most R3F advice:
 1. **React renders are not frames.** A React render happens only when state or props change; three.js renders 60–120 times a second regardless. Per-frame work belongs in `useFrame`, not in React state.
 2. **There is no overhead per frame.** Once the objects exist, rendering is plain three.js. R3F costs time only when the React tree changes (mounting thousands of elements, frequent re-renders).
 
-## How JSX maps to three.js
+## How JSX maps to three.js {foundation}
 
 | JSX | three.js equivalent |
 |---|---|
@@ -166,6 +170,13 @@ drei's `<Instance>` components are convenient (each can have events and props) b
 
 ## TypeScript and testing
 
+:::apichange React Three Fiber 9
+Older tutorials (R3F 8): `import { MeshProps } from "@react-three/fiber"`; `gl={(canvas) => new WebGLRenderer({ canvas })}`; global `JSX.IntrinsicElements` declarations for custom elements.
+Current approach (R3F 9): `ThreeElements["mesh"]` for prop types; `gl={(props) => new WebGLRenderer(props)}`, which may also be `async` (needed for `WebGPURenderer`); declare custom elements on the `ThreeElements` interface with `ThreeElement<typeof X>`.
+Why it changed: R3F 9 pairs with React 19, which deprecated the global `JSX` namespace; JSX types are now derived from three.js automatically.
+Version: R3F 9 (React 19). R3F 8 pairs with React 18.
+:::
+
 ```tsx title="R3F 9 — typing custom elements and props"
 import { type ThreeElement, type ThreeElements, extend } from "@react-three/fiber";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -181,6 +192,12 @@ export function Box(props: MeshProps) { return <mesh {...props}><boxGeometry /><
 
 `@react-three/test-renderer` renders a tree without a browser canvas so you can assert on the resulting three.js graph and fire events; React 19 exports `act` from `react` itself. Visual regressions are better caught with Playwright screenshots of the real canvas.
 
+:::lens State in React Three Fiber
+Junior: Keeps everything in `useState`, including positions that change every frame.
+Mid-level: Uses refs and `useFrame` for per-frame values, a store with selectors for shared state, and memoises geometries and materials.
+Senior: Designs state boundaries up front: rare UI state in React, shared domain state in a store, hot simulation data in typed arrays or GPU buffers read transiently; enforces it with lint rules and profiling budgets so new features cannot reintroduce per-frame renders.
+:::
+
 :::keypoints
 - R3F is a React reconciler whose host objects are three.js objects; React renders on change, three.js renders every frame.
 - JSX rules: lower-camel-case classes, `args` = constructor arguments (changing them re-creates the object), `.set()` for vector props, dash-piercing for nested properties, `attach` for non-child slots, `<primitive>` for existing objects, `extend` for custom classes.
@@ -189,6 +206,18 @@ export function Box(props: MeshProps) { return <mesh {...props}><boxGeometry /><
 - Fast state lives in refs or transient store reads; React state is for rare changes.
 - Instancing, shared resources, visibility toggling, demand frameloop and adaptive DPR are the main performance tools.
 - R3F 9 types: `ThreeElements["mesh"]`, `ThreeElement<typeof X>`.
+:::
+
+:::build Fix a slow R3F scene
+Problem: A component renders 2,000 boxes with `useState` positions updated in `useFrame`, new materials per box and a `new Vector3()` per frame. Make it fast without changing what is drawn.
+Requirements:
+- Measure first: React renders per second, draw calls, frame time.
+- Remove per-frame React state, allocations and duplicate materials.
+- Replace the 2,000 meshes with instancing.
+Constraints: keep hover highlighting per box.
+Hints: refs and `useFrame` for motion; one shared geometry and material; `instanceId` from events.
+Relevant APIs: `useRef`, `useMemo`, `useFrame`, `<instancedMesh>`, `setMatrixAt`, `r3f-perf`.
+Expected result: zero React renders per frame, one draw call for the boxes, and a frame time several times lower.
 :::
 
 ## Interview questions

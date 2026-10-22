@@ -1,9 +1,13 @@
 ---
 title: Render Targets and Post-processing
 summary: Rendering into textures, ping-pong buffers and multiple render targets, then the post-processing pipeline with EffectComposer (WebGL), pmndrs postprocessing (R3F) and RenderPipeline (WebGPU), and how the classic effects work inside: bloom, separable blur, SSAO/GTAO, anti-aliasing (MSAA, FXAA, SMAA, TAA), depth of field with the circle-of-confusion formula, outlines and colour grading.
+difficulty: Advanced
+prereqs: Chapters 12 and 18
+time: 75 minutes
+outcome: Render into textures, assemble post-processing chains for WebGL and WebGPU, and explain how bloom, AO, anti-aliasing and depth of field work.
 ---
 
-## Rendering into a texture
+## Rendering into a texture {intermediate}
 
 :::def Render target
 An off-screen framebuffer (`WebGLRenderTarget` / `RenderTarget`) with a colour texture and optionally a depth (and stencil) buffer. Calling `renderer.setRenderTarget(rt)` makes the next `render()` draw into it instead of the canvas; the result `rt.texture` can then be used like any texture.
@@ -81,6 +85,14 @@ const sceneColor = scenePass.getTextureNode("output");
 pipeline.outputNode = sceneColor.add(bloom(sceneColor, 1.2, 0.4, 0.6));   // strength, radius, threshold
 renderer.setAnimationLoop(() => pipeline.render());     // tone mapping + sRGB applied automatically at the end
 ```
+
+:::apichange Post-processing classes
+Older tutorials: `new THREE.PostProcessing(renderer)` on `WebGPURenderer`; on `WebGLRenderer`, a gamma-correction `ShaderPass` at the end of the composer.
+Current approach: `new THREE.RenderPipeline(renderer)` for WebGPU. For `EffectComposer`, finish the chain with `OutputPass`, which reads tone mapping and output colour space from the renderer (inline tone mapping only applies when rendering to the screen).
+Why it changed: `OutputPass` centralises the final colour transform so it happens exactly once; `RenderPipeline` is a rename.
+Version: `OutputPass` added in r153, parameterless since r155; `PostProcessing` renamed `RenderPipeline` in r183.
+:::
+
 
 ```jsx title="R3F — @react-three/postprocessing (WebGL)"
 import { EffectComposer, Bloom, N8AO, SMAA, Vignette, ToneMapping } from "@react-three/postprocessing";
@@ -187,6 +199,18 @@ Applying Sobel to depth and normals of the whole scene gives a hand-drawn "ink" 
 - AO: hemisphere samples (SSAO) or horizon search (GTAO), then denoise.
 - AA: MSAA for edges, FXAA/SMAA post, TAA for the best stability (watch ghosting).
 - DOF blur diameter from the circle of confusion $c = Af|S_2-S_1|/(S_2(S_1-f))$.
+:::
+
+:::build Neon city post-processing chain
+Problem: Make a night city with emissive signs that bloom, ambient occlusion in the streets and an anti-aliased final image.
+Requirements:
+- HDR pipeline: half-float targets, tone mapping once at the end.
+- Only emissive signs bloom (threshold above 1.0).
+- Show the frame time with each effect on and off.
+Constraints: at most three full-screen passes; bloom at reduced resolution.
+Hints: emissive intensity above 1 with a luminance threshold of 1; finish with `OutputPass` (WebGL) or rely on `RenderPipeline` (WebGPU).
+Relevant APIs: `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `GTAOPass`, `SMAAPass`, `OutputPass`; or `RenderPipeline`, `pass()`, `bloom()`.
+Expected result: glowing signs, grounded buildings and crisp edges, with a measured cost for every pass.
 :::
 
 ## Interview questions

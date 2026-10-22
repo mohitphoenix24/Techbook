@@ -1,6 +1,10 @@
 ---
 title: WebXR — VR and AR on the Web
 summary: How immersive sessions, reference spaces, poses and per-eye views work; VR in three.js with controllers, rays and hands; AR hit testing and anchors; the maths of teleport arcs and readable text in headsets; comfort and performance budgets; and @react-three/xr.
+difficulty: Intermediate
+prereqs: Chapters 6 and 14
+time: 60 minutes
+outcome: Build VR and AR experiences with controllers, hands and hit testing, and keep them comfortable within headset frame budgets.
 ---
 
 ## The WebXR model
@@ -194,6 +198,18 @@ export default function App() {
 - AR: hit-test sources from the viewer space → reticle → place; anchors for long-lived placement.
 - Budgets: 8.3–13.9 ms rendered twice; multiview, foveation, layers, mobile-class content.
 - R3F: `createXRStore` + `<XR>` + `XROrigin`, `TeleportTarget`, emulator on localhost.
+:::
+
+:::build VR gallery with teleport and grab
+Problem: Build a small VR gallery: teleport between rooms, snap-turn, and pick up and inspect a sculpture with either controller or a hand pinch.
+Requirements:
+- Movement by moving a rig, never the camera.
+- Teleport arc from the controller with a valid-floor check.
+- Panels sized by visual angle and readable at 1.5 m.
+Constraints: hold the headset's frame rate; test in the emulator first.
+Hints: `attach()` to keep world transforms when grabbing; size text with $h = 2d\tan(\theta/2)$.
+Relevant APIs: `renderer.xr`, `getController`, `getControllerGrip`, `Raycaster.setFromXRController`, `@react-three/xr` `createXRStore`, `TeleportTarget`.
+Expected result: comfortable movement, natural grabbing with controllers and hands, and smooth frame pacing.
 :::
 
 ## Interview questions

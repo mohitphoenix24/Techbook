@@ -1,10 +1,14 @@
 ---
 title: Performance and Optimisation
-part: Advanced Rendering and Production
+part: Production, Advanced Rendering and WebXR
 summary: A method, not a list of tricks. Measure first, find whether the CPU or GPU limits you, then apply the right fix: draw-call reduction (instancing, BatchedMesh, merging), culling and LOD with the screen-size maths, fill-rate and overdraw, shader and post-processing cost, memory budgets, dynamic resolution, workers and OffscreenCanvas, and mobile realities.
+difficulty: Advanced
+prereqs: Chapters 2, 7 and 21
+time: 75–90 minutes
+outcome: Diagnose whether a frame is CPU- or GPU-bound, apply the fix that matches, and reason through realistic before-and-after optimisations.
 ---
 
-## Measure first
+## Measure first {intermediate}
 
 :::def CPU-bound and GPU-bound
 A frame is **CPU-bound** when JavaScript (scene updates, physics, draw-call submission) takes longer than the GPU's work; it is **GPU-bound** when the GPU (vertex and fragment work, bandwidth) is the slower side. Fixes for one do nothing for the other, so diagnose before optimising.
@@ -173,6 +177,146 @@ Phones and thin laptops reduce GPU and CPU clocks after a minute or two of susta
 | Fewer post passes; no SSR/SSGI | Bandwidth is limited on tile-based GPUs |
 | Prefer `alphaTest` over blending | Tile-based GPUs pay heavily for overdraw and blending |
 | Watch `highp` precision in heavy fragment shaders | Mobile GPUs may run `mediump` faster |
+
+## Performance case studies
+
+The eight cases below follow the method of this chapter: measure, find the bottleneck, apply the matching fix, measure again. The numbers are **illustrative**: realistic for the hardware described, internally consistent with the formulas in this book, but not benchmarks of a specific device. Your own numbers will differ; the reasoning will not.
+
+:::case Too many draw calls in a warehouse twin {illustrative}
+Before:
+- Objects: 1,200 shelves and crates
+- Draw calls: 1,340
+- CPU frame time: 26 ms
+- FPS: 38
+Problem: Every crate is a separate `Mesh` with its own cloned material, and the sun casts shadows from all of them, so each frame issues more than a thousand draw calls.
+Investigation: `renderer.info.render.calls` reads 1,340. Halving the canvas resolution changes nothing (so it is not fragment-bound); the Performance panel shows the time inside `renderer.render` on the main thread: CPU-bound.
+Fix: Share one material per crate type, convert the 6 crate types to `InstancedMesh` and the varied shelving to one `BatchedMesh`, and stop small crates casting shadows.
+After:
+- Objects: 1,200 (unchanged)
+- Draw calls: 46
+- CPU frame time: 7 ms
+- FPS: 60 (display limit)
+Why it worked: draw calls have a fixed CPU cost regardless of triangle count; instancing and batching replace thousands of calls with a handful, and the GPU work was never the problem.
+:::
+
+:::case A 3× phone rendering 2.2× too many pixels {illustrative}
+Before:
+- Device pixel ratio: 3
+- Pixels shaded: 2.96 M
+- GPU frame time: 28 ms
+- FPS: 34
+Problem: A product viewer uses `setPixelRatio(devicePixelRatio)`, so a 390 × 844 CSS canvas renders 1170 × 2532 pixels with an expensive physical material and transmission.
+Investigation: draw calls are low (35), but rendering at half resolution doubles the frame rate: fragment-bound.
+Fix: `setPixelRatio(Math.min(devicePixelRatio, 2))`, plus `PerformanceMonitor` lowering it to 1.5 when frames slow down.
+After:
+- Device pixel ratio: 2 (1.5 under load)
+- Pixels shaded: 1.32 M
+- GPU frame time: 13 ms
+- FPS: 60
+Why it worked: fragment cost scales with pixel count, which scales with DPR²; going from 3 to 2 removes 56% of the pixels, and almost nobody can see the difference on a phone.
+:::
+
+:::case A forest with 18 million triangles {illustrative}
+Before:
+- Trees: 6,000 (instanced)
+- Triangles: 18 M
+- GPU frame time: 22 ms
+- FPS: 45
+Problem: Every tree, near or far, uses the 3,000-triangle hero model. Distant trees are a few pixels tall but cost the same vertex work.
+Investigation: one draw call, low resolution makes little difference, but halving the tree count halves the GPU time: vertex-bound.
+Fix: Three LODs (3,000 / 600 / 80 triangles) switched by on-screen size, and an impostor card beyond 120 m; one `InstancedMesh` per level.
+After:
+- Trees: 6,000 (unchanged)
+- Triangles: 2.1 M
+- GPU frame time: 9 ms
+- FPS: 60
+Why it worked: work now scales with what is visible on screen. A tree 40 px tall with 3,000 triangles has more triangles than pixels.
+:::
+
+:::case Textures that crash the iPhone tab {illustrative}
+Before:
+- Textures: 12 × 4K PNG
+- Texture VRAM: 1,024 MiB
+- iPhone result: tab reloads after loading
+Problem: Four materials each with base colour, normal and ORM maps at 4096², decoded to RGBA8 with mipmaps.
+Investigation: download size is only 30 MB, but VRAM is $12\times4096^2\times4\times\frac43 = 1024$ MiB; Safari's Web Inspector shows memory pressure, then the reload.
+Fix: Resize to 2048 (the model never fills more than half a phone screen), convert to KTX2 (UASTC for normals, ETC1S for colour), pack occlusion, roughness and metalness into one map.
+After:
+- Textures: 12 × 2K KTX2
+- Texture VRAM: about 64 MiB
+- iPhone result: stable
+Why it worked: GPU memory depends on decoded size, not file size; GPU-compressed textures stay compressed in VRAM (about 1 byte per texel instead of 4).
+:::
+
+:::case React re-rendering the scene every frame {illustrative}
+Before:
+- Animated components: 300
+- React renders per second: 36,000
+- Main-thread scripting per frame: 14 ms
+- FPS: 50
+Problem: Each animated item stores its position in `useState` and updates it from `useFrame`.
+Investigation: the React Profiler shows renders on every frame; the three.js side (`renderer.info`) looks fine.
+Fix: Keep positions in refs (or typed arrays) and mutate `ref.current.position` in `useFrame`; keep React state for rare changes such as selection.
+After:
+- Animated components: 300 (unchanged)
+- React renders per second: about 0 while animating
+- Main-thread scripting per frame: 2 ms
+- FPS: 60
+Why it worked: three.js renders every frame anyway; routing per-frame values through React adds reconciliation work that produces nothing new.
+:::
+
+:::case Post-processing on an integrated GPU {illustrative}
+Before:
+- Canvas: 2560 × 1440
+- Full-screen passes: 7
+- GPU frame time: 21 ms
+- FPS: 47
+Problem: Separate passes for render, SSAO, bloom, depth of field, vignette, colour grading and FXAA, all at full resolution in half-float.
+Investigation: disabling post-processing drops GPU time to 8 ms; each pass moves about 59 MB per frame at this resolution.
+Fix: Merge vignette, grading and anti-aliasing into one pass (pmndrs postprocessing merges them), run AO and bloom at half resolution, drop depth of field except in the product close-up.
+After:
+- Canvas: 2560 × 1440
+- Full-screen passes: 3
+- GPU frame time: 10 ms
+- FPS: 60
+Why it worked: full-screen effects are bandwidth-bound; fewer passes and quarter-size buffers for blurry effects remove most of the memory traffic.
+:::
+
+:::case Garbage-collection hitches {illustrative}
+Before:
+- Allocations: about 9,000 objects per second
+- Long frames (over 50 ms): 25 per minute
+- Average FPS: 59
+Problem: The average looks fine, but the scene stutters every few seconds. Helper code creates `new Vector3()` and `new Matrix4()` inside the frame loop.
+Investigation: the Performance panel shows periodic "Minor GC" blocks of 30–60 ms lining up with the stutters.
+Fix: Allocate temporaries once at module scope and reuse them with `.set()`/`.copy()`; avoid array `map`/`filter` in hot loops.
+After:
+- Allocations: near 0 per frame
+- Long frames (over 50 ms): 0 per minute
+- Average FPS: 60
+Why it worked: users notice the worst frames, not the average; removing per-frame allocations removes the collector pauses that cause them.
+:::
+
+:::case Slow first load of a configurator {illustrative}
+Before:
+- Model download: 38 MB
+- Time to first frame (4G): 19 s
+- Shader-compile hitch on first colour change: 180 ms
+Problem: An uncompressed glTF with 4K PNG textures, loaded after the JavaScript bundle; material variants created when the user first clicks them.
+Investigation: the Network panel shows the model dominating; the Performance panel shows a long "compile" task on the first option change.
+Fix: `gltf-transform optimize` with Meshopt and KTX2, preload the model in parallel with the bundle, show a poster image immediately, and create and `compileAsync()` all material variants during loading.
+After:
+- Model download: 3.6 MB
+- Time to first frame (4G): 3 s
+- Shader-compile hitch on first colour change: none
+Why it worked: the asset was the critical path; compression and preloading shorten it, and pre-compiling moves the one-off GPU cost to a moment the user does not notice.
+:::
+
+:::lens Performance work
+Junior: Tries tips from a list until the frame rate improves.
+Mid-level: Measures first, separates CPU-bound from GPU-bound, and applies the matching fix (draw calls, DPR, LOD, shaders).
+Senior: Sets budgets per device class (draw calls, triangles, VRAM, frame time), builds adaptive quality into the architecture, tracks performance in CI and from real users, and designs content and features so the budget is respected by default rather than repaired later.
+:::
 
 :::keypoints
 - Diagnose first: shrink resolution (fragment-bound?), hide objects (draw calls?), pause logic (CPU?).

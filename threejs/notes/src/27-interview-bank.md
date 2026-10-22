@@ -2,6 +2,10 @@
 title: The Interview Question Bank
 part: Interview Preparation
 summary: Everything you need on the day. How to structure answers, a rapid-fire revision table, coding questions with complete code, debugging scenarios, system-design questions for 3D web products, senior-level conceptual questions, and behavioural preparation. Together with the questions at the end of each chapter, this notebook holds over 200 worked answers.
+difficulty: Interview
+prereqs: Any chapters you are being interviewed on
+time: 30 minutes to 7 days
+outcome: Revise efficiently with a time-boxed plan and answer coding, debugging, system-design and conceptual questions with confidence.
 ---
 
 ## How to answer a 3D interview question
@@ -18,6 +22,40 @@ Give a **real example**: something you built, measured or fixed
 :::tip What interviewers listen for
 Juniors are expected to know the scene/camera/renderer model, materials, lights, loading and the render loop. Mid-level developers should talk about draw calls, disposal, instancing, raycasting edge cases and shaders. Seniors are judged on diagnosing performance with evidence, rendering-pipeline knowledge (colour management, shadows, post-processing, WebGPU), architecture of large apps, and trade-offs. Saying "I would measure first with `renderer.info` and a GPU timer" is often worth more than listing tricks.
 :::
+
+## Revision plans
+
+Choose the plan that matches the time you have. Each item points to the material to revise; the interview questions at the end of each chapter are the self-test.
+
+### 30-minute revision
+
+<div class="plan">
+<div style="--c:var(--em)"><h4>10 min · formulas</h4><ul><li>The MUST KNOW rows of the formula sheet (Chapter 30)</li><li>Frame budgets, F0 = 0.04, sRGB 0.214 / 0.735, DPR ≤ 2</li></ul></div>
+<div style="--c:var(--sky)"><h4>10 min · rapid fire</h4><ul><li>The rapid-fire table below</li><li>Cover the right column and answer aloud</li></ul></div>
+<div style="--c:var(--pk)"><h4>10 min · debugging</h4><ul><li>The debugging checklist (Chapter 30)</li><li>Skim the symptoms in Chapter 28</li></ul></div>
+</div>
+
+### 2-hour revision
+
+<div class="plan">
+<div style="--c:var(--em)"><h4>30 min · rendering pipeline</h4><ul><li>Chapter 2: stages, depth buffer, blending, draw calls</li><li>Chapter 6: projection, NDC, depth precision</li></ul></div>
+<div style="--c:var(--sky)"><h4>20 min · R3F architecture</h4><ul><li>Chapter 21: reconciler, hooks, events, state</li><li>Chapter 29: the state decision guide</li></ul></div>
+<div style="--c:var(--vi)"><h4>30 min · performance</h4><ul><li>Chapter 23: triage, budgets, case studies</li><li>Chapter 29: the performance decision tree</li></ul></div>
+<div style="--c:var(--cy)"><h4>15 min · WebGPU and TSL</h4><ul><li>Chapter 20: object model, TSL slots, compute, migration</li></ul></div>
+<div style="--c:var(--pk)"><h4>25 min · questions</h4><ul><li>Coding and senior questions in this chapter</li><li>One system-design question, answered aloud</li></ul></div>
+</div>
+
+### 7-day preparation plan
+
+| Day | Focus | Chapters | Practise |
+|---|---|---|---|
+| 1 | Fundamentals | 1–6 | Work every calculation box again without looking |
+| 2 | three.js core | 7, 8, 11, 14 | Build the viewer shell and the object picker |
+| 3 | Materials, lighting, PBR | 9, 10, 12, 13 | Explain Cook–Torrance and the linear workflow aloud |
+| 4 | Animation, physics, assets | 15, 16, 17 | Build the glTF viewer or the animation controller |
+| 5 | Shaders, WebGPU, TSL | 18, 19, 20 | Write the hologram shader in GLSL and TSL |
+| 6 | R3F, performance, WebXR | 21–25 | Fix the slow R3F scene; walk through two case studies |
+| 7 | Interview day rehearsal | 26, 27 | Mock interview: coding, debugging and one system design |
 
 ## Rapid-fire revision
 
@@ -312,6 +350,12 @@ You cannot load 200 M points (≈ 3 GB as float positions and colours) at once. 
 
 :::qa Design a small multiplayer 3D game in the browser. {level=senior}
 Authoritative server (Node or a dedicated game server) running the simulation at a fixed tick (for example 20–30 Hz); clients send inputs, not positions. Clients predict their own player locally (client-side prediction) and reconcile with server snapshots; remote players are rendered with **interpolation** about 100 ms in the past between received snapshots, with extrapolation only for short gaps. Transport: WebSockets (or WebTransport/WebRTC data channels for unreliable, unordered updates). Physics deterministic on the server (Rapier), cosmetic physics on clients. Interest management sends only nearby entities. Rendering: instanced characters, compressed assets, a fixed-step client loop for prediction with interpolated rendering.
+:::
+
+:::lens Answering a system-design question
+Junior: Describes the scene: "load the model, add lights and orbit controls."
+Mid-level: Adds the engineering: asset optimisation, draw-call budget, state management, loading states and disposal.
+Senior: Starts from requirements and constraints (devices, data rates, users, team), sketches the data flow and failure modes, sets measurable budgets, explains trade-offs between alternatives, and says how the system will be monitored and evolved.
 :::
 
 ## Senior-level conceptual questions

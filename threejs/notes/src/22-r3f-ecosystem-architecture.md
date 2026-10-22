@@ -1,6 +1,10 @@
 ---
 title: The R3F Ecosystem and App Architecture
 summary: A map of the pmndrs ecosystem (drei, postprocessing, rapier, xr, uikit, leva, zustand, react-spring, maath, gltfjsx) with what each piece is for, then how to structure a real R3F application: folders, scene versus DOM UI, multiple views in one canvas, HUDs and portals, code splitting, Next.js and SSR, accessibility, and a production checklist.
+difficulty: Intermediate
+prereqs: Chapter 21
+time: 45–60 minutes
+outcome: Pick the right ecosystem package for a job and structure a production React Three Fiber application.
 ---
 
 ## The ecosystem at a glance
@@ -133,6 +137,12 @@ WebGL needs a browser, so the canvas must render only on the client: mark scene 
 | Accessibility | DOM alternatives, keyboard paths, reduced motion |
 | SEO and sharing | Server-rendered text around the canvas; poster images for social cards |
 | Monitoring | Real-user FPS and load-time metrics; error reporting from the canvas |
+
+:::lens Structuring a 3D product
+Junior: One large component with the canvas, the models and the UI together.
+Mid-level: Feature folders, gltfjsx components, a store connecting DOM UI and scene, lazy-loaded 3D bundle.
+Senior: An architecture that survives growth: a scene layer with clear interfaces, an asset pipeline owned by the build, one canvas with `View`s for many viewports, accessibility and fallbacks as release criteria, performance and memory monitoring from real users, and a three.js upgrade policy (step through releases, screenshot tests).
+:::
 
 :::keypoints
 - drei covers controls, staging, loading, text, materials, performance and composition; check it before writing a helper.

@@ -1,6 +1,10 @@
 ---
 title: Advanced Rendering Techniques
 summary: The wider world of real-time graphics, explained from first principles with the maths. Forward, deferred and clustered (Forward+) rendering; global illumination with lightmaps, light probes and spherical harmonics; reflections; order-independent transparency; fog, volumetrics and Beer–Lambert; raymarching signed distance fields; Monte Carlo path tracing; 3D Gaussian splatting; virtualised geometry; and precision in very large worlds.
+difficulty: Advanced
+prereqs: Chapters 10, 13 and 19
+time: 90 minutes
+outcome: Explain clustered shading, global illumination, OIT, volumetrics, SDF raymarching, path tracing and Gaussian splatting, and when each is worth its cost.
 ---
 
 ## Rendering architectures
@@ -226,6 +230,12 @@ A float32 with exponent $e$ has spacing $2^{e-23}$. At 10,000 m, $e = 13$: $2^{-
 :::
 
 Fixes: **floating origin** (keep the camera near (0, 0, 0) and move the world instead, re-basing when the camera travels far), relative-to-eye rendering (subtract the camera position in double precision on the CPU before uploading), tiled worlds with local origins, and logarithmic or reversed depth for the huge depth ranges (Chapter 6). Geospatial three.js work typically uses `3d-tiles-renderer` (NASA-AMMOS) for streamed, LOD-managed Cesium 3D Tiles and Google Photorealistic 3D Tiles.
+
+:::lens Choosing a rendering architecture
+Junior: Uses three.js's default forward renderer and adds lights until the scene looks right.
+Mid-level: Knows the cost of each light and shadow, bakes static lighting, and uses environment maps and post-processing deliberately.
+Senior: Chooses the rendering approach from the product's requirements (number of lights, transparency, target devices, art direction): clustered lighting for many lights, baked GI for static worlds, splats or path tracing where photorealism matters, and documents the trade-offs so the team can live with them.
+:::
 
 :::keypoints
 - Forward: lights per fragment; deferred: G-buffer then lighting per pixel; clustered: only the lights in each cluster (`ClusteredLighting` in r185).

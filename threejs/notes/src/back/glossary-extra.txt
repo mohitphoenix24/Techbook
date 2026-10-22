@@ -1,0 +1,74 @@
+- **Alpha blending** (2): Combining a fragment's colour with the framebuffer by its opacity, $\alpha C_s + (1-\alpha)C_d$; order-dependent, so transparent objects are sorted.
+- **Alpha test** (9): Discarding fragments whose alpha is below a threshold (`alphaTest`), giving cut-outs without sorting.
+- **Ambient light** (9): A constant light added to every surface regardless of direction; flattens shapes, so hemisphere or environment lighting is usually preferred.
+- **BatchedMesh** (23): A three.js object that draws many different geometries sharing one material in a single multi-draw call, with per-instance transforms and visibility.
+- **Blinn–Phong** (9): A specular model using the half vector, $(\hat{\mathbf{n}}\cdot\hat{\mathbf{h}})^\alpha$; used by `MeshPhongMaterial`.
+- **Cascaded shadow maps (CSM)** (10): Several shadow maps, each covering a depth slice of the view frustum, so nearby shadows are sharp and distant ones cheap; `SunLight` in r186.
+- **Clearcoat** (13): A thin transparent varnish layer on top of a PBR material (car paint, lacquer) in `MeshPhysicalMaterial`.
+- **Clip space** (1): The 4D homogeneous coordinates output by the vertex shader (`gl_Position`), before the divide by $w$.
+- **Continuous collision detection (CCD)** (17): Sweeping a moving shape between physics steps to catch collisions a discrete test would miss (tunnelling).
+- **Cook–Torrance BRDF** (13): The microfacet specular model $DFG/(4(\hat{\mathbf{n}}\cdot\hat{\mathbf{l}})(\hat{\mathbf{n}}\cdot\hat{\mathbf{v}}))$ behind three.js's PBR materials.
+- **Cross product** (3): A vector perpendicular to two others, with length equal to the parallelogram they span; used for normals and coordinate frames.
+- **Directional light** (10): Light with parallel rays from far away, such as the sun; its shadows use an orthographic camera.
+- **Dot product** (3): $\mathbf{a}\cdot\mathbf{b} = \lVert\mathbf{a}\rVert\lVert\mathbf{b}\rVert\cos\theta$; measures how much two directions agree.
+- **Draco** (16): A geometry compression format for glTF (`KHR_draco_mesh_compression`); very small files, CPU-heavy decoding.
+- **drei** (22): The pmndrs helper library for React Three Fiber: controls, staging, loaders, text, performance and composition components.
+- **Early-z** (2): GPU depth testing before the fragment shader runs, so hidden fragments are rejected cheaply.
+- **EffectComposer** (19): The WebGL post-processing chain in three.js addons: `RenderPass`, effect passes, then `OutputPass`.
+- **Exposure** (12): A multiplier applied to linear light before tone mapping, $L\cdot2^{\text{EV}}$ (`toneMappingExposure`).
+- **F0** (13): The reflectance of a surface viewed head-on; about 0.04 for dielectrics, the base colour for metals.
+- **Floating origin** (24): Keeping the camera near the coordinate origin and moving the world instead, to avoid float32 precision jitter far from the origin.
+- **Foveated rendering** (25): Rendering the periphery of each eye's view at lower resolution to save GPU time in XR.
+- **Fragment shader** (2): The program run once per fragment to compute its colour.
+- **Frame budget** (1): The time available to produce one frame, $1000/f$ ms (16.67 ms at 60 Hz).
+- **Fresnel effect** (13): Surfaces reflect more light at grazing angles; approximated with Schlick's formula.
+- **Frustum culling** (6): Skipping objects whose bounding sphere lies entirely outside the camera's view frustum.
+- **GGX distribution** (13): The microfacet normal distribution used in three.js PBR, controlled by $\alpha = \text{roughness}^2$.
+- **gltfjsx** (16): A tool that turns a glTF file into a typed React Three Fiber component, optionally optimising it.
+- **GTAO** (19): Ground-truth ambient occlusion: a screen-space AO technique that integrates visible horizon angles.
+- **Hemisphere light** (9): A two-colour ambient approximation: sky colour from above, ground colour from below.
+- **Image-based lighting (IBL)** (13): Lighting a scene from a panoramic HDR image of its surroundings (`scene.environment`).
+- **Impostor** (23): A camera-facing quad showing a pre-rendered image of a distant object, the cheapest level of detail.
+- **InstancedMesh** (8): A three.js object that draws many copies of one geometry and material in a single draw call, each with its own matrix.
+- **Lambertian diffuse** (9): Light scattered equally in all directions, proportional to $\max(0, \hat{\mathbf{n}}\cdot\hat{\mathbf{l}})$; BRDF $= c/\pi$.
+- **Lerp** (3): Linear interpolation, $a + t(b - a)$.
+- **Linear blend skinning (LBS)** (15): Deforming a vertex by the weighted sum of its bones' transforms, $\sum w_iM_iB_i^{-1}\mathbf{v}$.
+- **Linear workflow** (12): Converting all inputs to linear light, computing in linear space and converting to sRGB once for display.
+- **Matcap** (9): A material that takes its lighting from an image of a lit sphere, indexed by the view-space normal.
+- **Meshlet** (24): A small cluster of triangles (about 64–128) used by GPU-driven and virtualised geometry renderers.
+- **Meshopt** (16): The meshoptimizer compression for glTF (`EXT_meshopt_compression`); fast decoding, works with quantised data and animation.
+- **Metalness** (13): The PBR parameter separating dielectrics (0) from metals (1); metals have no diffuse and tinted reflections.
+- **Model matrix** (4): The matrix placing an object in the world, $M = TRS$ (`matrixWorld`).
+- **MSAA** (19): Multisample anti-aliasing: several coverage samples per pixel at triangle edges (`antialias: true`, render-target `samples`).
+- **Node material** (20): A three.js material whose shader is built from a TSL node graph (`MeshStandardNodeMaterial` and friends).
+- **Normal matrix** (4): The inverse-transpose of the model-view 3×3, used to transform normals correctly.
+- **Normalised device coordinates (NDC)** (6): Clip coordinates divided by $w$: a cube from −1 to 1 (z from 0 to 1 in WebGPU).
+- **Offscreen canvas** (23): A canvas that can be rendered from a Web Worker (`transferControlToOffscreen`), keeping rendering off the main thread.
+- **Order-independent transparency (OIT)** (24): Techniques that composite transparent surfaces correctly regardless of draw order.
+- **OrbitControls** (6): A three.js control that orbits the camera around a target with spherical coordinates.
+- **OutputPass** (19): The final `EffectComposer` pass that applies tone mapping and the output colour space once.
+- **Peter-panning** (10): Shadows detached from their casters, caused by too much shadow bias.
+- **Point light** (10): A light radiating in all directions from a point; its shadows need six renders.
+- **Premultiplied alpha** (2): Colours stored already multiplied by their alpha, which filters and composites correctly.
+- **Projection matrix** (6): The matrix mapping view space to clip space (`camera.projectionMatrix`), perspective or orthographic.
+- **Rapier** (17): A Rust physics engine compiled to WebAssembly; the default physics choice for three.js and R3F (`@react-three/rapier`).
+- **Rasterisation** (2): Finding which pixels a triangle covers and producing a fragment for each.
+- **Raycaster** (14): The three.js class that casts rays into the scene and returns sorted intersections.
+- **RenderPipeline** (19): The WebGPU post-processing class in three.js (called `PostProcessing` before r183).
+- **Roughness** (13): The PBR parameter describing the spread of microfacet orientations, from mirror (0) to matte (1).
+- **Semi-implicit Euler** (17): An integrator that updates velocity first and then position; cheap and stable for games.
+- **Shadow acne** (10): Stripes on lit surfaces caused by a surface shadowing itself through depth rounding.
+- **SkinnedMesh** (15): A mesh deformed by a skeleton of bones with per-vertex weights.
+- **Slerp** (5): Spherical linear interpolation of quaternions: constant angular speed along the shortest arc.
+- **SMAA / FXAA** (19): Post-process anti-aliasing that detects edges in the final image and blends along them.
+- **Spot light** (10): A cone of light with `angle` and `penumbra`; one perspective shadow render.
+- **sRGB** (12): The standard display colour space with a non-linear transfer function; linear 0.5 is stored as 0.735.
+- **Storage buffer** (20): GPU memory a compute or render shader can read and write (`instancedArray` in TSL).
+- **Tangent space** (11): The coordinate frame of a surface point (tangent, bitangent, normal) in which normal maps store directions.
+- **Texel** (11): One element (pixel) of a texture.
+- **Transmission** (13): `MeshPhysicalMaterial`'s model of light passing through glass and liquids; renders an extra pass.
+- **Vertex shader** (2): The program run once per vertex to compute its clip-space position and varyings.
+- **View matrix** (4): The inverse of the camera's world matrix (`camera.matrixWorldInverse`), mapping world space to camera space.
+- **WebXR** (25): The browser API for VR and AR sessions, poses, controllers, hands and hit testing.
+- **Z-fighting** (2): Flicker where two surfaces have nearly equal depth and round to the same depth-buffer value.
+- **zustand** (21): A small state store used with React Three Fiber; supports selectors and transient `getState()` reads.

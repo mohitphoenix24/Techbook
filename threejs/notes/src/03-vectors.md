@@ -1,6 +1,10 @@
 ---
 title: Vectors
 summary: The single most used maths in 3D. Points and directions, length and normalisation, the dot and cross products and what they mean geometrically, projection, reflection, interpolation and frame-rate-independent damping, with three.js and R3F code for each.
+difficulty: Foundation
+prereqs: School algebra and trigonometry
+time: 60–75 minutes
+outcome: Use dot and cross products, projection, reflection and damping confidently, and write allocation-free vector code in three.js and R3F.
 ---
 
 ## Points and directions
@@ -167,7 +171,7 @@ const slide = velocity.clone().projectOnPlane(n);      // movement along the sur
 const along = velocity.clone().projectOnVector(n);     // movement into the surface
 ```
 
-## Interpolation and damping
+## Interpolation and damping {intermediate}
 
 :::formula Linear interpolation (lerp)
 $$\text{lerp}(\mathbf{a}, \mathbf{b}, t) = \mathbf{a} + t\,(\mathbf{b} - \mathbf{a}) = (1-t)\,\mathbf{a} + t\,\mathbf{b}$$
@@ -256,6 +260,18 @@ box.getSize(new THREE.Vector3()); box.getCenter(new THREE.Vector3());
 - Reflection $\mathbf{r} = \mathbf{d} - 2(\mathbf{d}\cdot\hat{\mathbf{n}})\hat{\mathbf{n}}$; sliding is projection onto the plane.
 - Use $1 - e^{-\lambda\Delta t}$ (or `MathUtils.damp`, `maath` `easing`) for frame-rate-independent smoothing.
 - Avoid allocating vectors inside the frame loop: create temporaries once and reuse them.
+:::
+
+:::build Guard vision cone
+Problem: Build a top-down scene where a guard turns on the spot and turns red whenever the player (moved with the arrow keys) is inside its 60° vision cone and within 8 m.
+Requirements:
+- Draw the cone on the ground so the test can be checked visually.
+- Use the dot product for the angle test and squared distances for the range test.
+- Make the player's movement frame-rate independent.
+Constraints: no `acos` and no object allocation inside the frame loop.
+Hints: precompute `Math.cos(halfAngle)`; reuse two `Vector3`s for "forward" and "to player"; remember that `getWorldDirection` returns local +Z.
+Relevant APIs: `Vector3.subVectors`, `dot`, `lengthSq`, `normalize`, `Object3D.getWorldDirection`, `THREE.Timer`.
+Expected result: the guard switches colour exactly when the player crosses the drawn cone edge or range circle, at any frame rate.
 :::
 
 ## Interview questions

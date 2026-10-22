@@ -2,9 +2,13 @@
 title: Shaders and GLSL
 part: Shaders and the GPU
 summary: Writing your own GPU programs. GLSL types and built-ins, how attributes, uniforms and varyings flow, ShaderMaterial versus RawShaderMaterial, a complete animated shader in three.js and R3F, the classic toolbox (smoothstep, fract, SDFs, smooth minimum, hash and fBm noise, Fresnel rim, dissolve, anti-aliased lines), extending built-in materials, and shader performance.
+difficulty: Advanced
+prereqs: Chapters 2, 3 and 9
+time: 90 minutes
+outcome: Write vertex and fragment shaders, use SDFs, noise and anti-aliasing techniques, and extend built-in materials without losing their lighting.
 ---
 
-## The shader mindset
+## The shader mindset {foundation}
 
 A fragment shader is a function that runs **for every pixel at once**, and cannot see its neighbours' results. You do not draw a circle by looping over pixels; you write, for one pixel, "how far am I from the centre, and therefore what colour am I?". Thinking per pixel (or per vertex) is the whole trick.
 
@@ -29,7 +33,7 @@ The OpenGL Shading Language, a C-like language for GPU programs. WebGL 2 uses **
 | `length`, `distance`, `dot`, `cross`, `normalize` | Vector maths | `reflect(i, n)`, `refract(i, n, eta)` | Optics |
 | `sin`, `cos`, `atan(y, x)`, `pow`, `exp`, `sqrt` | Maths | `dFdx`, `dFdy`, `fwidth` | Screen-space derivatives |
 
-## How data reaches a shader
+## How data reaches a shader {foundation}
 
 @fig(shader_dataflow) Data flow through a shader program. Attributes are per vertex, uniforms are the same for the whole draw call, varyings carry per-vertex values to the fragment shader (interpolated across the triangle), and textures are sampled anywhere.
 
@@ -248,6 +252,18 @@ Output intermediate values as colour: `gl_FragColor = vec4(vec3(vHeight * 0.5 + 
 - Toolbox: `smoothstep` edges, `fract` repetition, SDFs with `min`/`max`/`smin`, hash/noise/fBm, Fresnel rims, `discard` dissolves, `fwidth` anti-aliasing.
 - Extend built-ins with `onBeforeCompile` (WebGL) or node slots (WebGPU/TSL).
 - Performance: pixels × instructions; avoid overdraw, divergent branches and unnecessary `discard`.
+:::
+
+:::build Hologram and dissolve shader
+Problem: Write a material that shows a model as a scan-line hologram with a Fresnel rim, and dissolves it with a glowing edge when triggered.
+Requirements:
+- Rim from the view-space normal; scan lines from world-space height.
+- Dissolve driven by noise and a progress uniform, with an emissive edge band.
+- A TSL version of the same effect for `WebGPURenderer`.
+Constraints: anti-aliased edges at any zoom.
+Hints: `pow(1.0 - dot(n, v), p)` for the rim; `fwidth` for edge width; `discard` only below the threshold.
+Relevant APIs: `ShaderMaterial` (or `onBeforeCompile`), `uniforms`, `smoothstep`, `fwidth`, TSL `Fn`, `positionWorld`, `normalView`.
+Expected result: a convincing hologram that burns away smoothly from one side, identical in GLSL and TSL.
 :::
 
 ## Interview questions

@@ -1,6 +1,10 @@
 ---
 title: Lights and Shadows
 summary: Every three.js light type, physical light units and the exact attenuation and spot-cone formulas three.js uses, then shadow mapping from first principles, shadow-camera fitting, acne and peter-panning, PCF and VSM filtering, cascaded shadows with the new SunLight, and cheaper alternatives.
+difficulty: Intermediate
+prereqs: Chapters 6 and 9
+time: 75–90 minutes
+outcome: Set up lights with physical units, fit and tune shadow maps, fix acne and peter-panning, and decide when to use cascades or baked shadows.
 ---
 
 ## The light types
@@ -20,6 +24,14 @@ summary: Every three.js light type, physical light units and the exact attenuati
 :::def Physically based light units
 Since r155 three.js uses physical light units by default (the legacy mode was removed in r165). Point and spot lights take **luminous intensity in candela**, `RectAreaLight` takes **luminance in nits**, and you can set `light.power` in **lumens** instead. Absolute values only matter relative to the renderer's exposure (`toneMappingExposure`), but keeping real ratios (a 60 W-equivalent bulb is about 800 lm) makes mixed lighting believable.
 :::
+
+:::apichange Physically correct lighting is the only mode
+Older tutorials: `renderer.physicallyCorrectLights = true` (before r150) or `renderer.useLegacyLights = false`.
+Current approach: nothing to set. Lights use physical units and inverse-square falloff (`decay = 2`) by default. Scenes tuned under the legacy mode usually need much higher point and spot intensities.
+Why it changed: physically based units make lighting consistent with PBR materials and with tools such as Blender and glTF.
+Version: renamed to `useLegacyLights` in r150; physical mode became the default in r155; `useLegacyLights` removed in r165.
+:::
+
 
 :::calc Real bulbs in three.js units
 An 800 lumen household bulb as a `PointLight`: $I = 800/(4\pi) = 63.7$ cd, so `new THREE.PointLight("#ffd9a0", 63.7)` or `light.power = 800`. Conversely a point light of intensity 50 cd has `power` $= 50\times4\pi = 628$ lm.
@@ -132,8 +144,11 @@ model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = t
 
 @fig(shadow_acne) Shadow acne. The surface is sampled at texel centres, so on a sloped surface half the samples lie slightly below the stored depth and are wrongly shadowed. A bias moves the comparison just above the surface.
 
-:::new Shadows in r182–r186
-`PCFShadowMap` became soft in r182, so `PCFSoftShadowMap` was deprecated and then removed in r186 (renderers now warn and fall back to PCF). `WebGPURenderer`'s shadows improved in r183, so old projects should **reduce** their bias values after upgrading.
+:::apichange PCFSoftShadowMap → PCFShadowMap
+Older tutorials: `renderer.shadowMap.type = THREE.PCFSoftShadowMap;`
+Current approach: `renderer.shadowMap.type = THREE.PCFShadowMap;`, which is soft since r182. After upgrading, re-tune `shadow.bias`: shadows on `WebGPURenderer` improved in r183 and usually need **less** bias.
+Why it changed: once `PCFShadowMap` produced soft results, a separate soft mode was redundant.
+Version: deprecated in r182 (WebGL); removed in r186 (the renderers warn and fall back to `PCFShadowMap`).
 :::
 
 ### Soft shadows: PCF and VSM
@@ -159,7 +174,7 @@ $t$ is the receiver's depth; if $t \le \mu$ the point is fully lit.
 Blurred moments $\mu = 10$, $E[d^2] = 100.25$, so $\sigma^2 = 0.25$. A receiver at $t = 11$: $p_{\max} = 0.25/(0.25 + 1) = 0.20$: 20% lit. At $t = 10.2$: $0.25/(0.25+0.04) = 0.86$.
 :::
 
-### Cascaded shadow maps and SunLight
+### Cascaded shadow maps and SunLight {advanced}
 
 One shadow map cannot cover a large outdoor scene sharply: near the camera you need centimetre texels, far away metres are fine. **Cascaded shadow maps** (CSM) split the view frustum into depth slices and give each slice its own shadow map, fitted tightly around it.
 
@@ -227,6 +242,18 @@ If the light and the shadow casters do not move, render the shadow map once: `re
 - Acne → bias / `normalBias`; too much bias → peter-panning.
 - PCF averages comparisons; VSM uses moments + Chebyshev; cascades split the frustum; `SunLight` (r186) automates two cascades.
 - Static scenes: bake lighting, or render the shadow map once with `autoUpdate = false`.
+:::
+
+:::build Showroom lighting and shadows
+Problem: Light a 10 m × 10 m car showroom: one sun through a window, two spotlights on the car and a hemisphere fill, with crisp contact shadows under the car.
+Requirements:
+- Fit the sun's shadow camera tightly around the car, and show it with `CameraHelper`.
+- Use physical light units with believable ratios.
+- No acne and no peter-panning.
+Constraints: at most two shadow-casting lights; a 2048 shadow map at most.
+Hints: tune `normalBias` first; add drei `ContactShadows` (or a baked AO texture) for the contact darkening.
+Relevant APIs: `DirectionalLight.shadow.camera`, `shadow.mapSize`, `shadow.bias`, `shadow.normalBias`, `SpotLight.penumbra`, `CameraHelper`.
+Expected result: sharp, stable shadows from the sun, soft pools from the spots, and a car that sits on the floor rather than floating.
 :::
 
 ## Interview questions

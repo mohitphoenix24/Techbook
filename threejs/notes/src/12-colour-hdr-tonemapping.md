@@ -1,9 +1,13 @@
 ---
 title: Colour, HDR and Tone Mapping
 summary: Why lighting must be computed in linear light, the exact sRGB transfer function, three.js colour management, high dynamic range and exposure, the Reinhard, ACES, AgX and Neutral tone mappers compared with numbers and pictures, banding and dithering, and the R3F defaults.
+difficulty: Intermediate
+prereqs: Chapter 9
+time: 45–60 minutes
+outcome: Run a correct linear workflow, convert between sRGB and linear values, and choose a tone mapper for games or for accurate product colours.
 ---
 
-## Light is linear, displays are not
+## Light is linear, displays are not {foundation}
 
 Physical light adds up: two identical lamps give exactly twice the light of one. Lighting maths (sums of light contributions, blending, blurring, antialiasing) is only correct on numbers **proportional to light energy**, called **linear** values.
 
@@ -48,6 +52,14 @@ three.js follows a **linear workflow**: convert every input to linear, compute e
 :::def ColorManagement
 `THREE.ColorManagement.enabled` (true by default) makes `Color` setters convert sRGB inputs (hex numbers, CSS strings) to the linear working space, and getters convert back. So `new THREE.Color(0x808080).r` is $0.2159$, while `getHex()` returns `0x808080` again. Plain `color.r = 0.5` is taken as already linear.
 :::
+
+:::apichange Encodings → colour spaces
+Older tutorials: `renderer.outputEncoding = THREE.sRGBEncoding;` and `texture.encoding = THREE.sRGBEncoding;`
+Current approach: `renderer.outputColorSpace = THREE.SRGBColorSpace` (already the default) and `texture.colorSpace = THREE.SRGBColorSpace` for colour textures only. `THREE.LinearEncoding` became `THREE.LinearSRGBColorSpace`.
+Why it changed: "encoding" mixed up transfer functions and colour spaces; the colour-space API describes both and made colour management on by default (`ColorManagement.enabled = true`).
+Version: r152.
+:::
+
 
 ```js title="three.js — colours in and out"
 const c = new THREE.Color("#808080");      // sRGB input, stored linear

@@ -1,6 +1,10 @@
 ---
 title: Physics and Simulation
 summary: Numerical integration (explicit and semi-implicit Euler, Verlet) compared on the same throw, forces and torque, impulse-based collision response with restitution and friction worked by hand, constraints and solvers, tunnelling and CCD, Verlet cloth, and practical physics with Rapier in three.js and @react-three/rapier.
+difficulty: Intermediate
+prereqs: Chapters 3 and 7
+time: 60–75 minutes
+outcome: Choose a stable integrator, compute collision impulses, avoid tunnelling, and build physics scenes with Rapier in three.js and R3F.
 ---
 
 ## Simulating motion
@@ -174,7 +178,7 @@ export default function App() {
 Players should usually **not** be dynamic rigid bodies (they tip over, slide and bounce). Use a kinematic capsule with Rapier's `KinematicCharacterController` (`world.createCharacterController(0.01)`, then `computeColliderMovement(collider, desired)` and read `computedMovement()`), which slides along walls, climbs steps and snaps to slopes, then move the body with `setNextKinematicTranslation`.
 :::
 
-## Verlet cloth and soft constraints
+## Verlet cloth and soft constraints {advanced}
 
 Cloth, ropes and jelly are particles joined by distance constraints, simulated with Verlet integration and **position-based** constraint solving (Jakobsen's method, the basis of position-based dynamics).
 
@@ -211,6 +215,18 @@ Thousands of particles or cloth vertices move to the GPU: in WebGL with ping-pon
 - Tunnelling: CCD for fast small objects; iterations and similar masses for stable stacks; sleeping for resting piles.
 - Rapier (WASM) is the default web choice; `@react-three/rapier` gives `<Physics>`, `<RigidBody>`, colliders, sensors and events.
 - Prefer primitive colliders; trimesh only for static level geometry; kinematic character controllers for players.
+:::
+
+:::build Knock-down tower
+Problem: Build a tower of 60 boxes and let the player throw balls at it with the mouse, using Rapier.
+Requirements:
+- Fixed ground, dynamic boxes, CCD on the balls.
+- Throw direction from the camera ray, speed from how long the button is held.
+- A score that counts boxes knocked below a height.
+Constraints: stable stacking at rest (no jitter) and identical results at any frame rate.
+Hints: start boxes slightly apart rather than overlapping; let bodies sleep; read positions in the physics step, not from React state.
+Relevant APIs: `@react-three/rapier` `Physics`, `RigidBody`, `ccd`, `applyImpulse`, `InstancedRigidBodies`, `Raycaster`.
+Expected result: a tower that stands still until hit, then collapses believably, with fast balls never passing through it.
 :::
 
 ## Interview questions

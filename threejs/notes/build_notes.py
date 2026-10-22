@@ -35,7 +35,14 @@ OUT_HTML = os.path.join(HERE, "notebook.html")
 OUT_PDF = os.path.join(HERE, "ThreeLab-Notebook.pdf")
 CHROME = "/usr/bin/google-chrome"
 
-EDITION = "Edition 1 · October 2026 · three.js r186 · React Three Fiber 9"
+TITLE = "ThreeLab Notebook"
+SUBTITLE = "The Technical Study & Interview Guide to Three.js, React Three Fiber & Real-Time 3D"
+AUTHOR = "[AUTHOR NAME]"                     # placeholder until the author's details are supplied
+EDITION = "First edition · three.js r186 · React Three Fiber 9 · drei 10 · React 19"
+FRONT = os.path.join(SRC, "front")
+BACK = os.path.join(SRC, "back")
+LEVELS = ("foundation", "intermediate", "advanced", "interview")
+ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
 
 # ---------------------------------------------------------------- helpers
 
@@ -59,6 +66,10 @@ class Ctx:
         self.n = 0
         self.math = []          # (key, tex, display)
         self.fig_no = {}        # chapter -> count
+        self.defs = []          # (term, anchor id, html of the first sentence, chapter)
+        self.def_ids = set()
+        self.trouble = 0        # running number for troubleshooting cards
+        self.fig_label = {}     # figure name -> "13.4"
 
     def put(self, html_str, kind="B"):
         self.n += 1
@@ -130,6 +141,17 @@ BOX = {
     "intuition": ("Intuition", "bulb"), "tip": ("Tip", "spark"), "warn": ("Pitfall", "alert"),
     "note": ("Note", "info"), "deep": ("Deep dive", "layers"), "new": ("New in recent three.js", "star"),
     "keypoints": ("Key points", "check"), "qa": ("Interview question", "q"), "recipe": ("Recipe", "code"),
+    "perf": ("Performance", "gauge"),
+}
+
+# Structured boxes: lines starting with "Field:" open a new labelled field.
+FIELD_BOX = {
+    "build": ("Build this", "hammer", ["Problem", "Requirements", "Constraints", "Hints", "Relevant APIs", "Expected result"]),
+    "apichange": ("API change", "swap", ["Older tutorials", "Current approach", "Why it changed", "Version"]),
+    "case": ("Case study", "gauge", ["Before", "Problem", "Investigation", "Fix", "After", "Why it worked"]),
+    "lens": ("Senior engineer lens", "eye", ["Junior", "Mid-level", "Senior"]),
+    "trouble": ("Problem", "wrench", ["Symptom", "Cause", "How to investigate", "Fix", "Prevention"]),
+    "project": ("Project", "flask", ["Brief", "Features", "Architecture", "Milestones", "Key APIs", "Stretch goals"]),
 }
 
 ICONS = {
@@ -145,6 +167,12 @@ ICONS = {
     "check": '<path d="m5 12 4 4 10-10"/>',
     "q": '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/>',
     "code": '<path d="m8 8-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/>',
+    "hammer": '<path d="m14 6 4 4M3 21l9-9M12.5 7.5 16 4l4 4-3.5 3.5z"/>',
+    "swap": '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+    "gauge": '<path d="M4 15a8 8 0 1 1 16 0"/><path d="m12 15 4-5"/>',
+    "eye": '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/>',
+    "wrench": '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-2.5z"/>',
+    "flask": '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/>',
 }
 
 
@@ -154,6 +182,10 @@ def icon(name):
 
 def md(text):
     return markdown.markdown(text, extensions=["tables", "sane_lists", "smarty"], output_format="html5")
+
+
+def slugify(t):
+    return re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
 
 
 class Chapter:
@@ -213,12 +245,23 @@ def render_box(ctx, ch, kind, rest, inner):
         items = "".join(f'<li><span class="fn">{i + 1}</span><span class="ft">{md(st)[3:-4]}</span></li>' for i, st in enumerate(steps))
         title = f'<div class="flow-title">{md(rest)[3:-4]}</div>' if rest else ""
         return f'<div class="flow">{title}<ol>{items}</ol></div>'
+    if kind in FIELD_BOX:
+        return render_field_box(ctx, ch, kind, rest, inner)
     if kind not in BOX:
         raise SystemExit(f"{ch.slug}: unknown box :::{kind}")
     label, ic = BOX[kind]
     attrs = dict(re.findall(r"(\w+)=(\S+)", rest))
     rest = re.sub(r"\{.*?\}", "", rest).strip()
     body = render_blocks(ctx, ch, inner)
+    if kind == "def" and rest:
+        did = "def-" + slugify(re.sub(r"<[^>]+>|`", "", rest))
+        while did in ctx.def_ids:
+            did += "-2"
+        ctx.def_ids.add(did)
+        ctx.defs.append((rest, did, first_sentence(body), ch))
+        title = md(rest)[3:-4]
+        head = f'<div class="box-head">{icon(ic)}<span class="box-label">{label}</span><span class=box-title>{title}</span></div>'
+        return f'<div class="box def" id="{did}">{head}<div class="box-body">{body}</div></div>'
     if kind == "qa":
         lvl = attrs.get("level", "")
         chip = f'<span class="lvl {esc(lvl)}">{esc(lvl)}</span>' if lvl else ""
@@ -227,8 +270,54 @@ def render_box(ctx, ch, kind, rest, inner):
         return f'<div class="qa{long}"><div class="q"><span class="qmark">Q</span><div class="qtext">{q}</div>{chip}</div><div class="a"><span class="amark">A</span><div class="abody">{body}</div></div></div>'
     title = md(rest)[3:-4] if rest else ""
     head = f'<div class="box-head">{icon(ic)}<span class="box-label">{label}</span>{f"<span class=box-title>{title}</span>" if title else ""}</div>'
-    long = " long" if len(re.sub(r"<[^>]+>", "", body)) > 900 else ""
+    limit = 700 if kind in ("calc", "deep") else 900
+    long = " long" if len(re.sub(r"<[^>]+>", "", body)) > limit else ""
     return f'<div class="box {kind}{long}">{head}<div class="box-body">{body}</div></div>'
+
+
+def first_sentence(body_html):
+    """First sentence of a definition (for the glossary), keeping inline markup and placeholders."""
+    m = re.search(r"<p>(.*?)</p>", body_html, re.S)
+    p = m.group(1) if m else body_html
+    parts = re.split(r"(?<=[a-z0-9)\]`>])\.\s+(?=[A-Z(<])", p, maxsplit=1)
+    out = parts[0].strip()
+    return out if out.endswith(".") else out + "."
+
+
+def render_field_box(ctx, ch, kind, rest, inner):
+    label, ic, fields = FIELD_BOX[kind]
+    illustrative = "{illustrative}" in rest
+    rest = rest.replace("{illustrative}", "").strip()
+    names = {f.lower(): f for f in fields}
+    blocks, cur = [], None
+    for line in inner.split("\n"):
+        m = re.match(r"^([A-Za-z][A-Za-z -]+?):\s*(.*)$", line)
+        if m and m.group(1).lower() in names:
+            cur = [names[m.group(1).lower()], [m.group(2)]]
+            blocks.append(cur)
+        elif cur is not None:
+            cur[1].append(line)
+        elif line.strip():
+            blocks.append(cur := ["", [line]])
+    rows = []
+    for name, lines in blocks:
+        text = "\n".join(lines).strip()
+        if kind == "case" and name in ("Before", "After"):
+            items = re.findall(r"^\s*[-*]\s*([^:\n]+):\s*(.+)$", text, re.M)
+            chips = "".join(f'<div class="mt"><span>{esc(k.strip())}</span><b>{md(v.strip())[3:-4]}</b></div>' for k, v in items)
+            rows.append(f'<div class="metrics {name.lower()}"><div class="mt-h">{name}</div><div class="mt-row">{chips}</div></div>')
+            continue
+        val = render_blocks(ctx, ch, text)
+        cls = slugify(name) or "plain"
+        rows.append(f'<div class="fr {cls}"><div class="fl">{esc(name)}</div><div class="fv">{val}</div></div>' if name else f'<div class="fr plain"><div class="fv">{val}</div></div>')
+    title = md(rest)[3:-4] if rest else ""
+    if kind == "trouble":
+        ctx.trouble += 1
+        label = f"Problem {ctx.trouble}"
+    badge = '<span class="badge">illustrative numbers</span>' if illustrative else ""
+    head = f'<div class="box-head">{icon(ic)}<span class="box-label">{label}</span>{f"<span class=box-title>{title}</span>" if title else ""}{badge}</div>'
+    long = " long" if len(re.sub(r"<[^>]+>", "", "".join(rows))) > 1000 else ""
+    return f'<div class="box fbox {kind}{long}">{head}<div class="fields">{"".join(rows)}</div></div>'
 
 
 def render_fig(ctx, ch, name, caption):
@@ -236,8 +325,11 @@ def render_fig(ctx, ch, name, caption):
         raise SystemExit(f"{ch.slug}: unknown figure {name}")
     n = ctx.fig_no.get(ch.num, 0) + 1
     ctx.fig_no[ch.num] = n
+    ctx.fig_label[name] = f"{ch.num}.{n}"
     svg = figs.FIGS[name]()
     cap = md(caption)[3:-4] if caption else ""
+    if not ch.num:
+        return f'<figure class="fig plain" id="fig-{name}">{svg}{f"<figcaption>{cap}</figcaption>" if cap else ""}</figure>'
     return f'<figure class="fig" id="fig-{name}">{svg}<figcaption><b>Figure {ch.num}.{n}</b> {cap}</figcaption></figure>'
 
 
@@ -247,7 +339,13 @@ def number_headings(ch, body_html):
 
     def rep(m):
         level, inner = int(m.group(1)), m.group(2)
+        tag = ""
+        t = re.search(r"\s*\{(%s)\}\s*$" % "|".join(LEVELS), inner)
+        if t:
+            tag, inner = t.group(1), inner[:t.start()]
         text = re.sub(r"<[^>]+>", "", inner)
+        if level == 2 and text.strip().lower() == "interview questions":
+            tag = "interview"
         if level == 2:
             sec[0] += 1
             sub[0] = 0
@@ -256,8 +354,9 @@ def number_headings(ch, body_html):
             sub[0] += 1
             num = f"{ch.num}.{sec[0]}.{sub[0]}"
         hid = f"s-{num.replace('.', '-')}"
-        ch.sections.append((level, hid, html.unescape(text), num))
-        return f'<h{level} id="{hid}"><span class="hn">{num}</span> {inner}</h{level}>'
+        ch.sections.append((level, hid, html.unescape(text), num, tag))
+        dtag = f' data-tag="{tag}"' if tag else ""
+        return f'<h{level} id="{hid}"{dtag}><span class="hn">{num}</span> {inner}</h{level}>'
     return re.sub(r"<h([23])>(.*?)</h\1>", rep, body_html)
 
 
@@ -297,116 +396,225 @@ def fill(ctx, s):
 # ---------------------------------------------------------------- page assembly
 
 def cover():
-    return f'''<section class="cover">
+    return f"""<section class="cover">
   <div class="cover-art">{figs.cover_art()}</div>
   <div class="cover-text">
-    <div class="cover-kicker">ThreeLab · the complete notebook</div>
-    <div class="cover-title">Three.js, R3F<br>&amp; <span>3D</span> <span>Graphics</span></div>
-    <p class="cover-sub">Concepts, definitions, the mathematics with worked calculations, three.js and React Three Fiber implementations, modern GPU techniques, and a full interview question bank, in one study notebook.</p>
-    <div class="cover-tags"><span>Maths</span><span>Rendering</span><span>PBR</span><span>Shaders</span><span>WebGPU · TSL</span><span>R3F</span><span>Performance</span><span>Interviews</span></div>
-    <div class="cover-ed">{EDITION}</div>
+    <div class="cover-kicker">The technical study &amp; interview guide</div>
+    <div class="cover-title">ThreeLab <span>Note</span><span>book</span></div>
+    <div class="cover-subtitle">Three.js · React Three Fiber · Real-Time 3D</div>
+    <p class="cover-sub">Learn the mathematics. Understand the rendering pipeline. Build with three.js and React Three Fiber. Optimise real-time 3D applications. Prepare for technical interviews.</p>
+    <div class="cover-tags"><span>Maths</span><span>Rendering pipeline</span><span>PBR</span><span>Shaders</span><span>WebGPU · TSL</span><span>R3F</span><span>Performance</span><span>WebXR</span><span>Interviews</span></div>
+    <div class="cover-ed">{esc(AUTHOR)} · {esc(EDITION)}</div>
   </div>
-</section>'''
+</section>"""
 
 
-def how_to_page():
-    return '''<section class="front" id="how-to-use">
-<h1 class="front-h">How to use this notebook</h1>
-<p class="lead">This is a study notebook, not a tutorial. Each chapter explains one idea from first principles: what it is, why it exists, the maths behind it with numbers worked out, and then how to build it in plain three.js and in React Three Fiber. Read it front to back once, then use it as a reference and a revision guide before interviews.</p>
-<div class="legend">
-  <div class="lg def"><b>Definition</b><span>The precise meaning of a term. Learn these word for word.</span></div>
-  <div class="lg formula"><b>Formula</b><span>The equation, with every symbol explained.</span></div>
-  <div class="lg calc"><b>Worked example</b><span>The same formula with real numbers, step by step.</span></div>
-  <div class="lg intuition"><b>Intuition</b><span>A picture or analogy that makes the idea stick.</span></div>
-  <div class="lg tip"><b>Tip</b><span>What experienced developers do in practice.</span></div>
-  <div class="lg warn"><b>Pitfall</b><span>A common bug and how to avoid it.</span></div>
-  <div class="lg deep"><b>Deep dive</b><span>Extra depth for advanced readers. Safe to skip at first.</span></div>
-  <div class="lg new"><b>New in recent three.js</b><span>Changes from r180 to r186 that older tutorials miss.</span></div>
-  <div class="lg qa"><b>Interview question</b><span>A question you may be asked, with a model answer.</span></div>
-</div>
-<h2 class="front-h2">Conventions</h2>
-<ul class="conv">
-<li><b>Coordinates.</b> three.js is right-handed with <b>+Y up</b>; the camera looks down its own <b>−Z</b>. One unit is treated as one metre.</li>
-<li><b>Vectors and matrices.</b> Bold lower-case letters are vectors ($\\mathbf{v}$), capitals are matrices ($M$). Vectors are columns, so a matrix transforms a point as $M\\mathbf{p}$ and transforms read <b>right to left</b>.</li>
-<li><b>Angles.</b> three.js uses <b>radians</b> everywhere except <code>PerspectiveCamera.fov</code>, which is in degrees.</li>
-<li><b>Code.</b> Code labelled <span class="pill three">three.js</span> is plain JavaScript with <code>import * as THREE from "three"</code>. Code labelled <span class="pill r3f">R3F</span> is a React component inside a <code>&lt;Canvas&gt;</code>. Shader code is labelled GLSL, WGSL or TSL.</li>
-<li><b>Versions.</b> Written against three.js r186, React Three Fiber 9, drei 10 and React 19. Where an API changed recently, a <i>New in recent three.js</i> box says so.</li>
-</ul>
-<p class="small muted">Companion to the ThreeLab course, where every idea here has a live, editable 3D example. Notebook text is in Indian English; API names keep their original spelling (for example <code>color</code>).</p>
-</section>'''
+def title_page():
+    return f"""<section class="title-page">
+  <div class="tp-art">{figs.cover_art(small=True)}</div>
+  <h1 class="tp-title">{TITLE}</h1>
+  <div class="tp-sub">{esc(SUBTITLE)}</div>
+  <div class="tp-rule"></div>
+  <div class="tp-author">{esc(AUTHOR)}</div>
+  <div class="tp-ed">{esc(EDITION)}</div>
+</section>"""
 
 
-def toc(chapters, pages):
+class Page:
+    """A front- or back-matter page written in Markdown (src/front, src/back)."""
+
+    def __init__(self, path):
+        raw = open(path, encoding="utf-8").read()
+        _, head, body = raw.split("---", 2)
+        self.fm = {k.strip(): v.strip() for k, _, v in (l.partition(":") for l in head.strip().splitlines())}
+        self.title = self.fm.get("title", "")
+        self.id = self.fm.get("id", slugify(self.title))
+        self.cls = self.fm.get("class", "")
+        self.toc = self.fm.get("toc", "yes") == "yes"
+        self.body = body
+        self.num, self.slug, self.sections = 0, self.id, []
+
+
+def load_pages(folder):
+    if not os.path.isdir(folder):
+        return []
+    return [Page(os.path.join(folder, f)) for f in sorted(os.listdir(folder)) if f.endswith(".md")]
+
+
+def page_html(ctx, pg, extra=""):
+    inner = render_blocks(ctx, pg, protect(ctx, pg.body))
+    inner = re.sub(r"<h2>", '<h2 class="front-h2">', inner)
+    h = f'<h1 class="front-h">{esc(pg.title)}</h1>' if pg.fm.get("heading", "yes") == "yes" else ""
+    return f'<section class="front {pg.cls}" id="{pg.id}">{h}{inner}{extra}</section>'
+
+
+def toc(front, chapters, back, pages):
     rows = []
+    fr = "".join(f'<a class="toc-fm" href="#{p.id}"><span class="toc-t">{esc(p.title)}</span><span class="toc-p">{pages.get(p.id, "000")}</span></a>' for p in front if p.toc)
+    rows.append(f'<div class="toc-front">{fr}</div>')
+    part_no = 0
     for ch in chapters:
         if ch.part:
-            rows.append(f'<div class="toc-part">{esc(ch.part)}</div>')
+            part_no += 1
+            rows.append(f'<div class="toc-part"><span>Part {ROMAN[part_no]}</span> {esc(ch.part)}</div>')
         pg = pages.get(ch.id, "000")
         rows.append(f'<a class="toc-ch" href="#{ch.id}"><span class="toc-n">{ch.num:02d}</span><span class="toc-t">{esc(ch.title)}</span><span class="toc-p">{pg}</span></a>')
+    rows.append('<div class="toc-part"><span>Back matter</span></div>')
+    rows += [f'<a class="toc-fm" href="#{p.id}"><span class="toc-t">{esc(p.title)}</span><span class="toc-p">{pages.get(p.id, "000")}</span></a>' for p in back if p.toc]
     return f'<section class="front toc" id="contents"><h1 class="front-h">Contents</h1><div class="toc-list">{"".join(rows)}</div></section>'
 
 
-def chapter_html(ctx, ch):
+def dashboard(ch):
+    fm = ch.fm
+    learn = "".join(f'<li><span>{num}</span>{esc(t)}</li>' for lvl, _, t, num, tag in ch.sections if lvl == 2 and tag != "interview")
+    diff = fm.get("difficulty", "")
+    meta = ""
+    if diff:
+        meta = f"""<div class="dash-meta">
+      <div><span>Difficulty</span><b class="dlv {slugify(diff.split()[0])}">{esc(diff)}</b></div>
+      <div><span>Prerequisites</span><b>{md(fm.get("prereqs", "None"))[3:-4]}</b></div>
+      <div><span>Study time</span><b>{esc(fm.get("time", ""))}</b></div></div>"""
+    end = f'<div class="dash-end"><div class="ch-in-h">By the end</div><p>{md(fm["outcome"])[3:-4]}</p></div>' if fm.get("outcome") else ""
+    return f'{meta}<div class="dash-grid"><div class="ch-in"><div class="ch-in-h">You will learn</div><ol>{learn}</ol></div>{end}</div>'
+
+
+def chapter_html(ctx, ch, part_no):
     body = protect(ctx, ch.body)
     inner = render_blocks(ctx, ch, body)
     inner = number_headings(ch, inner)
-    secs = "".join(f'<li><span>{num}</span>{esc(t)}</li>' for lvl, _, t, num in ch.sections if lvl == 2)
-    part = f'<div class="part-page" id="part-{ch.num}"><div class="part-kicker">Part</div><div class="part-title">{esc(ch.part)}</div><div class="part-art">{figs.part_art(ch.num)}</div></div>' if ch.part else ""
-    summary = ch.fm.get("summary", "")
-    opener = f'''<header class="ch-open" id="{ch.id}">
+    part = ""
+    if ch.part:
+        part = f'<div class="part-page" id="part-{ch.num}"><div class="part-kicker">Part {ROMAN[part_no]}</div><div class="part-title">{esc(ch.part)}</div><div class="part-art">{figs.part_art(ch.num)}</div></div>'
+    opener = f"""<header class="ch-open" id="{ch.id}">
+  <div class="ch-kicker">Chapter {ch.num:02d}</div>
   <div class="ch-num">{ch.num:02d}</div>
   <h1 class="ch-title">{esc(ch.title)}</h1>
-  <p class="ch-sum">{esc(summary)}</p>
-  <div class="ch-in"><div class="ch-in-h">In this chapter</div><ol>{secs}</ol></div>
-</header>'''
+  <p class="ch-sum">{esc(ch.fm.get("summary", ""))}</p>
+  {dashboard(ch)}
+</header>"""
     return f'{part}<article class="chapter" data-ch="{ch.num}">{opener}<div class="ch-body">{inner}</div></article>'
 
 
+def running_heads(chapters):
+    """Named pages give every chapter its own running header (Chrome supports @page names)."""
+    css = []
+    for ch in chapters:
+        label = f"{ch.num:02d} · {ch.title}".replace('"', '\\"')
+        css.append(f'.chapter[data-ch="{ch.num}"] {{ page: c{ch.num}; }}\n@page c{ch.num} {{ @top-right {{ content: "{label}"; }} }}')
+    return "\n".join(css)
+
+
+def link_xrefs(body, chapters):
+    """Turn 'Chapter N' in running text into links (not inside code, headings or existing links)."""
+    ids = {ch.num: ch.id for ch in chapters}
+    out, skip = [], 0
+    for part in re.split(r"(<[^>]+>)", body):
+        if part.startswith("<"):
+            m = re.match(r"<(/?)(code|pre|a|h1|h2|h3|svg|figcaption)\b", part)
+            if m:
+                skip += -1 if m.group(1) else 1
+            out.append(part)
+        elif skip <= 0:
+            def linkset(m):
+                return re.sub(r"\d+", lambda d: f'<a class="xref" href="#{ids[int(d.group(0))]}">{d.group(0)}</a>' if int(d.group(0)) in ids else d.group(0), m.group(0))
+            out.append(re.sub(r"\bChapters? \d+(?:(?:, | and | or | to |–)\d+)*\b", linkset, part))
+        else:
+            out.append(part)
+    return "".join(out)
+
+
+def glossary_html(ctx, extra_path):
+    entries = {}
+    for term, did, sent, ch in ctx.defs:
+        name = re.sub(r"<[^>]+>|`", "", md(term)[3:-4])
+        entries.setdefault(name.lower(), (name, f'<a href="#{did}">{md(term)[3:-4]}</a>', sent, f'<a class="gl-ch" href="#{ch.id}">Ch. {ch.num}</a>'))
+    if os.path.exists(extra_path):
+        for line in open(extra_path, encoding="utf-8"):
+            m = re.match(r"^- \*\*(.+?)\*\*(?: \((\d+)\))?:\s*(.+)$", line.strip())
+            if not m:
+                continue
+            name, chn, text = m.groups()
+            if name.lower() in entries:
+                continue
+            ref = f'<a class="gl-ch" href="#{[c.id for c in CHAPTERS if c.num == int(chn)][0]}">Ch. {chn}</a>' if chn else ""
+            entries[name.lower()] = (name, f"<b>{esc(name)}</b>", md(protect(ctx, text))[3:-4], ref)
+    groups = {}
+    for k in sorted(entries, key=lambda k: re.sub(r"^[^a-z0-9]+", "", k)):
+        name, head, sent, ref = entries[k]
+        letter = (re.sub(r"^[^A-Za-z0-9]+", "", name)[:1] or "#").upper()
+        letter = letter if letter.isalpha() else "#"
+        groups.setdefault(letter, []).append(f'<div class="gl-e"><div class="gl-t">{head} {ref}</div><div class="gl-d">{sent}</div></div>')
+    return "".join(f'<div class="gl-g"><div class="gl-l">{L}</div>{"".join(v)}</div>' for L, v in groups.items()), len(entries)
+
+
+CHAPTERS = []
+
+
 def build_html(page_map=None):
+    global CHAPTERS
     files = sorted(f for f in os.listdir(SRC) if re.match(r"\d\d-.*\.md$", f))
     chapters = [Chapter(os.path.join(SRC, f), i + 1) for i, f in enumerate(files)]
+    CHAPTERS = chapters
+    front, back = load_pages(FRONT), load_pages(BACK)
     ctx = Ctx()
-    bodies = [chapter_html(ctx, ch) for ch in chapters]
+    front_html = "".join(page_html(ctx, p) for p in front)
+    bodies, part_no = [], 0
+    for ch in chapters:
+        part_no += bool(ch.part)
+        bodies.append(chapter_html(ctx, ch, part_no))
+    gl, n_gl = glossary_html(ctx, os.path.join(BACK, "glossary-extra.txt"))
+    back_html = "".join(page_html(ctx, p, extra=f'<div class="glossary">{gl}</div>' if p.id == "glossary" else "") for p in back)
     bad = render_math(ctx) or 0
-    body = "".join(bodies)
-    body = fill(ctx, body)
+    body = fill(ctx, "".join(bodies))
+    front_html, back_html = fill(ctx, front_html), fill(ctx, back_html)
     body = re.sub(r"<table>((?:(?!</table>).)*)</table>", lambda m: m.group(0) if m.group(1).count("<tr>") <= 9 else '<table class="long">' + m.group(1) + "</table>", body, flags=re.S)
-    left = re.findall(r"ZZ[A-Z]\d+ZZ", body)
+    body = re.sub(r"\[(MUST|SHOULD|DEEP)\]", lambda m: f'<span class="kl {m.group(1).lower()}">{m.group(1)}</span>', body)
+    body = link_xrefs(body, chapters)
+    def figref(m):
+        lab = ctx.fig_label.get(m.group(1))
+        if not lab:
+            print("  ! unknown figure reference:", m.group(1))
+            return m.group(0)
+        return f'<a class="xref" href="#fig-{m.group(1)}">Figure {lab}</a>'
+    body = re.sub(r"\[\[fig:(\w+)\]\]", figref, body)
+    left = re.findall(r"ZZ[A-Z]\d+ZZ", body + front_html + back_html)
     if left:
         print("  ! unreplaced placeholders:", left[:5])
-    # front-matter maths ($...$) is tiny: render it through the same path
-    front = how_to_page()
-    front = render_front_math(front)
-    css = open(os.path.join(HERE, "notebook.css"), encoding="utf-8").read()
-    doc = f'''<!doctype html>
+    css = open(os.path.join(HERE, "notebook.css"), encoding="utf-8").read() + "\n" + running_heads(chapters)
+    doc = f"""<!doctype html>
 <html lang="en-IN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ThreeLab Notebook — Three.js, R3F &amp; 3D Graphics</title>
+<title>{TITLE}: {esc(SUBTITLE)}</title>
+<meta name="author" content="{esc(AUTHOR)}">
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="../../shared/vendor/katex/katex.min.css">
 <style>{css}</style></head>
 <body>
 {cover()}
-{front}
-{toc(chapters, page_map or {})}
+{title_page()}
+{front_html_with_toc(front, front_html, chapters, back, page_map or {})}
 {body}
-<section class="back"><div class="back-art">{figs.cover_art(small=True)}</div><p>ThreeLab Notebook · {EDITION}</p><p class="muted">Part of the Techbook ThreeLab course. Study it, scribble on it, and build things.</p></section>
-</body></html>'''
+{back_html}
+<section class="back"><div class="back-art">{figs.cover_art(small=True)}</div><p>{TITLE}</p><p class="muted">{esc(SUBTITLE)}</p></section>
+</body></html>"""
     open(OUT_HTML, "w", encoding="utf-8").write(doc)
-    words = len(re.sub(r"<[^>]+>", " ", body).split())
-    STATS.update(figures=sum(ctx.fig_no.values()), questions=body.count('class="qa'), words=words)
-    print(f"  html: {len(chapters)} chapters, {sum(ctx.fig_no.values())} figures, {len(ctx.math)} maths, ~{words:,} words, {bad} KaTeX errors")
-    return chapters
+    words = len(re.sub(r"<[^>]+>", " ", body + front_html + back_html).split())
+    STATS.update(figures=sum(ctx.fig_no.values()), questions=body.count('class="qa'), words=words, glossary=n_gl)
+    print(f"  html: {len(chapters)} chapters, {len(front)}+{len(back)} front/back pages, {sum(ctx.fig_no.values())} figures, "
+          f"{len(ctx.math)} maths, {n_gl} glossary terms, ~{words:,} words, {bad} KaTeX errors")
+    return chapters, front, back
+
+
+def front_html_with_toc(front, front_html, chapters, back, pages):
+    """Insert the contents right after the pages flagged 'before-toc' (copyright)."""
+    secs = re.split(r'(?=<section class="front)', front_html)
+    secs = [x for x in secs if x.strip()]
+    before = [x for x, p in zip(secs, front) if p.fm.get("before_toc") == "yes"]
+    after = [x for x, p in zip(secs, front) if p.fm.get("before_toc") != "yes"]
+    return "".join(before) + toc(front, chapters, back, pages) + "".join(after)
 
 
 STATS = {}
-
-
-def render_front_math(s):
-    ctx = Ctx()
-    s = INLINE_MATH.sub(lambda m: (ctx.math.append((ctx.put("", "I"), m.group(1), False)) or ctx.math[-1][0]), s)
-    render_math(ctx)
-    return fill(ctx, s)
 
 
 # ---------------------------------------------------------------- PDF
@@ -464,7 +672,7 @@ def outline_pages(path):
     return res
 
 
-def fix_outline(path, chapters):
+def fix_outline(path, chapters, front=(), back=()):
     """Rebuild the PDF bookmarks with clean titles and a Part > Chapter > Section tree.
 
     Chrome derives bookmarks from headings but drops the space at every line wrap
@@ -482,23 +690,34 @@ def fix_outline(path, chapters):
         del writer._root_object["/Outlines"]
     add = lambda title, pg, parent=None: writer.add_outline_item(title, max(0, (pg or 1) - 1), parent=parent)
     add("Cover", 1)
-    for t in ("How to use this notebook", "Contents"):
+    add("Title page", 2)
+    order = [p for p in front if p.fm.get("before_toc") == "yes"] + ["Contents"] + [p for p in front if p.fm.get("before_toc") != "yes"]
+    for p in order:
+        t = p if isinstance(p, str) else p.title
         add(t, pages.get(key(t)))
-    part_item, missing = None, 0
+    part_item, missing, part_no = None, 0, 0
     for ch in chapters:
         cpage = pages.get(key(ch.title))
         missing += cpage is None
         if ch.part:
-            part_item = add(f"Part: {ch.part}", (cpage or 2) - 1)
+            part_no += 1
+            part_item = add(f"Part {ROMAN[part_no]}: {ch.part}", (cpage or 2) - 1)
         ch_item = add(f"{ch.num}. {ch.title}", cpage, part_item)
         sec_item = None
-        for level, hid, title, num in ch.sections:
+        for level, hid, title, num, tag in ch.sections:
             pg = pages.get(key(f"{num}{title}"))
+            if pg is None:          # headings with a generated label: match on the prefix
+                pg = next((v for k, v in pages.items() if k.startswith(key(f"{num}{title}"))), None)
             missing += pg is None
             if level == 2:
                 sec_item = add(f"{num} {title}", pg, ch_item)
             else:
                 add(f"{num} {title}", pg, sec_item or ch_item)
+    for p in back:
+        if p.toc:
+            add(p.title, pages.get(key(p.title)))
+    writer.add_metadata({"/Title": f"{TITLE}: {SUBTITLE}", "/Author": AUTHOR, "/Subject": SUBTITLE,
+                         "/Keywords": "three.js, React Three Fiber, R3F, WebGL, WebGPU, TSL, 3D graphics, PBR, shaders, WebXR, interview"})
     writer.page_mode = "/UseOutlines"          # open with the bookmarks panel where viewers support it
     with open(path, "wb") as fh:
         writer.write(fh)
@@ -508,7 +727,7 @@ def fix_outline(path, chapters):
 def main():
     args = sys.argv[1:]
     print("Building ThreeLab Notebook")
-    chapters = build_html()
+    chapters, front, back = build_html()
     if "--html" in args:
         return
     tmp = OUT_PDF + ".pass1.pdf"
@@ -518,16 +737,16 @@ def main():
     for level, title, page in outl:
         titles.setdefault(re.sub(r"\s+", "", title), page)
     pages = {}
-    for ch in chapters:
+    for ch in list(chapters) + list(front) + list(back):
         pages[ch.id] = titles.get(re.sub(r"\s+", "", ch.title)) or "?"
-    missing = [c.title for c in chapters if pages[c.id] == "?"]
+    missing = [c.title for c in list(chapters) + [p for p in list(front) + list(back) if p.toc] if pages[c.id] == "?"]
     if missing:
         print("  ! no page found for:", missing)
     build_html(pages)
     print_pdf(OUT_PDF)
     os.remove(tmp)
-    chapters = build_html(pages)              # same structure; refreshes the section lists for the outline
-    miss = fix_outline(OUT_PDF, chapters)
+    chapters, front, back = build_html(pages)   # same structure; refreshes the section lists for the outline
+    miss = fix_outline(OUT_PDF, chapters, front, back)
     print(f"  bookmarks rebuilt ({miss} headings without a page)")
     n = subprocess.run(["pdfinfo", OUT_PDF], capture_output=True, text=True).stdout
     pcount = re.search(r"Pages:\s+(\d+)", n).group(1)

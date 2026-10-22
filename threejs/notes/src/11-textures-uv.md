@@ -1,6 +1,10 @@
 ---
 title: Textures and UV Mapping
 summary: How images are wrapped onto surfaces. UV coordinates, wrapping and repeat, magnification and minification filters, mipmaps and anisotropy with the maths of choosing a mip level, GPU memory budgets, every PBR map type, normal mapping and the TBN matrix, compressed KTX2 textures, and special texture types.
+difficulty: Intermediate
+prereqs: Chapters 8 and 9
+time: 60–75 minutes
+outcome: Load and configure PBR texture sets, budget GPU memory, explain mipmapping and normal mapping, and ship compressed KTX2 textures.
 ---
 
 ## UV coordinates
@@ -28,6 +32,14 @@ Images are stored top row first, but WebGL's texture origin is bottom-left. thre
 | `offset` | `Vector2` | Shifts UVs (scrolling water, sprite-sheet frames) |
 | `rotation`, `center` | radians, `Vector2` | Rotates UVs about `center` |
 | `channel` | 0, 1, 2, 3 | Which UV set to use (`uv`, `uv1`, …): light maps often use a second set |
+
+:::apichange Second UV set: uv2 → uv1 and texture.channel
+Older tutorials: `geometry.setAttribute("uv2", geometry.attributes.uv)` so that `aoMap` and `lightMap` would find a second UV set.
+Current approach: UV sets are named `uv`, `uv1`, `uv2`, `uv3`, and each texture chooses its set with `texture.channel` (0 = `uv`, 1 = `uv1`).
+Why it changed: any map can now use any UV set, instead of AO and light maps being hard-wired to `uv2`.
+Version: `texture.channel` introduced in r151; attributes renamed in r152.
+:::
+
 
 :::formula The UV transform three.js applies
 $$\mathbf{uv}' = R(\text{rotation})\,\big((\mathbf{uv} - \mathbf{c})\odot\text{repeat}\big) + \mathbf{c} + \text{offset}$$
@@ -76,6 +88,8 @@ WebGL 2 supports mipmaps for any size, but power-of-two sizes (512, 1024, 2048) 
 ## GPU memory budgets
 
 The file size of a PNG or JPEG says nothing about GPU memory: images are **decoded** to raw pixels before upload.
+
+@fig(texture_pipeline) The life of a texture. Download size, CPU decode time, GPU memory and sampling bandwidth are four different budgets.
 
 :::calc What a 4K texture really costs
 4096 × 4096 RGBA8: $4096^2\times 4$ bytes $= 64$ MiB, with mipmaps $\times 4/3 = 85.3$ MiB. A typical PBR material has base colour, normal and an ORM map: about **256 MiB** for one material. A 2.5 MB JPEG on disk becomes 85 MiB in VRAM.
@@ -153,7 +167,7 @@ function Floor() {
 }
 ```
 
-## Normal mapping and tangent space
+## Normal mapping and tangent space {advanced}
 
 :::def Normal map
 A texture whose RGB values encode a **surface normal** per texel, adding fine detail (bricks, scratches, pores) to lighting without adding triangles. Values are stored in **tangent space**, relative to the surface itself, so the same map works however the surface is oriented or deformed. A flat area is the familiar light blue $(128, 128, 255)$, meaning "straight out of the surface".
@@ -234,6 +248,18 @@ gltfLoader.setKTX2Loader(ktx2);      // glTF files using KHR_texture_basisu now 
 - Only colour maps are sRGB; data maps stay linear. `TextureLoader` does not set sRGB for you; `GLTFLoader` does.
 - Normal maps store tangent-space normals: $\mathbf{n} = 2\mathbf{c} - 1$, transformed by the TBN matrix.
 - KTX2/Basis gives one file that transcodes to each GPU's compressed format.
+:::
+
+:::build PBR texture inspector
+Problem: Build a viewer that loads a PBR texture set onto a sphere and a plane, with switches for each map, a repeat slider and a mip-level visualiser.
+Requirements:
+- Correct colour spaces: sRGB for base colour only.
+- Anisotropic filtering on the plane at a grazing camera angle.
+- Display the texture memory each texture costs, including mipmaps.
+Constraints: support a KTX2 version of the same set and compare memory.
+Hints: memory = $w\times h\times$ bytes per texel $\times 4/3$; set `texture.anisotropy` from `renderer.capabilities.getMaxAnisotropy()`.
+Relevant APIs: `TextureLoader`, `KTX2Loader`, `texture.colorSpace`, `wrapS/wrapT`, `repeat`, `anisotropy`, `material.needsUpdate`.
+Expected result: toggling each map changes only what it should, the floor stays sharp at grazing angles, and KTX2 cuts memory by four to eight times.
 :::
 
 ## Interview questions
