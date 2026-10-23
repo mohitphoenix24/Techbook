@@ -18,6 +18,8 @@
      EXT.search (terms) => [{ title, sub, href, icon, lvl }]   extra Ctrl+K results
      EXT.icons  { name: "<svg paths>" }                   extra icons
    `api` gives a page everything it needs to look like the rest of the site.
+   :::qa Question? {level=easy}  an interview question with a collapsible answer; SITE.qa = { title, sub, groups:[{id,label,icon,modules:[moduleId]}] }
+   turns on the "Interview Q&A" page (#/qa/<group>) that gathers every :::qa box by topic, with search and a "known" tracker.
    SITE.ctas [{ href, icon, label }] adds buttons to the home hero.
    SITE.levelLabels { easy: "Beginner" } renames level chips; SITE.stats(info) => [{ n, label }] replaces the home stat tiles.
    ========================================================================== */
@@ -258,10 +260,20 @@
     return { id: meta.id || slugify(name), title: name, level: (meta.level || "medium").toLowerCase(), lc: meta.lc || "", tags: String(meta.tags || "").split(",").map((t) => t.trim()).filter(Boolean) };
   }
 
+  // ":::qa Why is the destructor virtual? {level=medium}" → { title, level }
+  function parseQA(title) {
+    const m = String(title || "").match(/^(.*?)\s*\{([^}]*)\}\s*$/);
+    const name = (m ? m[1] : title).trim();
+    const meta = m ? parseMeta(m[2]) : {};
+    return { title: name, level: String(meta.level || "").toLowerCase() };
+  }
+
   // Parse every lesson once: glossary + problems + search index + stats
   const glossary = [];
   const problems = [];
   const problemById = {};
+  const qas = [];
+  const qaIds = {};
   let runnableCount = 0, vizCount = 0;
   lessons.forEach((l) => {
     l.blocks = parseBlocks(l.body);
@@ -276,6 +288,13 @@
         if (b.kind === "problem") {
           const p = parseProblem(b.title);
           if (!problemById[p.id]) { p.lesson = l; problemById[p.id] = p; problems.push(p); }
+        }
+        if (b.kind === "qa") {
+          const q = parseQA(b.title);
+          let id = slugify(q.title).slice(0, 56) || "q", n = 1;
+          while (qaIds[id]) id = slugify(q.title).slice(0, 52) + "-" + ++n;
+          q.id = id; q.lesson = l; q.blocks = b.children; q.raw = b.raw;
+          qaIds[id] = q; qas.push(q);
         }
         walk(b.children);
       }
@@ -544,6 +563,35 @@
     return card;
   }
 
+  /* ------------------------------------------------------------ interview Q&A */
+  const knownMap = store.get("qaKnown", {});
+  const isKnown = (id) => !!knownMap[id];
+  function setKnown(id, v) { if (v) knownMap[id] = 1; else delete knownMap[id]; store.set("qaKnown", knownMap); }
+
+  // A collapsible question. The answer is rendered the first time it is opened, so a page with
+  // hundreds of questions stays light (and runnable answers only start an editor when read).
+  function qaCard(q) {
+    const d = el(`<details class="qa ${isKnown(q.id) ? "known" : ""}" id="qa-${esc(q.id)}">
+      <summary><span class="qa-q">Q</span><span class="qa-title">${mdInline(q.title)}</span>${lvlChip(q.level)}<span class="qa-tick" title="You marked this as known">✓</span></summary>
+      <div class="qa-body"></div>
+      <div class="qa-foot"><button class="btn qa-known-btn">${icon("check")} <span></span></button></div></details>`);
+    const btn = $(".qa-known-btn", d);
+    const paint = () => { $("span", btn).textContent = isKnown(q.id) ? "Marked as known" : "Mark as known"; btn.classList.toggle("on", isKnown(q.id)); d.classList.toggle("known", isKnown(q.id)); };
+    paint();
+    btn.onclick = () => { setKnown(q.id, !isKnown(q.id)); paint(); d.dispatchEvent(new CustomEvent("qa-known", { bubbles: true })); };
+    const fill = () => {
+      if (d._filled) return;
+      d._filled = true;
+      const local = [];
+      renderBlocks(q.blocks, $(".qa-body", d), local);
+      local.forEach(hydrateCard);
+      local.forEach((c) => c._cm && setTimeout(() => c._cm.refresh(), 0));
+    };
+    d.addEventListener("toggle", () => { if (d.open) fill(); });
+    d._fill = fill;
+    return d;
+  }
+
   // ":::tabs Optional title" — the code blocks inside become tabs. The chosen
   // language is stored site-wide, and every tab group on the page follows it.
   const TAB_KEY = "techcontent:codetab";
@@ -605,6 +653,8 @@
           container.appendChild(d);
         } else if (b.kind === "problem") {
           container.appendChild(problemCard(b, cards));
+        } else if (b.kind === "qa") {
+          container.appendChild(qaCard(qas.find((x) => x.blocks === b.children) || { ...parseQA(b.title), id: "x" + Math.random().toString(36).slice(2, 8), blocks: b.children }));
         } else if (b.kind === "tabs") {
           container.appendChild(tabsCard(b, cards));
         } else if (b.kind === "complexity") {
@@ -703,6 +753,7 @@
           <div class="cta-row">
             <a class="btn btn-lg primary" href="#/l/${esc((last || first).id)}">${icon(last ? "play" : "rocket")} ${last ? "Continue: " + esc(last.title) : "Start learning"}</a>
             ${problems.length ? `<a class="btn btn-lg" href="#/problems">${icon("target")} ${problems.length} Problems</a>` : ""}
+            ${qas.length ? `<a class="btn btn-lg" href="#/qa">${icon("message")} ${qas.length} Interview Q&amp;As</a>` : ""}
             ${projectModule ? `<a class="btn btn-lg" href="#/projects">${icon("flask")} Project Lab</a>` : ""}
             ${(SITE.ctas || []).map((c) => `<a class="btn btn-lg" href="${esc(c.href)}">${icon(c.icon)} ${esc(c.label)}</a>`).join("")}
             ${SITE.notebook ? `<a class="btn btn-lg" href="#/notebook">${icon("file")} ${esc(SITE.notebook.cta || "Notebook (PDF)")}</a>` : ""}
@@ -713,7 +764,7 @@
       </section>
 
       <section class="stats">
-        ${SITE.stats ? SITE.stats({ lessons: learnLessons.length, modules: learnMods.length, runnable: runnableCount, definitions: glossary.length, viz: vizCount, projects: projects.length })
+        ${SITE.stats ? SITE.stats({ lessons: learnLessons.length, modules: learnMods.length, runnable: runnableCount, definitions: glossary.length, viz: vizCount, projects: projects.length, problems: problems.length, qas: qas.length })
           .map((x) => `<div class="stat"><b>${esc(x.n)}</b><span>${esc(x.label)}</span></div>`).join("") : `
         <div class="stat"><b>${learnLessons.length}</b><span>in-depth lessons</span></div>
         ${problems.length ? `
@@ -753,6 +804,13 @@
         <div class="section-head"><div><div class="kicker">Problem tracker</div><h2>${esc((SITE.problemsHomeTitle || "{n} classic interview problems, grouped by pattern").replace("{n}", problems.length))}</h2>
           <p>${esc(SITE.problemsHomeSub || `Each one is worked through in its lesson: brute force first, then the insight, the best solution in ${LANG}, and its time and space.`)} Tick them off as you solve them. You have solved <b>${Object.keys(solvedMap).filter((k) => problemById[k]).length}</b> so far.</p></div><a class="btn" href="#/problems">Open the tracker ${icon("right")}</a></div>
         <div class="pattern-cloud">${learnLessons.filter((l) => problems.some((p) => p.lesson === l)).map((l) => `<a href="#/l/${esc(l.id)}">${esc(l.title)} <span style="color:var(--muted)">· ${problems.filter((p) => p.lesson === l).length}</span></a>`).join("")}</div>
+      </section>` : ""}
+
+      ${qas.length && SITE.qa ? `<section class="section">
+        <div class="section-head"><div><div class="kicker">Interview bank</div><h2>${qas.length} interview questions, grouped by topic</h2>
+          <p>${esc(SITE.qa.sub || "")} You know <b>${qas.filter((q) => isKnown(q.id)).length}</b> so far.</p></div><a class="btn" href="#/qa">Open the bank ${icon("right")}</a></div>
+        ${(SITE.qa.groups || []).map((gr) => { const gq = qas.filter((q) => gr.modules.includes(q.lesson.module.id)); const ls = learnLessons.filter((l) => gq.some((q) => q.lesson === l)); return gq.length ? `<h3 class="qa-home-h">${icon(gr.icon || "message")} ${esc(gr.label)} <small>${gq.length} questions</small></h3>
+        <div class="pattern-cloud">${ls.map((l) => `<a href="#/qa/${esc(gr.id)}~qt-${esc(l.id)}">${esc(l.title.replace(/^(OOP|LLD)( interview)?:\s*/i, ""))} <span style="color:var(--muted)">· ${gq.filter((q) => q.lesson === l).length}</span></a>`).join("")}</div>` : ""; }).join("")}
       </section>` : ""}
 
       ${projects.length ? `<section class="section">
@@ -844,6 +902,13 @@
     editors.length = 0;
     renderBlocks(l.blocks, prose, cards);
     cards.forEach(hydrateCard);
+    const qaList = $$(".qa", prose);
+    if (qaList.length > 2) {
+      const bar = el(`<div class="qa-bar"><span>${icon("message")} <b>${qaList.length}</b> questions on this page. Answer each in your head first, then open it.</span><button class="btn" data-a="open">Expand all</button><button class="btn" data-a="close">Collapse all</button></div>`);
+      $('[data-a="open"]', bar).onclick = () => qaList.forEach((d) => { d.open = true; d._fill && d._fill(); });
+      $('[data-a="close"]', bar).onclick = () => qaList.forEach((d) => { d.open = false; });
+      prose.insertBefore(bar, prose.firstChild);
+    }
 
     // heading ids + anchors (problem cards are listed in the TOC too)
     const seen = {};
@@ -897,7 +962,7 @@
       // once the compiler is loaded, show types and type errors in every editor without running
       if (ready && Runner.decorateAll) ready.then(() => { if (currentLessonId === id) Runner.decorateAll(cards.filter((c) => c._runnable)); });
     }, 600);
-    if (anchor) setTimeout(() => { const t = document.getElementById(anchor); if (t) t.scrollIntoView(); }, 30);
+    if (anchor) setTimeout(() => { const t = document.getElementById(anchor); if (t) { if (t.tagName === "DETAILS") t.open = true; t.scrollIntoView(); } }, 30);
   }
 
   let spyObserver;
@@ -1032,6 +1097,68 @@
     draw();
   }
 
+  function renderQA(parts, anchor) {
+    const cfg = SITE.qa || {};
+    const groups = (cfg.groups || []).map((g) => ({ ...g, qs: qas.filter((q) => (g.modules || []).includes(q.lesson.module.id)) })).filter((g) => g.qs.length);
+    if (!groups.length) return render404();
+    setLayout({ sidebar: true });
+    setActiveNav("qa");
+    renderSidebar(null);
+    let gid = parts[0] || (anchor && (qaIds[anchor.replace(/^qa-/, "")] || {}).lesson && groups.find((g) => g.qs.includes(qaIds[anchor.replace(/^qa-/, "")]))?.id) || store.get("qaGroup", groups[0].id);
+    const g = groups.find((x) => x.id === gid) || groups[0];
+    store.set("qaGroup", g.id);
+    document.title = `${cfg.title || "Interview Q&A"} — ${SITE.name}`;
+    const f = store.get("qfilter", { lvl: "all", st: "all" });
+    main.innerHTML = `<div class="wide">
+      <div class="page-hero"><div class="kicker">Interview bank</div><h1>${esc(cfg.title || "Interview questions, in one place")}</h1><p>${esc(cfg.sub || "")}</p></div>
+      <div class="qa-tabs">${groups.map((x) => `<a href="#/qa/${esc(x.id)}" class="${x === g ? "on" : ""}">${icon(x.icon || "message")}<span>${esc(x.label)}</span><small>${x.qs.filter((q) => isKnown(q.id)).length}/${x.qs.length}</small></a>`).join("")}</div>
+      <div class="pt-summary" id="qa-summary"></div>
+      <div class="pt-tools">
+        <input class="gl-input" id="qa-q" placeholder="Filter questions and answers… (e.g. virtual, mutex, singleton)" autocomplete="off">
+        <div class="seg" id="qa-lvl">${[["all", "All"], ["easy", LEVEL_LABEL.easy], ["medium", LEVEL_LABEL.medium], ["hard", LEVEL_LABEL.hard]].map(([x, t]) => `<button data-v="${x}" class="${f.lvl === x ? "on" : ""}">${t}</button>`).join("")}</div>
+        <div class="seg" id="qa-st">${[["all", "Any"], ["todo", "To revise"], ["done", "Known"]].map(([x, t]) => `<button data-v="${x}" class="${f.st === x ? "on" : ""}">${t}</button>`).join("")}</div>
+        <button class="btn" id="qa-open">Expand all</button><button class="btn" id="qa-close">Collapse all</button>
+      </div>
+      <div class="qa-topics" id="qa-topics"></div>
+      <div id="qa-out"></div></div>`;
+
+    function summary() {
+      const k = g.qs.filter((q) => isKnown(q.id)).length, pct = g.qs.length ? k / g.qs.length : 0, C = 2 * Math.PI * 52;
+      $("#qa-summary").innerHTML = `<div class="pt-ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-3)" stroke-width="10"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="url(#qag)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset .5s"/>
+          <defs><linearGradient id="qag"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent-2)"/></linearGradient></defs>
+          <text x="60" y="58" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="26" fill="var(--text)">${k}</text>
+          <text x="60" y="78" text-anchor="middle" font-size="12" fill="var(--muted)">of ${g.qs.length}</text></svg><div class="lbl">questions known</div></div>
+        <div class="pt-bars">${["easy", "medium", "hard"].map((lv) => { const all = g.qs.filter((q) => q.level === lv); const d = all.filter((q) => isKnown(q.id)).length; return `<div class="pt-bar ${lv}"><div class="row"><span>${LEVEL_LABEL[lv]}</span><span>${d} / ${all.length}</span></div><div class="bar"><i style="width:${all.length ? (d / all.length) * 100 : 0}%"></i></div></div>`; }).join("")}</div>`;
+    }
+    function draw() {
+      const terms = ($("#qa-q").value || "").toLowerCase().split(/\s+/).filter(Boolean);
+      const list = g.qs.filter((q) => (f.lvl === "all" || q.level === f.lvl) && (f.st === "all" || (f.st === "done") === isKnown(q.id)) &&
+        (!terms.length || terms.every((t) => (q.title + " " + q.raw + " " + q.lesson.title).toLowerCase().includes(t))));
+      const byLesson = new Map();
+      list.forEach((q) => { if (!byLesson.has(q.lesson)) byLesson.set(q.lesson, []); byLesson.get(q.lesson).push(q); });
+      $("#qa-topics").innerHTML = [...byLesson].map(([l, qs]) => `<a href="javascript:void 0" data-l="${esc(l.id)}">${esc(l.title.replace(/^(OOP|LLD)( interview)?:\s*/i, ""))} <span>${qs.length}</span></a>`).join("");
+      $$("#qa-topics a").forEach((a) => (a.onclick = () => document.getElementById("qt-" + a.dataset.l)?.scrollIntoView({ behavior: "smooth", block: "start" })));
+      const out = $("#qa-out");
+      out.innerHTML = "";
+      if (!list.length) { out.innerHTML = `<p style="color:var(--muted)">No questions match these filters.</p>`; return; }
+      byLesson.forEach((qs, l) => {
+        const sec = el(`<section class="qa-topic" id="qt-${esc(l.id)}"><h3><a href="#/l/${esc(l.id)}">${esc(l.title)}</a> <small>${qs.filter((q) => isKnown(q.id)).length}/${qs.length} known${l.summary ? " · " + esc(l.summary.slice(0, 120)) : ""}</small></h3><div class="qa-list"></div></section>`);
+        qs.forEach((q) => $(".qa-list", sec).appendChild(qaCard(q)));
+        out.appendChild(sec);
+      });
+    }
+    $$("#qa-lvl button").forEach((b) => (b.onclick = () => { f.lvl = b.dataset.v; store.set("qfilter", f); $$("#qa-lvl button").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+    $$("#qa-st button").forEach((b) => (b.onclick = () => { f.st = b.dataset.v; store.set("qfilter", f); $$("#qa-st button").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+    $("#qa-q").oninput = draw;
+    $("#qa-open").onclick = () => $$("#qa-out .qa").forEach((d) => { d.open = true; d._fill && d._fill(); });
+    $("#qa-close").onclick = () => $$("#qa-out .qa").forEach((d) => { d.open = false; });
+    $("#qa-out").addEventListener("qa-known", summary);
+    summary();
+    draw();
+    if (anchor) setTimeout(() => { const t = document.getElementById(anchor); if (t) { if (t.tagName === "DETAILS") t.open = true; t.scrollIntoView({ block: "center" }); } }, 30);
+  }
+
   function render404() {
     setLayout({ sidebar: true });
     renderSidebar(null);
@@ -1061,6 +1188,7 @@
     else if (parts[0] === "m") renderModule(parts[1]);
     else if (parts[0] === "projects") renderProjects();
     else if (parts[0] === "problems") renderProblems();
+    else if (parts[0] === "qa" && qas.length) renderQA(parts.slice(1), anchor);
     else if (parts[0] === "glossary") renderGlossary();
     else if (parts[0] === "notebook" && SITE.notebook) renderNotebook();
     else if (EXT.pages && EXT.pages[parts[0]]) { EXT.pages[parts[0]](parts.slice(1), anchor, API); }
@@ -1118,6 +1246,7 @@
       }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 10);
       termHits = glossary.filter((g) => terms.every((t) => g.term.toLowerCase().includes(t))).slice(0, 6);
     }
+    const qaHits = terms.length ? qas.filter((q) => terms.every((t) => (q.title + " " + q.lesson.title).toLowerCase().includes(t))).slice(0, 6) : [];
     const probHits = terms.length ? problems.filter((p) => terms.every((t) => (p.title + " " + p.tags.join(" ")).toLowerCase().includes(t))).slice(0, 8) : [];
     palItems = [];
     let html = "";
@@ -1134,6 +1263,14 @@
       probHits.forEach((p) => {
         palItems.push(`#/l/${p.lesson.id}~p-${p.id}`);
         html += `<a class="res" href="#/l/${esc(p.lesson.id)}~p-${esc(p.id)}"><span class="r-icon">${icon("target")}</span><span class="r-main"><div class="r-title">${hl(p.title, terms)}</div><div class="r-sub">${esc(p.lesson.title)}${p.tags.length ? " · " + esc(p.tags.join(", ")) : ""}</div></span>${lvlChip(p.level)}</a>`;
+      });
+    }
+    if (qaHits.length) {
+      html += `<div class="grp">Interview questions</div>`;
+      qaHits.forEach((q) => {
+        const href = `#/l/${q.lesson.id}~qa-${q.id}`;
+        palItems.push(href);
+        html += `<a class="res" href="${esc(href)}"><span class="r-icon">${icon("message")}</span><span class="r-main"><div class="r-title">${hl(q.title, terms)}</div><div class="r-sub">${esc(q.lesson.title)}</div></span>${lvlChip(q.level)}</a>`;
       });
     }
     if (lessonHits.length) {
