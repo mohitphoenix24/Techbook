@@ -136,4 +136,18 @@ window.COURSES = [
     description: "Computer vision from the first pixel to modern AI, in simple words: image processing, features, camera geometry and 3D, motion and tracking, CNNs, detection, segmentation, transformers, CLIP, SAM, diffusion, 3D deep learning and robot vision, deployment, and a full interview-prep module with question banks, coding rounds, maths and system design. Run real OpenCV code on real photos in your browser, and build thirteen hands-on projects.",
     topics: ["Image processing", "Features & matching", "Camera geometry & 3D", "Tracking & video", "CNNs", "Detection & segmentation", "Transformers & foundation models", "Generative vision", "3D & robot vision", "Deployment", "Interview prep", "13 projects"],
   },
+  {
+    path: "oop-lld",
+    storageKey: "ooplab",
+    name: "OOPLab",
+    title: "OOP & LLD in C++, for interviews",
+    tagline: "OOP & LLD in C++, for interviews",
+    logo: "",
+    logoIcon: "cube",
+    colors: ["#2563eb", "#14b8a6"],
+    level: "Beginner → Interview-ready",
+    runtime: "C++20 compiled live with GCC, UML & sequence diagrams",
+    description: "Object-oriented programming in C++ and low-level design in one place: classes, inheritance, virtual functions, move semantics and smart pointers, then UML, SOLID, every design pattern and concurrency, 43 LLD problems sorted into basic, intermediate and advanced, and two topic-wise interview banks (more than 550 questions for OOP and for LLD) with output puzzles, find-the-bug drills and code-from-scratch exercises. Every one of the 487 C++ examples is compiled and run.",
+    topics: ["OOP in C++", "Modern C++", "SOLID", "Design patterns", "Concurrency", "43 LLD problems", "550+ interview Q&As"],
+  },
 ];

@@ -71,5 +71,13 @@ window.COURSE_STATS = {
     "apps": 0,
     "examples": 426,
     "problems": 244
+  },
+  "oop-lld": {
+    "modules": 22,
+    "lessons": 174,
+    "projects": 0,
+    "apps": 0,
+    "examples": 488,
+    "problems": 43
   }
 };

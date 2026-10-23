@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OOPLab — OOP & LLD in C++</title>
+  <meta name="description" content="Object-oriented programming in C++ and low-level design in one place: classes, inheritance, polymorphism, move semantics, SOLID, all the design patterns, concurrency, 40+ LLD problems from basic to advanced, and a topic-wise interview question bank. Every example compiles and runs.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232563eb'/%3E%3Cstop offset='1' stop-color='%2314b8a6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='url(%23g)'/%3E%3Cg fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M16 6 25 11v10l-9 5-9-5V11z'/%3E%3Cpath d='M7 11l9 5 9-5M16 16v10'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/oop.css">
+  <style>
+    :root { --accent: #1d4ed8; --accent-2: #0d9488; --accent-3: #7c3aed; }
+    :root[data-theme="dark"] { --accent: #60a5fa; --accent-2: #2dd4bf; --accent-3: #a78bfa; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="cube" style="font-size:19px"></span><span class="brand-text">OOPLab<small>OOP &amp; LLD in C++</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, questions, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/start" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Problems</span></a>
+      <a href="#/qa" data-nav="qa" data-icon="message"><span>Q&amp;A bank</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Unchanged C++ examples show output verified with g++ when the course was built. Edited C++ is compiled live with GCC on Compiler Explorer (godbolt.org)."><span class="dot"></span><span class="rt-label">C++ ready</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, questions and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/clike.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "OOPLab",
+      storageKey: "ooplab",
+      langName: "C++",
+      heroStatus: "✓ compiled with g++ 11",
+      glossaryHint: "Filter terms… (e.g. vtable, RAII, coupling)",
+      tagline: "OOP & LLD in C++",
+      badge: "OOP + LLD",
+      eyebrow: "C++ & OOP → SOLID → Design patterns → Concurrency → LLD problems → Interview bank",
+      heroTitle: 'Master OOP and low-level design. <span class="grad">Ace the round.</span>',
+      heroSub: "One place for everything an object-oriented design interview asks: classes, inheritance, virtual functions and move semantics in modern C++, then UML, SOLID, every design pattern, concurrency, more than forty LLD problems from basic to advanced, and a topic-wise bank of interview questions with answers. Every example compiles and shows real output.",
+      heroNote: "Nothing to install. Unchanged examples show output verified with g++; edit one and it compiles live with GCC.",
+      pathGoal: "interview-ready",
+      runTitle: "Try it yourself",
+      localHint: "Run this on your computer",
+      tocTip: "Every ▶ Run block is editable. Change a line, break the code on purpose, and read what the compiler says. Class diagrams and sequence diagrams are drawn from text, and sequence diagrams replay step by step.",
+      footer: "Built for learning. Edited C++ is sent to Compiler Explorer (godbolt.org) to compile; nothing else leaves your browser.",
+      levelLabels: { easy: "Basic", medium: "Intermediate", hard: "Advanced" },
+      problemStat: "LLD problems, worked end to end",
+      vizLabel: "class & sequence diagrams",
+      problemsHomeTitle: "{n} LLD problems: basic, intermediate, advanced",
+      problemsHomeSub: "Each one has the requirements, the class diagram, the key design decisions, a complete runnable C++ solution with its output, and the follow-up questions an interviewer asks next.",
+      problemsTitle: "LLD problems, by level",
+      problemsSub: "Filter by Basic, Intermediate or Advanced. Every problem is worked in its lesson: clarify the requirements, find the classes, draw the diagram, pick the patterns, write the code, then handle the extensions. Try each one on paper first (30 minutes), then read the walkthrough and tick it off.",
+      qa: {
+        title: "Interview questions, in one place",
+        sub: "Every question from the course, grouped by topic, with a short answer you can say out loud. Open a question, answer it in your head first, then check. Mark the ones you know; your progress stays on this device.",
+        groups: [
+          { id: "oop", label: "OOP in C++", icon: "cube", modules: ["oop-bank"] },
+          { id: "lld", label: "LLD & design patterns", icon: "puzzle", modules: ["lld-bank"] },
+        ],
+      },
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Every concept starts with an everyday picture and a tiny example. The exact rules and the corner cases come right after." },
+        { icon: "code", title: "Real, running C++", text: "Hundreds of examples, each compiled and run with g++ (with sanitizers on). The output you see is the output the program really prints." },
+        { icon: "puzzle", title: "Every pattern, every problem", text: "All the Gang-of-Four patterns, SOLID with before-and-after code, and LLD problems sorted into basic, intermediate and advanced." },
+        { icon: "message", title: "One interview bank", text: "OOP questions and LLD questions, each grouped by topic, with answers short enough to say aloud, output puzzles and 'what is wrong here' drills." },
+      ],
+      hero: {
+        file: "shapes.cpp",
+        lang: "cpp",
+        code: `#include <iostream>
+#include <memory>
+#include <vector>
+using namespace std;
+
+// An interface: what every shape can do
+class Shape {
+public:
+    virtual ~Shape() = default;
+    virtual double area() const = 0;
+    virtual const char* name() const = 0;
+};
+
+class Circle : public Shape {
+    double r_;
+public:
+    explicit Circle(double r) : r_(r) {}
+    double area() const override { return 3.14159 * r_ * r_; }
+    const char* name() const override { return "Circle"; }
+};
+
+class Rect : public Shape {
+    double w_, h_;
+public:
+    Rect(double w, double h) : w_(w), h_(h) {}
+    double area() const override { return w_ * h_; }
+    const char* name() const override { return "Rect"; }
+};
+
+int main() {
+    vector<unique_ptr<Shape>> shapes;
+    shapes.push_back(make_unique<Circle>(2));
+    shapes.push_back(make_unique<Rect>(3, 4));
+
+    for (const auto& s : shapes)          // one loop, many behaviours
+        cout << s->name() << " area = " << s->area() << "\\n";
+}`,
+        output: `Circle area = 12.5664
+Rect area = 12`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-cpp.js"></script>
+  <script src="assets/js/viz-oop.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>
