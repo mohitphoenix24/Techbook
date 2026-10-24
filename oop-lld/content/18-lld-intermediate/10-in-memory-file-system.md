@@ -2,31 +2,31 @@
 title: Design an In-Memory File System
 level: intermediate
 time: 60
-summary: Files and directories as a Composite tree, path parsing, mkdir -p, ls, cat, write, rm and mv, recursive size and search through a visitor-like traversal, permissions, and a tiny command interpreter on top.
+summary: Files and folders as a tree. Learn how to read paths, make folders, write and read files, list, delete, move and copy, find files, and add new kinds of nodes and permissions later.
 ---
 
 :::problem Design an In-Memory File System {level=medium tags="Composite,tree,paths,Visitor,commands"}
-Design an in-memory file system like a tiny Unix. It supports absolute paths, `mkdir` (with parents), creating and writing files, `ls`, `cat`, `rm`, `mv`/`cp`, `find` by name, and computing the size of a directory. Keep it extensible: new node types (symlinks), permissions, and new operations over the tree.
+Design an in-memory file system like a tiny Unix. It supports absolute paths, `mkdir` (with parent folders), creating and writing files, `ls`, `cat`, `rm`, `mv` and `cp`, `find` by name, and the size of a folder. Keep it easy to extend: new kinds of nodes (shortcuts), permissions, and new jobs over the tree.
 :::
 
 :::hint Hint
-A directory contains files and directories, and you treat them uniformly: that is the **Composite** pattern. Path handling (splitting `/a/b/c` and walking from the root) should be in one place. New operations on the tree (size, find, print) fit the **Visitor** idea.
+A folder holds files and other folders, and you treat them the same way. That is the **Composite** pattern. Handle paths (splitting `/a/b/c` and walking down from the root) in one place. New jobs over the tree (size, find, print) fit the **Visitor** idea.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Paths? | absolute, `/`-separated, normalised (`.` and `..` handled) |
-| Operations? | `mkdir -p`, `touch/write`, `cat`, `ls`, `rm [-r]`, `mv`, `cp`, `du` (size), `find name` |
-| Node kinds? | File (content), Directory (children), extensible to Symlink |
-| Names? | unique within a directory; no `/` in names |
-| Errors? | not found, already exists, not a directory, directory not empty (for `rm` without `-r`) |
-| Permissions? | simple read/write bits per node (extension point) |
-| Concurrency? | a single mutex over the tree (readers-writer lock as an extension) |
-| Out of scope | persistence, hard links, real I/O |
+| Paths? | absolute, separated by `/`, cleaned up (`.` and `..` handled) |
+| Actions? | `mkdir -p`, `touch` or `write`, `cat`, `ls`, `rm [-r]`, `mv`, `cp`, `du` (size), `find name` |
+| Kinds of nodes? | File (has content), Directory (has children). Can be extended with Symlink |
+| Names? | unique inside a folder. No `/` inside a name |
+| Errors? | not found, already exists, not a directory, folder not empty (for `rm` without `-r`) |
+| Permissions? | simple read and write bits for each node (an extension point) |
+| Many threads? | one mutex over the whole tree (a reader-writer lock as an extension) |
+| Not needed | saving to disk, hard links, real file input and output |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="File system (Composite)"
 class FileSystem
@@ -64,17 +64,17 @@ FileSystem ..> PathResolver
 NodeVisitor ..> Node
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Composite**: `Node` is the component; `File` is a leaf; `Directory` holds `unique_ptr<Node>` children by name (ordered `map` so `ls` is sorted). `size()` is recursive.
-- **Path resolution** in one function: split on `/`, process `.` and `..`, then walk from the root. Every operation uses `resolve(path)` or `resolveParent(path)` (parent directory + leaf name), so error handling is uniform.
-- **Ownership**: the parent owns its children (`unique_ptr`); a child keeps a **non-owning** raw pointer to the parent (for `..` and absolute path printing).
-- **`mv` is "detach then attach"** (a `remove` that returns the owning pointer plus an `add`). That makes it O(1) and keeps the subtree intact. Moving a directory into its own descendant is detected and refused.
-- **`cp`** deep-copies with a recursive `clone()` (Prototype).
-- **Visitor** for tree-wide operations such as `find` and size reports, so new reports do not edit the node classes.
-- **Errors** as a `Status` enum + message (normal outcomes).
+- **Composite:** `Node` is the common type. `File` is a leaf. `Directory` holds `unique_ptr<Node>` children by name (in an ordered `map`, so `ls` is sorted). `size()` works by recursion.
+- **Path handling in one function:** split on `/`, handle `.` and `..`, then walk from the root. Every action uses `resolve(path)` or `resolveParent(path)` (the parent folder plus the last name), so errors are handled in the same way everywhere.
+- **Ownership:** the parent owns its children (`unique_ptr`). A child keeps a **non-owning** raw pointer to its parent (for `..` and for printing the full path).
+- **`mv` means "detach, then attach."** `remove` gives back the owning pointer, and `add` puts it in the new place. This is O(1) and keeps the whole subtree. Moving a folder into its own child is detected and refused.
+- **`cp`** makes a deep copy with a recursive `clone()` (Prototype).
+- **Visitor** for jobs over the whole tree, like `find` and size reports, so new reports do not change the node classes.
+- **Errors** are a `Status` enum with a message (they are normal outcomes).
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Composite file system with paths, mv, cp, find"
 #include <algorithm>
@@ -294,46 +294,52 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| `mkdir` on an existing path | `Exists` (without `-p`) |
-| Path through a file (`/a/file/b`) | `NotADirectory` |
-| `rm` a non-empty directory | `NotEmpty` unless recursive |
-| `mv` a directory into its own subtree | refused (`isAncestorOf`) |
-| `mv dir existingDir` | moves *into* the existing directory, like Unix |
+| `mkdir` on a path that exists | `Exists` (without `-p`) |
+| A path that goes through a file (`/a/file/b`) | `NotADirectory` |
+| `rm` on a folder that is not empty | `NotEmpty` unless recursive |
+| `mv` a folder into its own subtree | refused (`isAncestorOf`) |
+| `mv dir existingDir` | moves *into* the existing folder, like Unix |
 | `..` above the root | stays at the root |
-| Names containing `/` | rejected (extension) |
-| Deleting while another thread lists | one mutex (or a readers-writer lock) makes each operation atomic |
+| Names that contain `/` | refused (extension) |
+| Deleting while another thread lists | one mutex (or a reader-writer lock) makes each action safe |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Symbolic links" | `Symlink : Node` storing a path; `resolve` follows with a loop limit |
-| "Permissions and ownership" | `Permissions` value in `Node`; checks in each operation (a Proxy/Decorator over `FileSystem`) |
-| "Disk quota / size limits" | a `QuotaPolicy` checked in `write`/`cp` |
-| "Undo/redo (trash)" | Command objects per operation; `rm` moves to a `/trash` directory |
+| "Shortcuts (symbolic links)" | `Symlink : Node` that stores a path. `resolve` follows it with a limit to stop loops |
+| "Permissions and owners" | a `Permissions` value in `Node`, and checks in each action (a Proxy or Decorator over `FileSystem`) |
+| "A size limit (quota)" | a `QuotaPolicy` checked in `write` and `cp` |
+| "Undo and a trash bin" | a Command for each action. `rm` moves to a `/trash` folder |
 | "Watch for changes" | Observer events (`Created`, `Modified`, `Deleted`) |
-| "Glob and regex search" | `find` takes a predicate; Specification for combinations |
-| "Persistence" | serialise the tree (Memento) to JSON |
-| "Concurrent readers" | `shared_mutex`: many `ls`/`cat`, exclusive writes |
-| "Large trees" | lazy size caching with invalidation up the parent chain |
+| "Search with patterns" | `find` takes a yes/no function. Specification for combinations |
+| "Save to disk" | write the tree out (Memento) as JSON |
+| "Many readers" | `shared_mutex`: many `ls` and `cat` together, one writer alone |
+| "Very big trees" | save the size of each folder and refresh it up the parent chain when something changes |
+
+## Short answer to say in an interview
+
+:::interview How do you design an in-memory file system?
+"I use the Composite pattern. A Node is the common type, a File is a leaf, and a Directory holds its children by name and owns them with unique_ptr. Each child has a plain pointer back to its parent. One function resolves a path, so every action reports errors the same way. A move is detach and attach, with a check that a folder is not moved into itself. A copy is a recursive clone. Jobs like find and size use a visitor, so they do not change the node classes."
+:::
 
 ```quiz
-? Why does Directory own children with unique_ptr while Node keeps a raw parent pointer?
+? Why does Directory own its children with unique_ptr, while Node keeps a raw pointer to its parent?
 - To avoid templates
-+ Ownership flows down the tree; the back-pointer only observes and cannot create a cycle
++ Ownership goes down the tree. The pointer upward only watches, and it cannot create a loop of owners
 - Raw pointers are faster
-> Owning pointers go down, observing pointers go up.
-? How is `mv` implemented efficiently?
-- Copy then delete
-+ Detach the node from the old parent and attach it to the new one: the subtree is not copied
+> Owning pointers go down and watching pointers go up.
+? How is mv done efficiently?
+- Copy, then delete
++ Detach the node from the old parent and attach it to the new one. The subtree is not copied
 - By renaming strings
-> O(1) relinking.
+> Just relinking, which is O(1).
 ```
 
 :::keypoints
-- Composite tree (`Node`, `File`, `Directory`); one path resolver; parent owns children, children point to the parent without owning.
-- `mv` = detach + attach with a cycle check; `cp` = recursive clone; Visitors for find/size/report.
-- Extend with symlinks, permissions (proxy), events (observer) and undo (command).
+- A Composite tree (`Node`, `File`, `Directory`). One path resolver. The parent owns the children, and children point to the parent without owning.
+- `mv` = detach and attach with a loop check. `cp` = recursive clone. Visitors for find, size and reports.
+- Extend with symlinks, permissions (a proxy), events (observer) and undo (command).
 :::

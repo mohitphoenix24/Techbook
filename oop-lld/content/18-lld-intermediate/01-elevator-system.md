@@ -2,31 +2,31 @@
 title: Design an Elevator System
 level: intermediate
 time: 60
-summary: Several elevators serving hall calls and cabin requests, an elevator state machine, a SCAN scheduling strategy inside each car, a dispatcher strategy that assigns calls to cars, a tick-based simulation and the safety and concurrency considerations.
+summary: Several lifts serving calls from the hall and buttons inside. Learn the lift state machine, the SCAN way of visiting floors, a dispatcher that picks which lift answers a call, and a simulation that moves one step at a time.
 ---
 
 :::problem Design an Elevator System {level=medium tags="State,Strategy,scheduling,simulation,classic"}
-Design the control software for a building with several elevators and many floors. People press up/down buttons in the hall and floor buttons inside the cabin. The system decides which elevator serves which call, and each elevator decides in which order to visit its floors. Keep it extensible: new scheduling algorithms, express elevators, maintenance mode.
+Design the control software for a building with several lifts (elevators) and many floors. People press up and down buttons in the hall, and floor buttons inside the lift. The system decides which lift answers which call, and each lift decides the order in which it visits its floors. Keep it easy to extend: new scheduling methods, express lifts, maintenance mode.
 
 :::hint Hint
-Two separate decisions: **which elevator** takes a hall call (dispatcher strategy) and **in what order** one elevator visits its stops (scheduling strategy such as SCAN: keep going in the current direction while there are stops ahead). Each elevator is a small state machine driven by a clock tick.
+There are two separate decisions: **which lift** takes a hall call (a dispatcher strategy), and **in what order** one lift visits its stops (a scheduling strategy like SCAN: keep going in the same direction while there are stops ahead). Each lift is a small state machine that moves on a clock tick.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Size? | 3 elevators, floors 0 to 9 (configurable) |
-| Requests? | **hall call** (floor, direction UP/DOWN) and **cabin request** (destination floor) |
-| Movement? | one floor per tick; doors open for 1 tick at a stop |
-| Scheduling inside a car? | SCAN: continue in the current direction serving stops, reverse when none ahead |
-| Dispatch? | assign a hall call to the elevator with the lowest "cost" (nearest, preferring one already heading that way) |
-| Capacity/weight? | out of scope (mention), maintenance state included |
-| Time? | a discrete `tick()` so the simulation is deterministic |
-| Safety? | doors never open while moving; an out-of-service car receives no calls |
+| Size? | 3 lifts, floors 0 to 9 (can be changed) |
+| Requests? | a **hall call** (floor and direction UP or DOWN) and a **cabin request** (the destination floor) |
+| Movement? | one floor per tick. Doors stay open for 1 tick at a stop |
+| Order inside one lift? | SCAN: keep going in the current direction serving stops, and reverse when there are none ahead |
+| Which lift answers a call? | the one with the lowest "cost" (nearest, and better if already heading that way) |
+| Weight limit? | not needed (we mention it). A maintenance state is included |
+| Time? | a step-by-step `tick()`, so the simulation gives the same result every time |
+| Safety? | doors never open while moving. A lift that is out of service gets no calls |
 
-## Step 2: elevator states
+## Step 2: The states of one lift
 
 ```viz algo=state title="One elevator"
 state Idle "Idle" [initial] @0,1
@@ -43,7 +43,7 @@ DoorsOpen -> Idle : no stops left
 play: stop above, arrive at a stop, no stops left
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Elevator system"
 class ElevatorController
@@ -71,16 +71,16 @@ NearestCarDispatch ..|> DispatchStrategy
 CabinPanel ..> Elevator
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Two-level scheduling**: the controller picks the car (`DispatchStrategy`), the car orders its own stops (SCAN). Each can be swapped independently.
-- **Stops are two sorted sets** (`upStops`, `downStops`), so "next stop in the current direction" is a log-time lookup and duplicates collapse.
-- **Cost function** for dispatch: distance to the call, minus a bonus when the car is already moving toward it in the same direction, large penalty if the call is behind it, infinity if out of service.
-- **Tick-driven**: `controller.tick()` calls `elevator.step()` on each car. Real hardware would call this from a timer. No sleeping in the logic.
-- **State enum** with a `step()` switch is enough for four states; State classes are warranted if behaviours grow (fire mode, VIP mode).
-- **Concurrency**: button presses arrive on other threads; a mutex in the controller protects stops and the tick (or an input queue drained at each tick, which is simpler and deterministic).
+- **Two levels of decisions.** The controller picks the lift (`DispatchStrategy`). The lift orders its own stops (SCAN). Each can be changed on its own.
+- **Stops are kept in two sorted sets** (`upStops`, `downStops`). So "the next stop in my direction" is a fast lookup, and repeated stops become one.
+- **A cost for dispatch:** the distance to the call, minus a bonus if the lift is already moving toward it in the same direction, a big penalty if the call is behind it, and infinity if the lift is out of service.
+- **Driven by ticks.** `controller.tick()` calls `elevator.step()` on every lift. Real hardware would call this from a timer. The logic never sleeps.
+- **State enum** with a `step()` switch is enough for four states. Use State classes if behaviour grows (fire mode, VIP mode).
+- **Threads:** button presses come from other threads. A mutex in the controller protects the stops and the tick. A simpler way is a queue of inputs that is emptied at each tick, which also keeps the simulation predictable.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Three elevators, SCAN, nearest-car dispatch"
 #include <climits>
@@ -219,43 +219,49 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Call on the floor where a car is idle | doors open immediately |
-| Two calls for the same floor | stops are sets: duplicates collapse |
-| All elevators out of service | `choose` returns null and the controller reports it |
-| Car full | `cost` returns a large value when the load is above the limit (extension) |
-| Invalid floor | rejected at the boundary |
-| Direction change with stops in both directions | SCAN finishes the current direction first, then reverses |
-| Starvation | SCAN serves every pending stop within one sweep; add an age bonus for fairness if needed |
+| A call on the floor where a lift is idle | doors open at once |
+| Two calls for the same floor | stops are sets, so they become one |
+| All lifts out of service | `choose` returns null and the controller reports it |
+| The lift is full | `cost` returns a very big number when the load is over the limit (extension) |
+| A floor that does not exist | refused at the entrance |
+| Stops in both directions | SCAN finishes the current direction first, then reverses |
+| A call that waits too long | SCAN serves every waiting stop in one sweep. Add an age bonus for fairness if needed |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Smarter dispatch (minimise total wait)" | a different `DispatchStrategy` (zoning, destination dispatch, simulated annealing) |
-| "Express elevator that skips floors" | an `AccessPolicy` per car; `addStop` rejects unreachable floors; `cost` honours it |
-| "Fire mode / VIP mode" | State classes: `FireState` ignores calls and returns to the lobby |
-| "Capacity and weight sensors" | `Elevator` exposes `load`; `cost` and `addStop` consult it |
-| "Display panels and sounds" | Observer: cars publish `Arrived`, `DoorsOpened` events |
-| "Real-time threads" | a mutex-protected request queue drained at each tick keeps the simulation deterministic |
-| "Digital twin/analytics" | log every event and replay it |
+| "Smarter dispatch (less waiting time)" | a different `DispatchStrategy` (zones, destination dispatch) |
+| "An express lift that skips floors" | an `AccessPolicy` for each lift. `addStop` refuses floors it cannot reach. `cost` follows it |
+| "Fire mode or VIP mode" | State classes. `FireState` ignores calls and returns to the lobby |
+| "Weight sensors" | `Elevator` shows its `load`. `cost` and `addStop` check it |
+| "Display panels and sounds" | Observer: lifts announce `Arrived` and `DoorsOpened` |
+| "Real threads" | a queue of requests protected by a mutex, emptied at each tick, keeps it predictable |
+| "Analytics" | log every event and replay it |
+
+## Short answer to say in an interview
+
+:::interview How does your elevator design decide which lift to send?
+"There are two separate decisions. A dispatch strategy in the controller chooses the lift for a hall call using a cost: distance, a bonus if the lift is already going that way, and infinity if it is out of service. Then each lift orders its own stops with SCAN: keep going in one direction, serving stops, and reverse when none are ahead. Each lift is a small state machine driven by ticks. I can swap either strategy without touching the other."
+:::
 
 ```quiz
-? Why separate dispatching from in-car scheduling?
+? Why separate dispatching from the order inside one lift?
 - To use more classes
-+ They are independent decisions: which car takes the call, and in which order a car visits its stops; each can change alone
-- Because C++ has two kinds of strategy
-> Strategy per decision keeps both replaceable.
-? Why store stops in sorted sets?
++ They are two independent decisions (which lift, and which order), and each can change alone
+- C++ has two kinds of strategy
+> A strategy for each decision keeps both replaceable.
+? Why keep stops in sorted sets?
 - To make printing easy
-+ SCAN needs the nearest stop in the current direction, and duplicates collapse automatically
-- Because floors are strings
-> Ordered sets give logarithmic nearest-stop lookups.
++ SCAN needs the nearest stop in the current direction, and repeated stops become one
+- Floors are strings
+> Ordered sets give fast nearest-stop lookups.
 ```
 
 :::keypoints
-- Controller (dispatch strategy) + Elevator (state machine, SCAN over two sorted stop sets) + a tick-driven simulation.
-- A cost function decides the car; out-of-service cars cost infinity.
-- Extensions are new strategies, new states and events; threads feed a queue drained per tick.
+- Controller (dispatch strategy), Elevator (state machine, SCAN over two sorted stop sets), and a simulation driven by ticks.
+- A cost decides the lift. A lift that is out of service costs infinity.
+- Extensions are new strategies, new states and events. Threads feed a queue that is emptied each tick.
 :::

@@ -2,42 +2,46 @@
 title: Design a Rate Limiter
 level: intermediate
 time: 55
-summary: Four classic algorithms behind one interface (fixed window, sliding window log, token bucket, leaky bucket), per-key limits with tiers, an injectable clock for deterministic tests, thread-safety, and the trade-offs interviewers ask about.
+summary: Four common ways to limit requests (fixed window, sliding window log, token bucket, leaky bucket) behind one interface, limits for each client and tier, a clock you can control in tests, thread safety, and the trade-offs interviewers ask about.
 ---
 
 :::problem Design a Rate Limiter {level=medium tags="Strategy,algorithms,concurrency,time,API gateway"}
-Design a rate limiter that decides whether a request from a client (user id, API key or IP) is allowed. Example rule: at most 5 requests per 10 seconds per user. Support several algorithms, per-client configuration (free vs paid tiers), thread-safety, and tests that do not wait for real time.
+Design a rate limiter that decides whether a request from a client (a user id, API key or IP address) is allowed. Example rule: at most 5 requests in 10 seconds for each user. Support several algorithms, different settings for each client (free and paid tiers), thread safety, and tests that do not wait for real time.
 :::
 
 :::hint Hint
-All the algorithms answer the same question: `allow(key, now)`. Put them behind one interface and keep **one small state object per key**. Take the current time as a parameter (or inject a clock) so tests are instant.
+All the algorithms answer the same question: `allow(key, now)`. Put them behind one interface and keep **one small state object for each key**. Pass in the current time (or a clock), so tests run instantly.
 :::
 
-## Step 1: requirements
+## What is a rate limiter?
 
-| Question | Assumption |
+Imagine a doorman at a club who lets in only 5 people every 10 seconds. If more people arrive, they must wait outside. A rate limiter does the same for requests to a server. It protects the server from too many requests, from a bug or from an attacker.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Interface? | `bool allow(const string& key)`; optional `retryAfter` |
-| Rules? | N requests per window, with burst behaviour depending on the algorithm |
-| Per-key? | each client has its own state; tier decides the limit |
+| The interface? | `bool allow(const string& key)`. Maybe also a `retryAfter` |
+| Rules? | N requests for each window of time. How bursts are treated depends on the algorithm |
+| For each client? | each client has its own state. The tier decides the limit |
 | Algorithms? | fixed window, sliding window log, token bucket, leaky bucket |
-| Time? | injected `Clock` (seconds as double) |
-| Concurrency? | many threads hitting the same key |
-| Memory? | state per active key; evict idle keys |
-| Out of scope | distributed limiting (mention Redis) |
+| Time? | a `Clock` that we pass in (seconds as a double) |
+| Many threads? | yes, many threads can hit the same key |
+| Memory? | state for each active key. Remove keys that are idle |
+| Not needed | limiting across many machines (we mention Redis) |
 
-## Step 2: the four algorithms, compared
+## Step 2: The four algorithms side by side
 
-| Algorithm | Idea | Pros | Cons |
+| Algorithm | The idea | Good | Not so good |
 |---|---|---|---|
-| **Fixed window** | counter per time window (`now / W`) | simplest, O(1) memory | **boundary burst**: 5 at the end of a window + 5 at the start of the next = 10 in a short time |
-| **Sliding window log** | keep timestamps of recent requests; drop older than W | exact | memory O(N) per key |
-| **Token bucket** | bucket of capacity C refilled at rate R; each request takes 1 token | allows **bursts** up to C, smooth average rate, O(1) | two parameters to tune |
-| **Leaky bucket** | requests enter a queue drained at a fixed rate; overflow is dropped | **smooth output** rate | no bursts; queueing latency |
+| **Fixed window** | one counter for each time window (`now / W`) | simplest, O(1) memory | **boundary burst**: 5 at the end of one window and 5 at the start of the next gives 10 in a very short time |
+| **Sliding window log** | keep the times of recent requests, and drop those older than W | exact | uses O(N) memory for each key |
+| **Token bucket** | a bucket holds up to C tokens and is refilled at rate R. Each request takes 1 token | allows **bursts** up to C, steady average rate, O(1) | two numbers to tune |
+| **Leaky bucket** | requests go in a queue that is emptied at a fixed rate. When the queue is full, requests are dropped | **smooth output** | no bursts, and waiting time |
 
-Token bucket is the usual default (used by many APIs); sliding window log is the accurate one for small limits.
+The token bucket is the usual choice (many APIs use it). The sliding window log is the exact one for small limits.
 
-## Step 3: design
+## Step 3: The design
 
 ```viz algo=uml title="Rate limiter"
 interface RateLimiter
@@ -62,13 +66,13 @@ LimiterFactory ..> RateLimiter
 RateLimiter --> Clock
 ```
 
-- **Strategy**: each algorithm is a `RateLimiter` implementation. A **factory** builds the right one for a tier (free: 5/10s; paid: 50/10s).
-- **State per key** lives inside the limiter in a map guarded by a mutex; a refinement is one lock per key (striping) or atomics (token bucket with CAS).
-- **Lazy refill** in the token bucket: no timer thread; compute tokens from elapsed time at each call (`tokens = min(capacity, tokens + elapsed * rate)`).
-- **Injected clock** makes every behaviour deterministic.
-- **Memory**: periodically drop keys idle for longer than the window.
+- **Strategy:** each algorithm is a `RateLimiter` class. A **factory** makes the right one for a tier (free: 5 per 10 seconds, paid: 50 per 10 seconds).
+- **State for each key** lives inside the limiter in a map protected by a mutex. To improve, use one lock for each key (striping) or atomics (a token bucket with CAS).
+- **Lazy refill** for the token bucket: no timer thread. At each call we work out the tokens from the time passed: `tokens = min(capacity, tokens + elapsed * rate)`.
+- **A clock passed in** makes every behaviour predictable in tests.
+- **Memory:** now and then, remove keys that have been idle for longer than the window.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Four limiters behind one interface"
 #include <algorithm>
@@ -215,43 +219,49 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Clock goes backwards | clamp elapsed time to >= 0 |
-| New key | token bucket starts full (or empty, by policy) |
-| Rejected requests: do they count? | in sliding log, no (not recorded); some APIs penalise abusers |
-| Huge number of keys | evict idle keys; bound memory; use a bloom filter or LRU for the key table |
-| Sub-second precision | use `double` seconds or integer milliseconds consistently |
-| Config changes at runtime | rebuild the limiter for that tier; keep per-key state if compatible |
-| Returning "retry after" | compute from the bucket: `(1 - tokens) / rate` seconds |
+| The clock goes backwards | use `max(0, elapsed)` |
+| A new key | the token bucket starts full (or empty, as the policy says) |
+| Do refused requests count? | in the sliding log, no (they are not recorded). Some APIs punish abusers |
+| A huge number of keys | remove idle keys, limit memory, use an LRU for the key table |
+| Fractions of a second | use `double` seconds or integer milliseconds, and stay consistent |
+| Settings change while running | rebuild the limiter for that tier. Keep the key state if it still fits |
+| Telling "retry after" | work it out from the bucket: `(1 - tokens) / rate` seconds |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Different limits per endpoint and per user" | composite limiter: ALL of several limiters must allow (Chain/Specification) |
-| "Distributed across many servers" | state in Redis with atomic Lua scripts (token bucket) or approximate local counters synced periodically |
-| "Return headers `X-RateLimit-Remaining`" | `allow` returns a `Decision {allowed, remaining, retryAfter}` |
-| "Block abusers temporarily" | a penalty box layered on top (State per key) |
-| "Throttle (delay) instead of reject" | leaky bucket with a queue and a worker |
-| "Fairness among tenants" | weighted token buckets; hierarchical limits |
-| "Observability" | counters for allowed/rejected by key and tier |
+| "Different limits for each endpoint and each user" | a combined limiter: ALL the limiters must allow (Chain or Specification) |
+| "Many servers" | keep the state in Redis with atomic Lua scripts (token bucket), or approximate local counters that sync now and then |
+| "Send headers like `X-RateLimit-Remaining`" | `allow` returns a `Decision {allowed, remaining, retryAfter}` |
+| "Block abusers for a while" | a penalty box on top (State for each key) |
+| "Delay instead of reject" | a leaky bucket with a queue and a worker |
+| "Fair share between customers" | weighted token buckets and limits in layers |
+| "Watching it" | counters for allowed and refused by key and tier |
+
+## Short answer to say in an interview
+
+:::interview Compare fixed window, sliding window and token bucket.
+"The fixed window keeps one counter for each time window. It is the simplest, but it has the boundary problem: a client can send a full quota at the end of one window and again at the start of the next, so twice the rate in a short time. The sliding window log keeps the timestamps of requests, so it is exact, but it uses more memory. The token bucket refills tokens at a steady rate and lets a request take one, so it allows bursts up to the bucket size and keeps a steady average. It is O(1), and I refill it lazily from the elapsed time."
+:::
 
 ```quiz
 ? What is the "boundary problem" of the fixed window?
 - It uses too much memory
-+ A client can send a full quota at the end of one window and again at the start of the next: double the rate in a short time
++ A client can send a full quota at the end of one window and again at the start of the next, so double the rate in a short time
 - It is not thread-safe
-> Sliding windows and token buckets avoid it.
+> Sliding windows and token buckets avoid this.
 ? Why is the token bucket refilled lazily?
-- Because a timer thread is required
-+ Tokens are computed from the elapsed time on each call, so no background work is needed
-- It is required by C++
-> Lazy refill is O(1) per request.
+- A timer thread is required
++ Tokens are worked out from the time passed at each call, so no background work is needed
+- C++ requires it
+> Lazy refill is O(1) for each request.
 ```
 
 :::keypoints
-- One interface, four algorithms: fixed window (cheap, boundary burst), sliding log (exact, memory heavy), token bucket (bursts + steady rate), leaky bucket (smooth output).
-- State per key, lazy time-based updates, injected clock, a mutex (or sharding) for thread-safety.
-- Tiers via a factory; distributed versions move the state to a shared store with atomic operations.
+- One interface, four algorithms: fixed window (cheap, boundary burst), sliding log (exact, uses memory), token bucket (bursts and a steady rate), leaky bucket (smooth output).
+- State for each key, updates based on time when called, a clock passed in, a mutex (or shards) for threads.
+- Tiers through a factory. For many machines, keep the state in a shared store with atomic operations.
 :::

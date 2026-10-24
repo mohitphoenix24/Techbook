@@ -1,15 +1,15 @@
 ---
-title: The LLD toolkit: building blocks you reuse in every problem
+title: "The LLD toolkit: building blocks you reuse in every problem"
 level: intermediate
 time: 35
-summary: A small kit of reusable C++ pieces, strong typed ids, Money, a TimeRange with overlap checks, a Result type, an injectable Clock and id generator, and a tiny event log, with a demonstration of how they combine, so you never rewrite them from scratch in an interview.
+summary: A small set of ready-to-use C++ pieces that almost every LLD problem needs: typed ids, Money, a time range with overlap check, a Result type, a clock and id generator you can replace, and a small event log. Practise them until you can type them without thinking.
 ---
 
-Almost every LLD problem needs the same few supporting classes. Having them ready in your head (and your fingers) saves 10 minutes and removes bugs. Practise typing this kit until it is automatic.
+Almost every LLD problem needs the same few small helper classes. If you already know them by heart, you save about 10 minutes and avoid many bugs. Think of this as your **toolbox**. Practise typing it until it feels easy.
 
-## 1. Strong ids
+## 1. Typed ids
 
-A bare `int` or `string` id lets you pass a `UserId` where a `BookId` is expected. A tiny wrapper type prevents that for free.
+If every id is just an `int` or a `string`, you can pass a `UserId` where a `BookId` is expected, and the compiler will not complain. A tiny wrapper type fixes this for free.
 
 ```cpp run title="Typed ids with a tag"
 #include <functional>
@@ -46,7 +46,7 @@ int main() {
 
 ## 2. Money
 
-Never use `double` for money. Store the smallest unit (paise) in an integer, and offer only meaningful operations.
+**Never use `double` for money.** Computers cannot store numbers like 0.1 exactly, so small errors add up. Store the smallest unit (paise) in an integer, and give only the operations that make sense.
 
 ```cpp run title="Money as integer paise"
 #include <iostream>
@@ -82,9 +82,9 @@ int main() {
 }
 ```
 
-## 3. TimeRange with overlap checks
+## 3. TimeRange and the overlap check
 
-Booking, scheduling and calendar problems all need "do these two intervals overlap?". Write it once, with **half-open** intervals `[start, end)` so that back-to-back bookings do not conflict.
+Booking, scheduling and calendar problems all ask: "do these two time slots clash?" Write it once. Use **half-open** ranges `[start, end)`, which means the end time is **not included**. So a booking that ends at 10:00 and another that starts at 10:00 do **not** clash.
 
 ```cpp run title="TimeRange: half-open interval and overlap"
 #include <iostream>
@@ -112,11 +112,15 @@ int main() {
 }
 ```
 
-Memorise the overlap test: **`a.start < b.end && b.start < a.end`**.
+Remember this one line. It is used in many problems:
+
+**`a.start < b.end && b.start < a.end`**
+
+In words: "A starts before B ends, and B starts before A ends."
 
 ## 4. Result: a value or an error
 
-When failure is a normal outcome (booking conflict, insufficient funds), return it instead of throwing.
+When failure is a **normal outcome** (booking clash, not enough money), return it instead of throwing an error.
 
 ```cpp run title="A tiny Result<T> with an error message"
 #include <iostream>
@@ -152,7 +156,9 @@ int main() {
 }
 ```
 
-## 5. Clock and IdGenerator (injectable)
+## 5. Clock and IdGenerator (that you can replace)
+
+If your code calls the real clock directly, you cannot test it. So we pass in a `Clock` and an `IdGenerator`. In tests we use fake ones.
 
 ```cpp run title="Injectable time and ids"
 #include <atomic>
@@ -181,9 +187,9 @@ int main() {
 }
 ```
 
-## 6. A tiny event log (Observer in 10 lines)
+## 6. A tiny event log (Observer in a few lines)
 
-Handy for audits, notifications and tests that check "what happened".
+Useful for audits, notifications, and for tests that ask "what happened?".
 
 ```cpp run title="EventLog: record and replay"
 #include <functional>
@@ -210,9 +216,9 @@ int main() {
 }
 ```
 
-## The pieces working together
+## All the pieces working together
 
-A mini booking engine using typed ids, `Money`, `TimeRange`, `Result`, a clock and an id generator.
+A small room-booking example using typed ids, `Money`, `TimeRange`, `Result`, a clock and an id generator.
 
 ```cpp run title="A room booking kit-in-action"
 #include <iostream>
@@ -265,30 +271,36 @@ int main() {
 }
 ```
 
-:::tip Do not over-build the kit
-In an interview, write only the pieces the problem needs: Money for a payment problem, TimeRange for a booking problem. Say "I would use a typed id here" and show it once. The kit is a **vocabulary**, not boilerplate to paste everywhere.
+:::tip Do not build the whole toolbox every time
+In an interview, write only the pieces the problem needs. Money for a payment problem, TimeRange for a booking problem. Say "I would use a typed id here" and show it once. The toolbox is a **vocabulary**, not code to paste everywhere.
+:::
+
+## Short answer to say in an interview
+
+:::interview Why do you store money as an integer?
+"Floating-point numbers cannot store decimal values like 0.10 exactly, so sums slowly drift. I store the smallest unit, like paise, in an integer. Then the arithmetic is exact, and I can wrap it in a small Money type that allows only sensible operations."
 :::
 
 ```quiz
 ? Why store money as integer paise?
 - Integers print nicer
-+ Binary floating point cannot represent decimal fractions exactly, so sums drift
++ Floating-point cannot store decimal fractions exactly, so sums drift
 - It uses less memory
 > Integer arithmetic is exact.
 ? What is the overlap test for half-open ranges?
 - a.start == b.start
 + a.start < b.end && b.start < a.end
 - a.end == b.start
-> Back-to-back ranges (end == start) do not overlap.
-? Why inject a Clock?
+> Ranges that touch at the end (end == start) do not overlap.
+? Why pass in a Clock?
 - Faster code
-+ Tests can control time and results are deterministic
-- It is required by C++
++ Tests can control time, and the results are the same every run
+- C++ requires it
 > A manual clock lets you test expiry without waiting.
 ```
 
 :::keypoints
-- Reusable kit: typed `Id<Tag>`, `Money` in paise, `TimeRange` with `a.start < b.end && b.start < a.end`, `Result<T>`, injectable `Clock` and `IdGenerator`, `EventLog`.
-- Use only what the problem needs, and name the pieces as you use them.
+- The toolbox: typed `Id<Tag>`, `Money` in paise, `TimeRange` with `a.start < b.end && b.start < a.end`, `Result<T>`, replaceable `Clock` and `IdGenerator`, and an `EventLog`.
+- Use only what the problem needs, and name each piece as you use it.
 - Typed values turn many bugs into compile errors.
 :::

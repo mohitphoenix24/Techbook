@@ -2,14 +2,20 @@
 title: Builder
 level: intermediate
 time: 35
-summary: Constructing complex objects step by step. The telescoping-constructor problem, a fluent builder with validation, a Director, designated initialisers as the modern shortcut, a step builder that enforces order at compile time, and when not to use a builder.
+summary: How to create an object that has many parts, step by step, in a clear and safe way. See the problem with long constructors, a builder with checks, the Director, a modern C++20 shortcut, and when not to use a builder.
 ---
 
+## What problem does Builder solve?
+
+Think of ordering a pizza at a counter. You don't say all your choices in one breath in a fixed order. You say: "Large size... thin crust... extra cheese... no olives." Then the cook makes it.
+
+In code, some objects have many parts, and many of them are optional. A constructor with 8 parameters is very hard to read. The **Builder** lets you say your choices one by one, with names.
+
 :::def Builder
-Separate the **construction** of a complex object from its **representation**, so the same construction process can create different representations. In practice: build an object **step by step** with named steps, then finish with `build()`.
+Build a complex object **step by step**, using named steps. At the end you call `build()` to get the finished object.
 :::
 
-## The problem: telescoping constructors
+## The problem: long constructors
 
 ```cpp run title="Which argument is which?"
 #include <iostream>
@@ -30,9 +36,14 @@ int main() {
 }
 ```
 
-Problems: **unreadable** call sites, **easy to swap** same-typed arguments, a constructor for every combination of optional parts, and no place to **validate** a combination.
+Look at that call. Can you tell which argument is which? Problems:
 
-## The Builder
+- It is **hard to read**.
+- It is **easy to mix up** arguments that have the same type.
+- You may need a different constructor for each combination of optional parts.
+- There is nowhere to **check** whether the combination is valid.
+
+## The Builder way
 
 ```cpp run title="A fluent builder with validation"
 #include <iostream>
@@ -80,12 +91,14 @@ int main() {
 }
 ```
 
-What the builder gives you:
+What do we get?
 
-- **Readable** call sites: every value has a name (`.size("large")`).
-- **Optional** parts are simply omitted; no constructor per combination.
-- A single place (`build()`) to **validate** the whole object, so the product is **always valid** once built.
-- The product can be **immutable** (no setters; the builder alone mutates).
+- **Easy to read**: each value has a name, like `.size("large")`.
+- **Optional parts** are just skipped.
+- **One place to check** everything: `build()`. Once the object is built, it is always valid.
+- The finished object can be **unchangeable** (no setters). Only the builder changes things.
+
+The picture:
 
 ```viz algo=uml title="Builder (fluent form)"
 class Pizza
@@ -101,9 +114,9 @@ class PizzaBuilder
 PizzaBuilder ..> Pizza : creates
 ```
 
-## Builder with a Director (the classic GoF form)
+## Builder with a Director (the classic form)
 
-A **Director** knows a *recipe*: the order of steps to build a common configuration. Different builders produce different representations from the same recipe.
+A **Director** is a helper that knows a **recipe**: "to make a standard pizza, do these steps in this order". Different builders can follow the same recipe and produce different results.
 
 ```cpp run title="Director and two builders (two representations)"
 #include <iostream>
@@ -156,9 +169,9 @@ int main() {
 }
 ```
 
-## Modern shortcut: designated initialisers (C++20)
+## A modern shortcut in C++20: designated initialisers
 
-For a simple data object whose fields are all optional, you often do **not** need a builder class.
+If the object is just plain data and all fields are optional, you may not need a builder class at all.
 
 ```cpp run title="Named fields without a builder"
 #include <iostream>
@@ -180,11 +193,14 @@ int main() {
 }
 ```
 
-Use designated initialisers for **plain aggregates without validation**. Use a builder when you need **validation across fields**, **derived values**, an **immutable product**, or **multi-step construction**.
+Rule of thumb:
 
-## Step builder: enforce the order at compile time
+- **Plain data, no checks** → designated initialisers.
+- **Checks across fields, calculated values, an unchangeable object, or many steps** → Builder.
 
-You can make the compiler refuse an incomplete or out-of-order build by returning a **different type** at each step.
+## Step builder: the compiler forces the order
+
+You can make the compiler stop you from forgetting a required field. Each step returns a **different type**, so the next step is available only after the previous one.
 
 ```cpp run title="A step builder: name, then email, then optionally phone"
 #include <iostream>
@@ -230,45 +246,47 @@ int main() {
 }
 ```
 
-Required fields cannot be forgotten: the code does not compile. The cost is more boilerplate, so use it for high-stakes objects only.
+If you forget the email, the code does not even compile. The cost is extra code, so use this only for important objects.
 
 ## When NOT to use Builder
 
-- The object has **2 or 3 parameters** and no invalid combinations: use a constructor.
-- A plain **aggregate** with defaults is enough (designated initialisers).
-- The builder would just mirror the class's fields one for one with nothing else to add.
+- The object has only **2 or 3 parameters** and no tricky rules. A normal constructor is fine.
+- A simple struct with defaults is enough.
+- The builder would just copy every field with nothing extra to add.
 
-## Builder vs related patterns
+## Builder vs similar patterns
 
 | | Builder | Abstract Factory | Factory Method |
 |---|---|---|---|
-| Focus | **one complex object**, built in steps | **families** of objects | **one object**, chosen by subclass |
-| Return | at the end, `build()` | immediately | immediately |
-| Typical sign | many optional parameters | "mix of products must match" | `new` hidden behind a virtual call |
+| Focus | **one big object**, built in steps | **families** of objects | **one object**, chosen by a subclass |
+| When you get the object | at the end, with `build()` | at once | at once |
+| Typical sign | many optional parameters | "the set must match" | `new` hidden behind a virtual call |
 
-:::interview Builder vs constructor with many parameters? Why is the product often immutable?
-"A builder names each value, lets optional parts be omitted, and validates the complete object once in `build()`, so a built object is always valid. The product can be immutable because only the builder mutates its internal state. In C++20 I may use designated initialisers for simple aggregates, and a builder when I need cross-field validation, immutability or multi-step construction."
+## Short answer to say in an interview
+
+:::interview Why use a Builder instead of a constructor with many parameters?
+"A builder gives a name to every value, lets me skip optional parts, and checks the whole object once in build(). So an object that is built is always valid. The product can also be unchangeable, because only the builder changes the data. For a plain struct in C++20 I would just use designated initialisers."
 :::
 
 ```quiz
 ? What problem does Builder solve?
-- Creating exactly one instance
-+ Constructing complex objects with many (often optional) parts readably and safely
-- Choosing a subclass at runtime
-> The builder replaces long positional constructors with named steps and validation.
-? Where should cross-field validation live in a builder?
+- Creating exactly one object
++ Creating complex objects with many (often optional) parts in a readable and safe way
+- Choosing a subclass at run time
+> Named steps replace long confusing constructors.
+? Where should the check across fields go?
 - In every setter
-+ In build(), where the complete object is known
++ In build(), when all values are known
 - Nowhere
-> At build time you know all fields, so you can check combinations once.
-? When can you skip Builder in modern C++?
+> At the end you can check the whole combination once.
+? When can you skip a builder in modern C++?
 - Never
-+ For simple aggregates where designated initialisers give readable named fields
-> Use builders when you need validation, immutability or step-wise construction.
++ For simple structs, where designated initialisers give readable named fields
+> Use a builder when you need checks, an unchangeable object or many steps.
 ```
 
 :::keypoints
-- Builder: step-by-step construction with named steps, validation in `build()`, an always-valid (often immutable) product.
-- The classic GoF form adds a Director that owns the recipe and swappable builders for different representations.
-- C++20 designated initialisers replace simple builders; a step builder uses types to enforce order at compile time.
+- Builder = build step by step with names, check in `build()`, get a valid (often unchangeable) object.
+- The classic form adds a Director that holds the recipe, and different builders for different results.
+- In C++20, designated initialisers replace simple builders. A step builder makes the compiler enforce the order.
 :::

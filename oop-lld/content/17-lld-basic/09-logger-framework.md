@@ -2,31 +2,31 @@
 title: Design a Logging Framework
 level: easy
 time: 45
-summary: Levels, appenders (console, file, memory), formatters, per-appender filters, a logger hierarchy configured once, thread-safe output, and an asynchronous option behind the same interface, with the patterns it uses (Strategy, Chain of Responsibility, Singleton alternative, Decorator).
+summary: Build a small logging library with levels, destinations (console, file, memory), formats, filters, safe use from many threads, and an option to log on a background thread, using Strategy, Chain of Responsibility and Decorator.
 ---
 
 :::problem Design a Logging Framework {level=easy tags="Chain of Responsibility,Strategy,concurrency,infrastructure"}
-Design a logging library like log4j or spdlog. Applications log messages at levels (DEBUG, INFO, WARN, ERROR). The framework sends messages to one or more destinations (console, file, memory), each with its own minimum level and format. It must be thread-safe and easy to extend with new destinations and formats.
+Design a logging library like log4j or spdlog. Programs write messages at levels (DEBUG, INFO, WARN, ERROR). The library sends the messages to one or more destinations (console, file, memory). Each destination has its own minimum level and format. It must be safe for many threads and easy to extend with new destinations and formats.
 
 :::hint Hint
-Three things vary: **where** to write (appender), **how** to format (formatter), and **which messages** to accept (level filter). Make each its own abstraction; the logger just fans out. Think about who creates the logger instance and how it is shared.
+Three things can change: **where** to write (the appender), **how** to format (the formatter), and **which messages** to accept (the level filter). Make each one its own abstraction. The logger just sends the message to all of them. Also think about who creates the logger and how it is shared.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
 | Levels? | DEBUG < INFO < WARN < ERROR |
-| Destinations? | console, file, in-memory (for tests); add more later |
-| Per-destination level? | yes: console shows INFO and above, the "file" gets everything |
-| Format? | a pattern: `[LEVEL] message` or with a timestamp; changeable per appender |
-| Thread-safety? | many threads log at once; lines must not interleave |
-| Performance? | an async mode must be possible without changing callers |
-| Configuration? | built once at start-up; a logger obtained by name |
-| Out of scope | log rotation, remote shipping (mention) |
+| Destinations? | console, file, memory (for tests). More later |
+| A level for each destination? | yes. The console shows INFO and above. The file gets everything |
+| Format? | a pattern like `[LEVEL] message`, with or without time. Can change for each destination |
+| Many threads? | yes. Lines must not get mixed up |
+| Speed? | there must be a background mode, without changing the callers |
+| Setup? | built once at start. A logger is found by name |
+| Not needed | log rotation, sending logs to a server (we only mention them) |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Logging framework"
 class Logger
@@ -65,16 +65,16 @@ LogManager o-- Logger
 Logger ..> LogRecord
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Appender** and **Formatter** are Strategies; the appender holds a formatter. Adding a `JsonFormatter` or a `SocketAppender` touches nothing else.
-- **Level filtering twice**: the logger drops messages below its level cheaply (before building a record); each appender has its own threshold. That is a small **Chain of Responsibility**: logger → appender filters.
-- **Thread-safety**: each appender owns a mutex so a line is written atomically. The logger is immutable after configuration (no lock needed to read its appender list).
-- **AsyncAppender is a Decorator** around any appender: it queues records and a worker thread forwards them, using the blocking-queue ideas. Callers do not change.
-- **Who owns the loggers?** A `LogManager` registry, which can be **injected** (preferred) or exposed as a Singleton for convenience. Passing a `Logger&` to classes keeps them testable (inject a `MemoryAppender`).
-- **Lazy message building**: `log(level, const function<string()>&)` or checking `isEnabled(level)` avoids building expensive strings that will be dropped.
+- **Appender** and **Formatter** are Strategies. The appender holds a formatter. A new `JsonFormatter` or `SocketAppender` changes nothing else.
+- **Two level checks.** The logger drops messages below its level early and cheaply (before building the record). Each appender also has its own limit. This is a small **Chain of Responsibility**: logger, then appender filters.
+- **Threads:** each appender has its own mutex, so a line is written in one piece. The logger does not change after setup, so it needs no lock to read its appenders.
+- **AsyncAppender is a Decorator** around any appender. It puts records in a queue, and a worker thread sends them on. Callers do not change.
+- **Who owns the loggers?** A `LogManager` keeps them. It can be **passed in** (preferred), or be a Singleton for convenience. Passing a `Logger&` into classes keeps them testable (use a `MemoryAppender` in tests).
+- **Build messages lazily:** `log(level, function<string()>)`, or check `isEnabled(level)` first. This avoids building a costly string that will be thrown away.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Logger, appenders, formatters, async decorator"
 #include <atomic>
@@ -233,42 +233,48 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Message below the level | dropped at the logger (cheap) |
-| Expensive message construction | check `enabled(level)` first, or pass a lambda |
-| Appender throws (disk full) | catch inside the logger so the application does not crash; fall back to console |
-| Shutdown with queued async messages | `close()` (also called by the destructor) drains the queue, then joins |
-| Same logger name requested twice | the manager returns the same instance |
-| Log injection (newlines in messages) | a formatter may escape control characters |
+| The message is below the level | dropped at the logger (cheap) |
+| Building the message is costly | check `enabled(level)` first, or pass a lambda |
+| An appender fails (disk full) | catch the error inside the logger so the program does not crash. Fall back to the console |
+| Shutdown while messages are still queued | `close()` (also called by the destructor) empties the queue, then joins the thread |
+| The same logger name is asked twice | the manager gives back the same object |
+| Log injection (new lines in a message) | a formatter can escape control characters |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "File appender with rotation" | `RollingFileAppender` (size/time policy as a Strategy) |
-| "Structured JSON logs" | `JsonFormatter`, key-value fields on the record |
-| "Logger hierarchy (`com.shop.payments` inherits from `com.shop`)" | parent pointers and level inheritance |
-| "Change the level at run time" | make `min_` atomic; expose via config reload |
-| "Context (request id) on every line" | a thread-local context (MDC) read by the formatter |
-| "Ship logs to a server" | a `SocketAppender`, wrapped by the async decorator and a retry decorator |
-| "Avoid a global" | `LogManager` is passed to components, or a Singleton for the very top level only |
+| "A file appender with rotation" | `RollingFileAppender`, with the size or time rule as a Strategy |
+| "JSON logs" | a `JsonFormatter`, and key-value fields on the record |
+| "Logger groups (`com.shop.payments` inside `com.shop`)" | parent pointers and level inheritance |
+| "Change the level while running" | make `min_` atomic. Reload from config |
+| "A request id on every line" | a thread-local context read by the formatter |
+| "Send logs to a server" | a `SocketAppender`, wrapped in the async and retry decorators |
+| "Avoid a global" | pass `LogManager` to the components. A Singleton only at the very top |
+
+## Short answer to say in an interview
+
+:::interview How would you design a logging framework?
+"I separate three things: the logger decides which messages to accept by level, the appender decides where to write, and the formatter decides how the line looks. Appenders and formatters are strategies. Each appender has its own lock so lines are not mixed. For speed, an async appender is a decorator that queues records and writes them on a worker thread, and it empties its queue on close. The logger manager is passed in so tests can use a memory appender."
+:::
 
 ```quiz
-? Why have a level check in both the logger and the appender?
+? Why check the level in both the logger and the appender?
 - It is a bug
-+ The logger drops useless messages cheaply, while each appender can have its own stricter threshold
++ The logger drops useless messages cheaply, and each appender can have a stricter limit
 - To double the output
-> Two filters (a small chain) give per-destination control with an early exit.
+> Two small filters give control for each destination, with an early exit.
 ? Why is AsyncAppender a Decorator?
 - It decorates strings
-+ It has the same interface as a normal appender but forwards on another thread, so callers do not change
++ It has the same interface as a normal appender, but sends the work to another thread, so callers do not change
 - It changes the level
-> Same interface, added behaviour.
+> Same interface, extra behaviour.
 ```
 
 :::keypoints
-- Logger (levels, fan-out), Appender (where), Formatter (how): Strategies. Async is a Decorator over an appender.
-- Per-appender locks keep lines whole; drain the queue on shutdown. Inject the manager or keep one in `main`.
-- Early exit on level, lazy message building, safe error handling inside the logging path.
+- Logger (levels), Appender (where), Formatter (how). The first two are Strategies. Async is a Decorator over an appender.
+- Each appender has its own lock so lines stay whole. Empty the queue on shutdown. Pass in the manager, or keep one in `main`.
+- Check the level early, build messages lazily, and handle errors safely inside the logging path.
 :::

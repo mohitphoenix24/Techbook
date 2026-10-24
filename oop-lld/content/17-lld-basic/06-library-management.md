@@ -2,32 +2,32 @@
 title: Design a Library Management System
 level: easy
 time: 50
-summary: Books and physical copies, members with loan limits, reservations queued per title with notification when a copy returns, fines by a pluggable policy, and flexible search built from composable specifications.
+summary: Books and their physical copies, members with a loan limit, reservations with a waiting line and a message when a copy comes back, fines using a rule you can swap, and search built from small combinable rules.
 ---
 
 :::problem Design a Library Management System {level=easy tags="classic,reservations,Observer,Specification,Strategy"}
-Design a library management system. The library has books, each with one or more physical copies. Members can search the catalogue, borrow and return copies, and reserve a title that has no free copy. Late returns incur a fine. Librarians add books and copies.
+Design a library management system. The library has books, and each book has one or more physical copies. Members can search the catalogue, borrow and return copies, and reserve a book that has no free copy. A late return costs a fine. Librarians add books and copies.
 
 :::hint Hint
-Separate the abstract **Book** (title, author, ISBN) from the physical **Copy** (which one is on the shelf). Reservations belong to the Book, loans to the Copy. A reservation queue plus a notification when a copy returns is a natural Observer.
+Keep the **Book** (title, author, ISBN) separate from the **Copy** (the real item on the shelf). A reservation belongs to the Book. A loan belongs to the Copy. A waiting line for reservations, plus a message when a copy comes back, fits the Observer pattern.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | Book (ISBN, title, author), Copy (id, status), Member, Loan, Reservation |
+| Main things? | Book (ISBN, title, author), Copy (id, status), Member, Loan, Reservation |
 | Loan rules? | at most 3 loans per member, 14 days |
-| Late fine? | per day, rate set by a policy (changes with rules) |
-| Reservations? | a member can reserve a title with no free copy; when a copy is returned the **first in the queue** is notified and the copy is held for them |
-| Search? | by title and/or author, combinable |
-| Roles? | member and librarian; permissions out of scope |
-| Out of scope | payments, e-books, multiple branches |
+| Late fine? | per day. The rate is set by a rule that can change |
+| Reservations? | a member can reserve a book with no free copy. When a copy is returned, the **first member in the line** gets a message, and the copy is kept for them |
+| Search? | by title and/or author, and the two can be combined |
+| Roles? | member and librarian (permissions are not needed) |
+| Not needed | payments, e-books, many branches |
 
-(The earlier lesson "From requirements to classes" built a smaller library. This one adds reservations, notifications and richer search.)
+(The earlier lesson "From requirements to classes" built a smaller library. This one adds reservations, messages and better search.)
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Library: class diagram"
 class Library
@@ -70,7 +70,7 @@ AuthorIs ..|> Specification
 AndSpec ..|> Specification
 ```
 
-## Step 3: key flows
+## Step 3: The main flows
 
 ```viz algo=state title="A copy's life"
 state Available "Available" [initial] @0,0
@@ -83,16 +83,18 @@ Held -> Borrowed : reserver borrows
 play: borrow, return (someone waiting), reserver borrows, return (no reservations)
 ```
 
-## Step 4: design decisions
+A copy goes through these states: **Available**, then **Borrowed**, and if someone is waiting, **Held** for the first person in the line.
 
-- **Book vs Copy**: reservations are per title, loans per copy. Mixing them is the commonest mistake.
-- **Reservation queue** per ISBN (`deque<Member*>`). On `giveBack`, if the queue is non-empty the copy goes to `Held`, and the first member is **notified** (Observer: `MemberListener`). A held copy cannot be borrowed by anyone else.
-- **FinePolicy** is a Strategy, so a new rule (student discount, cap) is a new class.
-- **Search with Specification**: `TitleContains("c++") && AuthorIs("Stroustrup")` without a function per combination.
-- **Time** is a `day` integer so tests are deterministic.
-- **Errors** as result strings (`Result`), because refusals are normal.
+## Step 4: Design decisions
 
-## Step 5: the code
+- **Book vs Copy.** Reservations are for the title, and loans are for a copy. Mixing the two is the most common mistake.
+- **Reservation line** for each ISBN (`deque<Member*>`). When a copy comes back, if the line is not empty, the copy becomes `Held` and the first member gets a **message** (Observer: `MemberListener`). A held copy cannot be borrowed by anyone else.
+- **FinePolicy is a Strategy.** A new rule (student discount, maximum fine) is a new class.
+- **Search with Specification:** `TitleContains("c++") && AuthorIs("Stroustrup")` works without writing a function for each combination.
+- **Time is a `day` number**, so tests give the same result every time.
+- **Refusals are results** (a `Result` with a reason), because refusing is a normal thing here.
+
+## Step 5: The code
 
 ```cpp run title="Library: borrow, return, reserve, fines, search"
 #include <algorithm>
@@ -228,42 +230,48 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Borrowing a copy held for someone else | refused; only the holder (or no one if the queue is empty) may take it |
-| Member at the loan limit | refused with a reason |
-| Reserving a title that has a free copy | no reservation needed |
+| Borrowing a copy that is held for someone else | refused. Only the one it is held for can take it |
+| Member already has the maximum loans | refused with a reason |
+| Reserving a book that has a free copy | no reservation is needed |
 | Returning a copy you did not borrow | refused |
-| Reservation expires if not collected | add a hold expiry and a cleanup job (extension) |
-| Same member reserving twice | ignore duplicates in the queue |
+| A reservation is never collected | add a hold time limit and a clean-up job (extension) |
+| The same member reserves twice | ignore the repeat in the line |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Different loan periods or limits for students and staff" | a `MembershipType` strategy providing `maxLoans` and `loanDays` |
-| "Renew a loan" | a method that extends `due` unless someone has reserved the title |
-| "Several branches" | a `Branch` owning copies; `Library` becomes a facade over branches; transfer requests |
-| "Notifications by email/SMS" | the listener forwards to a `Notifier` interface |
-| "Catalogue search at scale" | an inverted index behind the same `Specification`/`SearchService` interface |
-| "Audit trail" | events (`Borrowed`, `Returned`, `FineCharged`) appended to an event log |
-| "Concurrent borrowers for the last copy" | lock the Book (or ISBN) while finding and marking a copy |
+| "Different loan days or limits for students and staff" | a `MembershipType` strategy that gives `maxLoans` and `loanDays` |
+| "Renew a loan" | a method that extends the due date unless someone has reserved the book |
+| "Many branches" | a `Branch` owns copies. `Library` becomes a facade over branches. Add transfer requests |
+| "Messages by email or SMS" | the listener passes the message to a `Notifier` interface |
+| "Search on a very big catalogue" | an inverted index behind the same `SearchService` or `Specification` interface |
+| "A record of what happened" | add events (`Borrowed`, `Returned`, `FineCharged`) to an event log |
+| "Two people want the last copy together" | lock the book (or the ISBN) while finding and marking a copy |
+
+## Short answer to say in an interview
+
+:::interview How do you handle reservations in a library system?
+"I keep the Book and the Copy as separate classes. A reservation belongs to the book. Each book has a waiting line of members. When a copy is returned and the line is not empty, the copy becomes held for the first member, and the member gets a message through an observer. Nobody else can borrow a held copy. The fine rule is a strategy, so it can change without touching the library class."
+:::
 
 ```quiz
 ? Why separate Book from Copy?
 - Fewer classes
-+ Reservations belong to the title and loans to a physical copy; mixing them breaks both
++ Reservations belong to the title, and loans belong to a real copy. Mixing them breaks both
 - Books have no data
-> The title can be unavailable even though the catalogue entry exists.
-? How does the member learn that a reserved copy is ready?
-- They poll every minute
-+ The library notifies the first member in the queue (Observer)
+> A title can be unavailable even though it is in the catalogue.
+? How does the member learn that the reserved copy is ready?
+- They check every minute
++ The library tells the first member in the line (Observer)
 - Nothing happens
-> A listener callback is invoked when a copy is returned.
+> A listener is called when a copy is returned.
 ```
 
 :::keypoints
-- Book (catalogue) vs Copy (physical); reservations per title; a held state protects the reserver.
+- Book (the catalogue entry) and Copy (the real item). Reservations belong to the title. A held state protects the person who reserved.
 - Observer for "your book is ready", Strategy for fines, Specification for search.
-- Check limits and ownership in one place; return clear refusals rather than exceptions.
+- Check limits and ownership in one place. Return clear refusals instead of exceptions.
 :::

@@ -2,32 +2,32 @@
 title: Design a Bank Account System
 level: easy
 time: 50
-summary: Savings and checking accounts with different rules, an immutable transaction history, deposit, withdraw and atomic transfer between accounts (deadlock-free), interest as a strategy, account states (active, frozen, closed) and alert listeners.
+summary: Savings and checking accounts with different rules, a history of transactions that never changes, deposit, withdraw and a safe transfer between accounts (without deadlock), interest as a strategy, account status, and alerts.
 ---
 
 :::problem Design a Bank Account System {level=easy tags="banking,concurrency,transfer,Strategy,State,money"}
-Design the core of a bank: customers own accounts (savings, checking). Support deposit, withdrawal and transfer between accounts, keeping a transaction history. Savings accounts earn interest and limit withdrawals; checking accounts allow a bounded overdraft. A frozen account accepts deposits but not withdrawals. Transfers must be atomic and safe when many run concurrently.
+Design the core of a bank. Customers own accounts (savings, checking). Support deposit, withdrawal and transfer between accounts, and keep a history of transactions. Savings accounts earn interest and limit withdrawals. Checking accounts allow a small overdraft. A frozen account accepts deposits but not withdrawals. A transfer must be all-or-nothing, and safe when many run at the same time.
 
 :::hint Hint
-Keep the **balance rules** inside the account (so no caller can break them), make transactions **immutable records**, and lock **both** accounts when transferring, in a way that cannot deadlock.
+Keep the **balance rules inside the account**, so no caller can break them. Make transactions **records that never change**. When transferring, lock **both** accounts in a way that cannot cause a deadlock.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Account kinds? | Savings (no overdraft, interest, max 3 withdrawals per month), Checking (overdraft up to Rs 5,000) |
-| Operations? | deposit, withdraw, transfer, statement |
-| Money? | integer paise; positive amounts only |
-| History? | every successful operation appends an immutable `Transaction` (id, kind, amount, balance after) |
-| States? | Active, Frozen (deposits only), Closed (nothing) |
-| Interest? | monthly; the rate comes from a strategy |
-| Concurrency? | many threads; transfers atomic; no deadlock |
-| Alerts? | a listener is told about large withdrawals |
-| Out of scope | customers/KYC, multi-currency, persistence |
+| Kinds of account? | Savings (no overdraft, earns interest, at most 3 withdrawals a month) and Checking (overdraft up to Rs 5,000) |
+| Actions? | deposit, withdraw, transfer, statement |
+| Money? | integer paise. Only positive amounts |
+| History? | every successful action adds a `Transaction` that never changes (id, kind, amount, balance after) |
+| Status? | Active, Frozen (deposits only), Closed (nothing allowed) |
+| Interest? | monthly. The rate comes from a strategy |
+| Many threads? | yes. Transfers are all-or-nothing, with no deadlock |
+| Alerts? | a listener is told about big withdrawals |
+| Not needed | customer details, many currencies, saving to disk |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Bank accounts"
 abstract class Account
@@ -68,16 +68,16 @@ Account o-- AccountListener
 Bank ..> Account
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Template Method** in `Account`: `withdraw` does the common checks (state, amount > 0), then asks the subclass `canWithdraw(m)` for its specific rule (savings: monthly limit and no overdraft; checking: balance + overdraft).
-- **Transactions are immutable value records**; the history is append-only. The balance can be re-derived from it (useful for audit).
-- **Interest** is a `InterestStrategy`, so a tiered or promotional rate is a new class.
-- **Status** (Active/Frozen/Closed) is an enum checked in the template method (a full State pattern is warranted only if each status has lots of behaviour).
-- **Transfer**: lock **both** accounts with `scoped_lock` (deadlock-free), validate, apply both legs, record both transactions. If the debit succeeds but the credit cannot (closed destination), **nothing** changes: checks happen before any change, under the locks.
-- **Listeners** (Observer) for compliance alerts, called **after** releasing locks to avoid calling out under a lock.
+- **Template Method** in `Account`: `withdraw` does the common checks (status, amount above 0), then asks the subclass `canWithdraw(m)` for its own rule. Savings checks the monthly limit and no overdraft. Checking checks balance plus overdraft.
+- **Transactions are records that never change**, and the history only grows. The balance could be worked out again from it (useful for audits).
+- **Interest is an `InterestStrategy`.** A tiered or special rate is a new class.
+- **Status** is an enum checked in the template method. A full State pattern is worth it only if each status has a lot of behaviour.
+- **Transfer:** lock **both** accounts with `scoped_lock` (no deadlock), check everything, then change both accounts and record both transactions. If the debit could work but the credit cannot (the other account is closed), **nothing** changes, because all checks come before any change, while holding the locks.
+- **Listeners** (Observer) for alerts are called **after** releasing the locks, so we do not call outside code while holding a lock.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Accounts, interest strategies, and concurrent transfers"
 #include <iostream>
@@ -235,43 +235,49 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Negative or zero amounts | rejected in the template method |
-| Transfer to the same account | rejected up front (locking the same mutex twice is undefined) |
-| Destination closed | checked **before** any balance changes, so nothing moves |
-| Two transfers in opposite directions | `scoped_lock` acquires both mutexes without deadlock |
-| Interest on an overdrawn balance | `monthlyInterest` returns 0 for negative balances (add the rule) |
-| Listener throws | catch and log so a failing alert cannot break banking |
-| Money type | `long` paise here; use a `Money` class in real code |
+| Negative or zero amount | refused in the template method |
+| Transfer to the same account | refused first (locking the same mutex twice is undefined) |
+| The destination is closed | checked **before** any balance changes, so nothing moves |
+| Two transfers in opposite directions | `scoped_lock` takes both mutexes without a deadlock |
+| Interest on an overdrawn balance | `monthlyInterest` returns 0 for a negative balance (add this rule) |
+| A listener throws an error | catch and log it, so a failing alert cannot break banking |
+| Money type | `long` paise here. A real project would use a `Money` class |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "New account type (fixed deposit)" | a subclass with its own `canWithdraw` (penalty for early withdrawal) |
-| "Daily withdrawal limit across accounts" | a `LimitPolicy` checked by the bank service |
-| "Scheduled/standing transfers" | **Command** objects in a scheduler |
-| "Persist to a database with transactions" | an `AccountRepository` plus Unit of Work; DB transactions replace in-process locks |
-| "Distributed banks" | two-phase commit or the saga pattern with compensation (HLD) |
-| "Audit and reconciliation" | the append-only history lets you recompute the balance and compare |
-| "Idempotent retries" | each request carries an id; the account ignores a repeated id |
+| "A new type of account (fixed deposit)" | a subclass with its own `canWithdraw` (a penalty for early withdrawal) |
+| "A daily withdrawal limit across accounts" | a `LimitPolicy` checked by the bank service |
+| "Planned or repeating transfers" | **Command** objects in a scheduler |
+| "Save in a database with transactions" | an `AccountRepository` and a Unit of Work. Database transactions replace in-program locks |
+| "Banks on many machines" | two-phase commit or the saga pattern with undo steps (HLD) |
+| "Audit and matching" | the history that only grows lets you recompute the balance and compare |
+| "Safe retries" | each request has an id. The account ignores an id it has already seen |
+
+## Short answer to say in an interview
+
+:::interview How do you make a money transfer safe?
+"I take both account locks together with scoped_lock, which avoids deadlock when two transfers go in opposite directions. Under the locks I check everything first: both accounts exist and allow the action, and the source has enough money. Only then do I change both balances and record both transactions. So the transfer is all or nothing. Listeners are told after the locks are released."
+:::
 
 ```quiz
 ? Why does transfer use scoped_lock on both accounts?
 - To make it faster
-+ Locking both together avoids the deadlock of two opposite transfers each holding one lock
-- Because accounts are immutable
-> scoped_lock uses a deadlock-avoidance algorithm.
-? Why must all checks happen before any balance changes in transfer?
++ Taking both together avoids a deadlock when two opposite transfers each hold one lock
+- Because accounts never change
+> scoped_lock uses a method that avoids deadlock.
+? Why must all checks happen before any balance changes in a transfer?
 - For readability
-+ If the credit fails after the debit, money disappears; validating first keeps it all-or-nothing
++ If the credit fails after the debit, money disappears. Checking first keeps it all or nothing
 - To avoid exceptions
-> Atomicity means no partial effects.
+> No half-done work is allowed.
 ```
 
 :::keypoints
-- Template Method for withdraw (common checks + subclass rule); strategies for interest; immutable append-only transactions.
-- Transfer: `scoped_lock` both accounts, validate everything, then apply both legs. Notify listeners after unlocking.
-- Idempotency, audit by history, and DB transactions are the natural next steps.
+- Template Method for withdraw (common checks and the subclass rule). Strategies for interest. Transactions never change, and the history only grows.
+- Transfer: `scoped_lock` both accounts, check everything, then apply both sides. Tell listeners after unlocking.
+- Safe retries (ids), audit from history, and database transactions are the next steps.
 :::

@@ -2,22 +2,28 @@
 title: Decorator
 level: intermediate
 time: 40
-summary: Adding responsibilities to an object dynamically by wrapping it in objects with the same interface: coffee with add-ons, layered data streams (compress, encrypt), logging and retry decorators, why order matters, and the contrast with inheritance and Proxy.
+summary: Add extra features to an object by wrapping it, like adding milk and sugar to coffee. See the class explosion problem, coffee add-ons, stacking data layers, retry and logging wrappers, and why order matters.
 ---
 
+## What is the Decorator pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "I have an object. I want to add one more feature to it, without changing its class. So I **wrap** it in another object that looks the same from outside."
+
+:::analogy Think of ordering a coffee
+You start with a plain coffee. Add milk. Add sugar. Add whipped cream. Each add-on wraps the previous drink, changes the price and the description, and it is still "a coffee". You do not need a separate class for `CoffeeWithMilkAndSugarAndCream`.
+:::
+
 :::def Decorator
-Attach **additional responsibilities to an object dynamically**. Decorators provide a flexible alternative to subclassing for extending functionality.
+A **wrapper** that has the **same interface** as the object inside it. It passes calls to the inner object and adds some behaviour before or after. Because the interface is the same, you can wrap again and again, like layers of an onion.
 :::
 
-A decorator **wraps** an object, **implements the same interface**, forwards calls to the wrapped object, and adds behaviour before or after. Because it has the same interface, decorators can be **stacked** like layers of an onion.
+## The problem: too many subclasses
 
-:::analogy Think of it like this
-Ordering coffee. You start with a plain coffee. Add milk, add sugar, add whipped cream. Each addition wraps the previous drink, changes the price and the description, and is still "a coffee". You do not need a class `CoffeeWithMilkAndSugarAndCream` for each combination.
-:::
+For a coffee with optional milk, sugar and whip, using inheritance we would need `Coffee`, `CoffeeWithMilk`, `CoffeeWithSugar`, `CoffeeWithMilkAndSugar`... That is **8 classes for 3 add-ons**, and it doubles with every new add-on.
 
-## The problem: subclass explosion
-
-For a coffee with optional milk, sugar, whip, you would need `Coffee`, `CoffeeWithMilk`, `CoffeeWithSugar`, `CoffeeWithMilkAndSugar`, ... (2³ = 8 classes for 3 add-ons, and doubling for each new one). Decorator solves this with **n** small classes that combine freely.
+With Decorator, we write only **one small class per add-on**, and combine them freely.
 
 ```viz algo=uml title="Decorator"
 interface Beverage
@@ -102,11 +108,11 @@ int main() {
 }
 ```
 
-The client code holds a plain `unique_ptr<Beverage>` and never knows how many wrappers are inside. Adding a `Caramel` add-on is one class and does not touch the others.
+The user code holds a plain `unique_ptr<Beverage>`. It does not know how many layers are inside. To add Caramel later, write one class. Nothing else changes.
 
-## A realistic example: data streams
+## A real example: data layers
 
-Real systems stack decorators on I/O: compress, then encrypt, then log. Each layer transforms data and passes it on.
+Real systems often stack layers: compress the data, then encrypt it, then log it. Each layer changes the data and passes it on.
 
 ```cpp run title="Compress, encrypt and log, in any order"
 #include <iostream>
@@ -176,11 +182,11 @@ int main() {
 }
 ```
 
-**Order matters.** Compressing then encrypting differs from encrypting then compressing: compression works well on plain data, but encrypted data looks random, so there is nothing left to compress. (Run it: compress-first turns the 11 characters into 10 hex digits; encrypt-first gives 22, with no saving at all.) When you design decorators, document which orders are valid.
+**Order matters!** Compress-then-encrypt is not the same as encrypt-then-compress. Compression works well on normal text, but encrypted data looks random, so there is nothing left to shrink. (Run the example: compress-first turns the 11 characters into 10 hex digits. Encrypt-first gives 22, with no saving.) So when you build decorators, write down which orders are valid.
 
-## Behaviour decorators: logging, caching, retry
+## Wrappers for logging, caching and retry
 
-Decorators are excellent for **cross-cutting concerns** that you do not want inside business logic.
+Decorators are great for things like logging, retrying and timing. These are jobs you do **not** want mixed into your business code.
 
 ```cpp run title="Retry and timing decorators around a service"
 #include <iostream>
@@ -238,11 +244,11 @@ int main() {
 }
 ```
 
-Callers use a `PaymentService` and have no idea about retry or auditing. Each concern is separately testable and reusable.
+The code that uses `PaymentService` has no idea about retry or audit. Each feature is separate, reusable and easy to test.
 
-## Decorator with lambdas (functional style)
+## Decorator with functions (lambdas)
 
-When the interface is a single function, decorators are just functions that take and return `std::function`.
+If the interface is just one function, a decorator can simply be a function that takes a function and returns a new one.
 
 ```cpp run title="Decorating a function"
 #include <functional>
@@ -270,45 +276,47 @@ int main() {
 
 | | Inheritance | Decorator | Proxy |
 |---|---|---|---|
-| Extends behaviour | at compile time, fixed | at **run time**, combinable | no, controls **access** |
-| Number of classes for n features | up to 2ⁿ | n | 1 per kind |
-| Interface | inherited | **same as wrapped** | **same as wrapped** |
-| Intent | specialise | **add responsibility** | **control access** (lazy, auth, remote, cache) |
+| When the feature is added | while compiling, fixed | **while running**, can combine | not about adding features, it **controls access** |
+| Classes for n features | up to 2ⁿ | n | one per kind |
+| Interface | inherited | **same as the inner object** | **same as the inner object** |
+| Purpose | specialise | **add a feature** | **control access** (lazy, permission, remote) |
 
-Decorator and Proxy look similar (both wrap and implement the same interface). The difference is intent: a decorator *adds* behaviour the client wants (and the client usually builds the stack); a proxy *controls* access to the subject and usually manages its lifecycle itself.
+Decorator and Proxy look alike, because both wrap an object with the same interface. The difference is the purpose. A decorator **adds** something the user wants (and the user usually builds the stack). A proxy **controls** access to the real object.
 
-## Pitfalls
+## Things to watch out for
 
-- **Many small objects** and long chains are hard to debug (use clear names, log the chain).
-- Identity: a decorated object is **not the same object**; `==` and `dynamic_cast` on the wrapper do not reach the inner type.
-- Order dependence: document it.
-- Wide interfaces make decorators tedious (you must forward every method). Keep the component interface **small**.
+- Many small objects and long chains can be hard to debug. Use clear names.
+- A wrapped object is **not the same object**. Comparisons and `dynamic_cast` on the wrapper do not reach the inner type.
+- The order can change the result, so document it.
+- If the interface has many methods, forwarding every one is boring. Keep the interface **small**.
+
+## Short answer to say in an interview
 
 :::interview Decorator vs inheritance, and Decorator vs Proxy?
-"Inheritance fixes extensions at compile time and creates a class per combination. A decorator wraps an object that has the same interface and adds behaviour at run time; decorators can be stacked in any order, so n features need n classes, not 2 to the n. Both Decorator and Proxy wrap and share the interface, but a decorator adds responsibilities the client chooses, whereas a proxy controls access to the real subject: lazy creation, security checks, caching, remote calls."
+"With inheritance, features are fixed at compile time and I need a class for every combination. A decorator wraps an object that has the same interface and adds a feature at run time. Decorators can be stacked in any order, so n features need n classes. Decorator and Proxy both wrap with the same interface, but a decorator adds a feature the user chooses, and a proxy controls access to the real object, for example lazy loading, permission checks or caching."
 :::
 
 ```quiz
 ? What does a decorator share with the object it wraps?
-- Its data members
+- Its data
 + The same interface
 - Its constructor
-> That is what allows decorators to be stacked and used wherever the component is expected.
+> That is why decorators can be stacked and used anywhere the original is used.
 ? Why is Decorator better than subclassing for optional add-ons?
 - It is faster
-+ It avoids a class for every combination and combines behaviour at run time
++ It avoids a class for every combination and lets us combine features at run time
 - It needs fewer includes
 > n decorators give 2ⁿ combinations without writing 2ⁿ classes.
-? In a stack of decorators, what should you watch for?
+? What should you watch for in a stack of decorators?
 - Nothing
-+ The order of wrapping can change the behaviour
-- That they must all be singletons
-> For example, compress-then-encrypt differs from encrypt-then-compress.
++ The order of wrapping can change the result
+- They must all be singletons
+> Compress-then-encrypt is different from encrypt-then-compress.
 ```
 
 :::keypoints
-- Decorator wraps a component with the same interface, adds behaviour before/after forwarding, and can be stacked.
-- n decorators replace 2ⁿ subclasses; behaviour is chosen at run time; order matters.
-- Great for cross-cutting concerns (logging, retry, caching, auditing, compression, encryption). Keep the component interface small.
-- Distinguish from Proxy (controls access) and Adapter (changes the interface).
+- Decorator wraps an object with the same interface, adds behaviour before or after, and can be stacked.
+- n decorators replace 2ⁿ subclasses. Features are chosen at run time. Order matters.
+- Good for logging, retry, caching, audit, compression, encryption. Keep the interface small.
+- Do not mix it up with Proxy (controls access) or Adapter (changes the interface).
 :::

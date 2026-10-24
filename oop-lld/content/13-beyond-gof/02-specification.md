@@ -2,16 +2,26 @@
 title: Specification
 level: intermediate
 time: 30
-summary: Encapsulating business rules as small, combinable predicate objects: a product filter with and, or and not, specifications built from lambdas, why this beats a growing pile of filter functions, and use in validation and queries.
+summary: Turn each business rule into a small object that you can combine with AND, OR and NOT. See a product filter, a lambda version, and why this is better than writing a new function for every combination.
 ---
 
-:::def Specification
-Encapsulate a **business rule** as a small object with one question: *"does this candidate satisfy me?"* Specifications can be **combined** with AND, OR and NOT to build complex rules.
+## What is the Specification pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "A rule is just a question: **'does this item pass?'** I put each rule in its own small box, and I can join boxes with AND, OR and NOT."
+
+:::analogy Think of shopping filters
+On a shopping app you tick "Red", "Size M" and "Under ₹1000". Each filter is a small rule. The app joins them with AND. If you also tick "or Blue", it joins with OR. Nobody writes a new function for every possible combination.
 :::
 
-## The problem: filter function explosion
+:::def Specification
+A **business rule as a small object** that answers one question: *"does this item satisfy me?"* You can **combine** such objects using AND, OR and NOT to make bigger rules.
+:::
 
-An online shop needs to find products by colour, by size, by colour **and** size, by price below X, by colour and size and price... Each new combination becomes another function, or one function with a dozen flags.
+## The problem: too many filter functions
+
+An online shop wants to find products by colour, by size, by colour **and** size, by price, by colour and size and price... Each new combination needs another function, or one function with many flags.
 
 ```cpp run title="Combinatorial functions"
 #include <iostream>
@@ -34,11 +44,11 @@ int main() {
 }
 ```
 
-This violates OCP: each new criterion needs a new combination of functions.
+Every new rule means writing many new combinations. This breaks the "do not edit old code" rule.
 
-## The Specification pattern
+## The Specification way
 
-One small class per **criterion**. Combine them with **AND / OR / NOT**. One generic filter works with any specification.
+Make **one small class per rule**. Join them with **AND / OR / NOT**. One generic filter works with any rule.
 
 ```cpp run title="Composable specifications"
 #include <iostream>
@@ -123,7 +133,7 @@ int main() {
 }
 ```
 
-Now adding a new criterion (`NameContains`) is **one class**. All combinations come for free. The rules are **reusable objects** with names, so `isPremiumCustomer && hasOverdueInvoice` reads like the business language.
+To add a new rule (like `NameContains`), write **one class**. All combinations come for free. Rules are also reusable and have names, so something like `isPremiumCustomer && hasOverdueInvoice` reads like normal business language.
 
 ```viz algo=uml title="Specification (a Composite of predicates)"
 interface Specification
@@ -145,9 +155,9 @@ OrSpec o-- Specification
 NotSpec o-- Specification
 ```
 
-## The lightweight way: lambdas as specifications
+## The light way: lambdas
 
-In modern C++ a specification is just a **predicate**: `std::function<bool(const T&)>`. Combinators are small functions.
+In modern C++, a specification is just a **yes/no function**: `std::function<bool(const T&)>`. The AND, OR and NOT joiners are small functions.
 
 ```cpp run title="Specifications with std::function"
 #include <functional>
@@ -177,48 +187,50 @@ int main() {
 }
 ```
 
-## Where it appears
+## Where you will use it
 
-- **Validation**: "an order is valid if has items AND total > 0 AND NOT blacklisted customer".
-- **Search/filter UIs**: filters the user combines at run time.
-- **Eligibility** and policy rules: loan approval, discount eligibility, access control.
-- **Querying**: translating specifications to SQL `WHERE` clauses (a `toSql()` method).
-- **Selecting** objects for batch actions ("all overdue invoices of premium customers").
+- **Validation**: "an order is valid if it has items AND the total is above 0 AND the customer is not blocked".
+- **Search and filter screens**: filters that users combine at run time.
+- **Eligibility rules**: loan approval, discount eligibility, access control.
+- **Database queries**: turn a rule into a SQL `WHERE` text.
+- **Picking items for a job**: "all overdue invoices of premium customers".
 
-| Choose | Use when |
+| Choose | When |
 |---|---|
-| **Class-based Specification** | rules need names, descriptions, `explain()`, SQL translation, or state |
-| **Lambda predicates** | quick, in-memory, local filtering |
-| **Plain `if`** | one fixed rule that will not be combined |
+| **Classes** | rules need names, descriptions, an `explain()`, SQL conversion, or data of their own |
+| **Lambdas** | quick, local, in-memory filtering |
+| **A plain `if`** | one fixed rule that is never combined |
 
 ## Related patterns
 
-It is a **Composite** (and/or/not nodes holding children), the leaves are **Strategies** (a rule), and the combined tree can be walked by a **Visitor** (to print or convert to SQL). It is also a close relative of **Interpreter**: the Interpreter lesson parsed text into a similar tree.
+The AND/OR/NOT parts form a **Composite** (they hold child rules). The single rules are like **Strategies**. You can walk the whole tree with a **Visitor** (for example to print it or turn it into SQL). It is also a cousin of **Interpreter**: the Interpreter lesson built a similar tree from text.
 
-:::interview Explain the Specification pattern
-"A specification is a small object that answers `isSatisfiedBy(candidate)`; leaf specifications check one criterion, and AND, OR and NOT combinators compose them, so complex rules are built from simple ones without a function per combination. A single generic filter works with any spec. It is a Composite of predicates. In C++ it can be classes, or just `std::function<bool(const T&)>` with combinator functions."
+## Short answer to say in an interview
+
+:::interview What is the Specification pattern?
+"A specification is a small object with a method like isSatisfiedBy(item). Each simple rule checks one thing. AND, OR and NOT objects join them, so I can build complex rules from simple ones without writing a function for every combination. One generic filter then works with any rule. It is a Composite of yes/no rules. In C++ it can be classes, or just std::function<bool(const T&)> with small joiner functions."
 :::
 
 ```quiz
 ? What problem does Specification solve?
 - Slow sorting
-+ The explosion of filter functions for every combination of criteria
++ Writing a new filter function for every combination of rules
 - Memory leaks
-> Each criterion is one object; combinators create the combinations.
-? Which structure do AND, OR and NOT specifications form?
+> Each rule is one object, and joiners make the combinations.
+? What structure do AND, OR and NOT specifications form?
 - A queue
-+ A Composite tree of predicates
++ A Composite tree of yes/no rules
 - A singleton
-> Combinators hold child specifications and delegate.
+> Joiners hold child rules and pass the question to them.
 ? When is a plain lambda enough?
 - Never
-+ For simple in-memory filtering without names, explanations or SQL translation
++ For simple in-memory filtering when you don't need names, explanations or SQL
 - Only for sorting
-> Use classes when the rules need richer behaviour.
+> Use classes when rules need more features.
 ```
 
 :::keypoints
-- Specification: a rule as an object with `isSatisfiedBy`; combine with AND/OR/NOT; one generic filter for all.
-- It is a Composite of Strategy-like leaf rules; ideal for validation, eligibility and search filters.
-- In modern C++ a predicate `std::function<bool(const T&)>` with `&&`, `||`, `!` operators is often enough.
+- Specification = a rule as an object with `isSatisfiedBy`. Join rules with AND/OR/NOT. One generic filter for all.
+- It is a Composite of small rules. Great for validation, eligibility and search filters.
+- In modern C++, a `std::function<bool(const T&)>` with `&&`, `||`, `!` helpers is often enough.
 :::

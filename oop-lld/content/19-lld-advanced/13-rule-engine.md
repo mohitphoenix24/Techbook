@@ -2,32 +2,36 @@
 title: Design a Rule Engine
 level: advanced
 time: 75
-summary: Business rules as data (conditions and actions) evaluated against facts: composable conditions, a text DSL parser, priorities and conflict resolution, forward chaining until no rule fires, loop protection, explanations of which rules fired, and hot-swappable rule sets.
+summary: Business rules kept as data and checked against facts. Learn conditions you can combine, a small text language for rules, priorities, repeating until nothing new happens (forward chaining), protection from endless loops, explanations of what fired, and swapping rules without a restart.
 ---
 
 :::problem Design a Rule Engine {level=hard tags="Specification,Interpreter,Strategy,forward chaining,DSL,business rules"}
-Design a rule engine that business users can configure without redeploying code. Rules have a **condition** and **actions**, for example: `WHEN age >= 18 AND score > 700 THEN approve, limit = 50000`. Given a set of facts (a customer's data), the engine decides which rules apply, applies their actions (which may create new facts that trigger other rules), resolves conflicts by priority, avoids infinite loops, and explains what happened.
+Design a rule engine that business users can set up without a new release of the code. Rules have a **condition** and **actions**. For example: `WHEN age >= 18 AND score > 700 THEN approve, limit = 50000`. Given some facts (a customer's data), the engine decides which rules apply, runs their actions (which may create new facts that start other rules), settles clashes by priority, avoids endless loops, and explains what happened.
 :::
 
 :::hint Hint
-Rules are **data**: a condition tree (Specification/Interpreter) and a list of actions. The engine repeatedly selects the applicable rules (the **agenda**), picks one by priority (**conflict resolution**), fires it, and re-evaluates, until nothing new happens (**forward chaining**). Keep a record of firings for the explanation.
+Rules are **data**: a tree of conditions (Specification and Interpreter) and a list of actions. The engine repeatedly picks the rules that apply (the **agenda**), chooses one by priority (**conflict resolution**), fires it, and checks again, until nothing new happens (**forward chaining**). Keep a record of what fired, for the explanation.
 :::
 
-## Step 1: requirements
+## What is a rule engine, in simple words?
 
-| Question | Assumption |
+Think of a bank officer's checklist: "If the person is over 18 and has a good credit score, they are eligible. If they are eligible and earn a lot, give a high limit." A rule engine is a program that holds such rules **as data**, so you can change the rules without changing the code.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Facts? | a map of name → value (number, string, bool) |
-| Conditions? | comparisons (`==, !=, <, <=, >, >=`), `AND`, `OR`, `NOT`, parentheses; operands are fact names or literals |
-| Actions? | `set name = value` (create/modify a fact), `tag "text"` (record a decision) |
-| Priorities? | higher `salience` fires first; ties by definition order |
-| Chaining? | firing a rule may change facts, making other rules applicable; repeat until no rule is applicable |
-| Loops? | each rule fires at most once per run (refraction) unless marked `repeatable`; plus a firing limit |
-| Rules source? | defined in a text DSL, loaded at runtime; replaceable without restart |
-| Explanation? | list of fired rules in order, with the facts that changed |
-| Out of scope | RETE optimisation, rule authoring UI, temporal rules |
+| Facts? | a map from name to value (number, string, bool) |
+| Conditions? | comparisons (`==, !=, <, <=, >, >=`), `AND`, `OR`, `NOT`, brackets. The two sides are fact names or plain values |
+| Actions? | `set name = value` (create or change a fact), `tag "text"` (write down a decision) |
+| Priority? | a higher `salience` fires first. Ties are broken by the order they were written |
+| Chaining? | firing a rule can change facts, so other rules may now apply. Repeat until no rule applies |
+| Loops? | each rule fires at most once in a run (refraction) unless it is marked `repeatable`. Plus a limit on the number of firings |
+| Where do rules come from? | written in a small text language, loaded while running, and replaceable without a restart |
+| Explanation? | a list of the rules that fired, in order, with the facts that changed |
+| Not needed | the RETE speed-up, a screen to write rules, rules about time |
 
-## Step 2: how forward chaining works
+## Step 2: How forward chaining works
 
 ```text
 facts:   age=25  score=720  income=60000
@@ -42,9 +46,9 @@ cycle 3: applicable = {R3}                       fire R3  → tag
 cycle 4: applicable = {} (all refracted)         stop
 ```
 
-R2 only became applicable because R1 created a new fact: **chaining**.
+R2 became possible only because R1 created a new fact. This is **chaining**.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Rule engine"
 class RuleEngine
@@ -93,18 +97,18 @@ AddTag ..|> Action
 BySalience ..|> ConflictResolution
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Condition tree = Specification/Interpreter**: `Compare` (leaf), `And`, `Or`, `Not` (composites), all implementing `eval(Facts)`. They are built by a **parser** from the DSL text, so rules are data.
-- **Values** are a variant (double, string, bool). Missing facts make a comparison **false** (a deliberate choice: a rule cannot fire on unknown data).
-- **Actions** are commands implementing `apply(Facts)`; they return a short description for the explanation.
-- **Engine loop** (recognise-act cycle): compute the **agenda** (rules not yet fired whose condition holds), choose one via `ConflictResolution` (Strategy: by salience, then definition order; alternatives: most specific, random, round-robin), fire it, repeat.
-- **Refraction**: a rule fires at most once per run (tracked in a set). That prevents endless loops from rules that re-satisfy themselves. `repeatable` rules may fire again if the facts they depend on changed (extension: track the change stamp). A global `maxFirings` guard stops runaway sets.
-- **Explanation**: each `Firing` records the rule name and the action effects.
-- **Hot reload**: `load` parses into a new rule list and swaps it atomically (under a lock); runs use a snapshot, so in-flight evaluations are unaffected.
-- **Validation at load time**: syntax errors reported with the line; unknown actions rejected; duplicate rule names rejected.
+- **A condition tree = Specification and Interpreter:** `Compare` (a leaf), `And`, `Or`, `Not` (nodes with children), all with `eval(Facts)`. A **parser** builds them from the text, so the rules are data.
+- **Values** are a variant (double, string, bool). A missing fact makes a comparison **false** (on purpose: a rule cannot fire on data we do not know).
+- **Actions** are commands with `apply(Facts)`. They return a short description for the explanation.
+- **The engine loop** (recognise, then act): work out the **agenda** (rules that have not fired and whose condition holds), choose one with a `ConflictResolution` (a Strategy: by salience, then by order written. Other ways: most specific, random, round-robin), fire it, and repeat.
+- **Refraction:** a rule fires at most once in a run (kept in a set). This stops endless loops from rules that make themselves true again. `repeatable` rules may fire again if the facts they use changed (an extension: keep a change stamp). A global `maxFirings` limit stops runaway rule sets.
+- **Explanation:** each `Firing` records the rule name and what its actions did.
+- **Hot reload:** `load` parses into a new rule list and swaps it in at once (under a lock). Runs use a snapshot, so runs in progress are not affected.
+- **Checks when loading:** syntax errors are reported with the line, unknown actions are refused, and repeated rule names are refused.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="A rule DSL, forward chaining, priorities and explanations"
 #include <algorithm>
@@ -285,56 +289,62 @@ rule reject salience 20
 
 ## Design trade-offs
 
-| Choice | Pros | Cons / alternatives |
+| Choice | Good | Not so good / other ways |
 |---|---|---|
-| **Re-evaluate every rule each cycle** (this design) | simple, obviously correct | O(rules x cycles); fine for hundreds of rules |
-| **RETE network** | evaluates only what a changed fact affects; scales to thousands of rules | complex; memory for partial matches |
-| **Refraction (fire once)** | guarantees termination | rules that should re-fire after changes need explicit support |
-| **Salience** (numeric priority) | explicit and simple | brittle numbers; alternatives: rule groups/phases, specificity |
-| **DSL text** | business users can edit | needs validation, versioning, testing tools |
-| **Code rules (C++ lambdas)** | fast, type-safe | needs redeploy; the DSL gives hot reload |
+| **Check every rule in each cycle** (this design) | simple, clearly correct | O(rules × cycles). Fine for hundreds of rules |
+| **RETE network** | checks only what a changed fact affects. Scales to thousands of rules | complex. Uses memory for partial matches |
+| **Refraction (fire once)** | guarantees the engine stops | rules that should fire again after changes need extra support |
+| **Salience** (a number for priority) | clear and simple | the numbers become fragile. Other ways: groups or phases, most specific first |
+| **Rules as text** | business users can edit them | needs checks, versions and testing tools |
+| **Rules in C++ code (lambdas)** | fast, type-safe | needs a new release. The text language gives hot reload |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Contradictory rules (approve vs reject) | priority decides, and the explanation shows both; a validator can flag conflicting actions on the same fact |
-| Infinite loops (`A` sets x, `B` resets x, repeatedly) | refraction plus `maxFirings` |
-| Type mismatches (`age > "ten"`) | comparison returns false (or reject at load time with a type checker) |
-| Missing facts | comparison false; an `exists(name)` operator could test presence |
-| Floating-point equality | use epsilon helpers or integers for money |
-| Rule order dependency | prefer priorities and phases over hidden ordering |
-| Concurrent runs | each run uses its own `Facts` copy and a rule snapshot: no shared mutable state |
-| Auditing | store the firing list with the decision (regulatory requirement in lending) |
+| Rules that disagree (approve and reject) | priority decides. The explanation shows both. A checker can warn about opposite actions on the same fact |
+| Endless loops (`A` sets x, `B` resets x, again and again) | refraction and `maxFirings` |
+| Wrong types (`age > "ten"`) | the comparison is false (or refuse at load time with a type checker) |
+| Missing facts | the comparison is false. An `exists(name)` operator could test for presence |
+| Equal decimals | use a small tolerance, or use integers for money |
+| Rules that depend on order | prefer priorities and phases over hidden order |
+| Many runs at the same time | each run uses its own copy of `Facts` and a snapshot of the rules, so nothing is shared and changing |
+| Audit | save the list of fired rules with the decision (a rule in lending) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Rule groups/phases (validation → scoring → decision)" | an agenda per group; groups run in sequence |
-| "Rule versions and gradual rollout" | rule sets identified by version; route a percentage of traffic to the new set |
-| "Testing rules" | a table of (facts, expected tags) executed in CI; "what-if" simulation |
-| "Rules that call services (credit bureau)" | actions or facts provided lazily through a `FactProvider` interface with caching |
-| "Temporal rules (3 failed logins in 10 minutes)" | windowed aggregate facts maintained by event processors |
-| "Performance" | compile conditions to bytecode; index rules by the fact names they read (a poor man's RETE) |
-| "Explanation UI" | show for each fired rule the actual values of the facts used in its condition |
-| "Fuzzy or ML-assisted conditions" | a `Condition` that calls a model and compares the score to a threshold |
+| "Groups or phases of rules (check, then score, then decide)" | an agenda for each group. Groups run one after another |
+| "Versions of rules and a slow roll-out" | rule sets with a version. Send a share of traffic to the new set |
+| "Testing rules" | a table of (facts, expected tags) run in CI. A "what if" simulation |
+| "Rules that call other services (a credit bureau)" | actions or facts come through a `FactProvider` interface, with caching |
+| "Rules about time (3 failed logins in 10 minutes)" | counts over a window kept by event processors |
+| "Speed" | compile conditions to bytecode. Index rules by the fact names they read (a simple RETE) |
+| "A screen to explain" | show, for each fired rule, the real values of the facts in its condition |
+| "Fuzzy or ML conditions" | a `Condition` that calls a model and compares the score with a limit |
+
+## Short answer to say in an interview
+
+:::interview How does a rule engine work, and how do you stop endless loops?
+"Rules are data: a condition tree and a list of actions, built by a parser from a small text language. The engine repeats a cycle. It finds the rules whose condition holds and that have not fired yet, which is the agenda. It picks one by priority, fires it, and checks again, because the action may have created new facts. That is forward chaining. To stop loops, each rule fires at most once in a run, which is called refraction, and there is also a global limit on firings. I record each firing so I can explain the decision, and I swap rules in by parsing first and replacing the list in one step."
+:::
 
 ```quiz
 ? What does forward chaining mean?
 - Rules are sorted alphabetically
-+ Firing a rule can create or change facts that make other rules applicable, and evaluation repeats until nothing new fires
++ Firing a rule can create or change facts that make other rules apply, and this repeats until nothing new fires
 - Facts are copied forward
-> The recognise-act cycle repeats.
-? Why is a rule fired at most once per run (refraction)?
+> The cycle repeats: find rules, pick one, fire it.
+? Why does a rule fire at most once in a run (refraction)?
 - To save memory
-+ It prevents infinite loops where a rule keeps satisfying itself
++ It stops endless loops where a rule keeps making itself true again
 - Rules cannot change facts
-> Combined with a firing limit, it guarantees termination.
+> Together with a limit on firings, it guarantees the engine stops.
 ```
 
 :::keypoints
-- Rules are data: a condition tree (Specification/Interpreter built by a parser) plus actions (commands).
-- Engine = agenda → conflict resolution (salience) → fire → repeat; refraction and limits ensure termination; chaining happens through changed facts.
-- Hot reload by parsing first and swapping atomically; explanations from the firing log. RETE is the scaling story.
+- Rules are data: a tree of conditions (Specification and Interpreter, built by a parser) plus actions (commands).
+- The engine = agenda, then conflict resolution (salience), then fire, then repeat. Refraction and limits make it stop. Chaining happens through changed facts.
+- Hot reload by parsing first and swapping at once. Explanations come from the firing log. RETE is the way to scale.
 :::

@@ -2,31 +2,40 @@
 title: Design a Spreadsheet
 level: advanced
 time: 75
-summary: Cells that hold numbers, text or formulas referencing other cells, a dependency graph that recalculates only what changed in topological order, cycle detection, error values, ranges and functions like SUM, and observers for changes.
+summary: Cells with numbers, text or formulas that use other cells. Learn how a graph of dependencies lets us recalculate only what changed, in the right order, how to catch circular references, how errors spread, and how to tell listeners about changes.
 ---
 
 :::problem Design a Spreadsheet (Excel/Sheets core) {level=hard tags="graph,DAG,Interpreter,Observer,parsing,dependency tracking"}
-Design a spreadsheet engine. Cells (A1, B2, ...) hold numbers, text or formulas such as `=B1*2+C1` or `=SUM(A1:A5)`. When a cell changes, every formula that depends on it (directly or indirectly) must be recalculated, exactly once and in a valid order. Detect circular references, show errors (`#DIV/0!`, `#REF!`, `#CYCLE!`), and notify listeners about changed cells.
+Design a spreadsheet engine. Cells (A1, B2, ...) hold numbers, text or formulas like `=B1*2+C1` or `=SUM(A1:A5)`. When a cell changes, every formula that depends on it (directly or through other cells) must be recalculated, exactly once, in a valid order. Detect circular references, show errors (`#DIV/0!`, `#REF!`, `#CYCLE!`), and tell listeners which cells changed.
 :::
 
 :::hint Hint
-A spreadsheet is a **directed acyclic graph**: each formula cell **depends on** the cells it references. Keep, for each cell, both its dependencies and its **dependents**. On change, recalculate the affected cells in **topological order**. Parsing formulas is the Interpreter pattern (an expression tree).
+A spreadsheet is a **directed graph with no loops** (a DAG): each formula cell **depends on** the cells it uses. For each cell keep both its dependencies and its **dependents**. When a cell changes, recalculate the affected cells in **topological order**. Reading formulas is the Interpreter pattern (an expression tree).
 :::
 
-## Step 1: requirements
+## First, the key idea in simple words
 
-| Question | Assumption |
+If `B1 = A1 + 1` and `C1 = B1 * 2`, then:
+
+- `C1` depends on `B1`, and `B1` depends on `A1`.
+- If `A1` changes, we must recalculate `B1` **first**, and then `C1`. If we did `C1` first, it would use an old value of `B1`.
+
+This "calculate the things you depend on first" order is called a **topological order**.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Cell content? | number, text, or formula starting with `=` |
-| Formulas? | `+ - * /`, parentheses, cell references (A1), ranges (A1:B3) inside `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` |
-| Recalculation? | automatic on every `set`; only affected cells, each once |
-| Errors? | divide by zero, reference to an empty or text cell in arithmetic (treated as 0 for empty, error for text), unknown function, **cycles** |
-| Observers? | notified of every cell whose displayed value changed |
-| Size? | sparse grid (a map from cell id to cell), unbounded |
-| Concurrency? | a single writer; readers need a consistent view (mutex or snapshot) |
-| Out of scope | formatting, charts, copy-paste with relative references (extension) |
+| What can a cell hold? | a number, text, or a formula that starts with `=` |
+| Formulas? | `+ - * /`, brackets, cell names (A1), ranges (A1:B3) inside `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` |
+| Recalculating? | automatic on every `set`. Only affected cells, each once |
+| Errors? | divide by zero, a text cell used in maths (an empty cell counts as 0), unknown function, **loops** |
+| Listeners? | told about every cell whose shown value changed |
+| Size? | a sparse grid (a map from cell id to cell), no fixed size |
+| Many threads? | one writer. Readers need a steady view (a mutex or a snapshot) |
+| Not needed | formatting, charts, copy and paste with relative references (extension) |
 
-## Step 2: the model
+## Step 2: The model
 
 ```viz algo=uml title="Spreadsheet"
 class Sheet
@@ -68,17 +77,17 @@ Sheet o-- CellListener
 BinOp o-- Expr
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Two edges per cell**: `deps` (cells this formula reads) and `dependents` (cells that read this one). `set` rewires them: remove old dependency links, add new ones.
-- **Recalculation**: when `X` changes, collect the **transitive dependents** of `X`, order them topologically (Kahn's algorithm restricted to the affected subgraph), and evaluate each once. A cell is never evaluated before the cells it reads.
-- **Cycle detection**: when setting a formula, check whether the new dependencies can reach the cell itself through `deps` (DFS). A cyclic cell gets the value `#CYCLE!` (and its dependents too), but the sheet stays usable.
-- **Values are a small variant**: Number | Text | Error(code). Arithmetic propagates errors (`#DIV/0!` in → `#DIV/0!` out), the typical spreadsheet rule.
-- **Formula as an expression tree (Interpreter + Composite)**: `Num`, `Ref(cell)`, `Binary(op)`, `Call(function, args)` with ranges expanded to a list of refs. The tree is built once at `set` time and re-evaluated on recalculation (no reparsing).
-- **Listeners** are told of cells whose value changed after the recalculation completes.
-- **Cell ids**: parse `A1` to `(col, row)`; store as a normalised string for the map.
+- **Two links for each cell:** `deps` (the cells this formula reads) and `dependents` (the cells that read this one). `set` rewires them: remove the old dependency links and add the new ones.
+- **Recalculation:** when `X` changes, collect all the cells that depend on `X` (directly or not), put them in topological order (Kahn's method, only on the affected part of the graph), and calculate each one once. No cell is calculated before the cells it reads.
+- **Loop detection:** when a formula is set, check whether its new dependencies can reach the cell itself through `deps` (a DFS). A cell in a loop gets the value `#CYCLE!` (and so do its dependents), but the sheet keeps working.
+- **A value is a small variant:** Number, Text or Error(code). Maths passes errors on (`#DIV/0!` in gives `#DIV/0!` out), as spreadsheets do.
+- **A formula is an expression tree (Interpreter and Composite):** `Num`, `Ref(cell)`, `Binary(op)`, `Call(function, args)`, with ranges expanded to a list of refs. The tree is built once when `set` is called and calculated again at each recalculation (no new parsing).
+- **Listeners** are told about the cells whose value changed, after the recalculation is finished.
+- **Cell ids:** read `A1` as `(col, row)` and keep it as a clean string for the map.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Parsing formulas, dependency graph, ordered recalculation, cycles"
 #include <algorithm>
@@ -306,51 +315,57 @@ int main() {
 }
 ```
 
-## Why topological order matters
+## Why the order matters
 
-If `C2 = B2 + A1` and `B2 = A1 + 1`, evaluating `C2` before `B2` uses a **stale** value of `B2`. Kahn's algorithm guarantees each cell is evaluated only after every affected cell it reads. A cell evaluated once (not once per dependency path) avoids exponential recomputation in diamond-shaped dependencies.
+Take `C2 = B2 + A1` and `B2 = A1 + 1`. If we calculate `C2` before `B2`, we use an **old** `B2`. Kahn's method makes sure a cell is calculated only after every affected cell it reads. Each cell is calculated **once** (not once for each path to it). This avoids huge repeated work when dependencies form a diamond shape.
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Self reference `A1 = A1 + 1` | a cycle: `#CYCLE!` |
-| Reference to an empty cell | treated as 0 (number) or skipped (functions) |
-| Deleting a referenced cell | the dependents see an empty value and recalculate |
-| Formula parse error | `#ERROR!` in that cell; dependents recalculate |
-| Very large ranges (`SUM(A1:Z100000)`) | store ranges as nodes (`RangeRef`) instead of expanding to thousands of `Ref`s; keep a 2D index |
-| Many cells changed at once (paste) | batch: build the union of affected cells, one topological pass |
-| Volatile functions (`NOW()`, `RAND()`) | mark cells volatile; recalculate on every pass |
-| Floating-point display | format with a significant-digit policy |
+| A cell uses itself `A1 = A1 + 1` | a loop: `#CYCLE!` |
+| Using an empty cell | counts as 0 (in maths) or is skipped (in functions) |
+| Deleting a cell that others use | the dependents see an empty value and recalculate |
+| A formula that cannot be read | `#ERROR!` in that cell. Dependents recalculate |
+| Very big ranges (`SUM(A1:Z100000)`) | keep a range as one node (`RangeRef`) instead of thousands of `Ref`s, and keep a 2D index |
+| Many cells change together (paste) | batch: join all the affected cells and do one topological pass |
+| Functions that change by themselves (`NOW()`, `RAND()`) | mark those cells "volatile" and recalculate them every time |
+| Showing decimals | format with a clear rule for digits |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Copy/paste with relative references" | formulas store references as (col offset, row offset) relative to the cell; paste shifts them (a `Reference` value type with an `absolute` flag) |
-| "More functions (IF, VLOOKUP, string functions)" | a **function registry** (name → implementation) instead of hard-coded names |
-| "Insert/delete rows and columns" | rewrite references (a visitor over expression trees) |
-| "Undo/redo" | the Command pattern over `set` operations (see the text editor lesson) |
-| "Multiple sheets, cross-sheet references" | `Sheet!A1` references; a `Workbook` owning sheets; the graph spans sheets |
-| "Incremental, concurrent recalculation" | independent branches of the DAG can evaluate in parallel after the topological layering |
-| "Persistence" | serialise inputs, not values; recompute on load |
-| "Collaboration" | operations over cell ids merged with CRDT-style last-writer-wins registers |
+| "Copy and paste with relative references" | formulas keep references as (column offset, row offset) from the cell. Paste shifts them (a `Reference` value with an `absolute` flag) |
+| "More functions (IF, VLOOKUP, text functions)" | a **function registry** (name to code) instead of fixed names |
+| "Insert or delete rows and columns" | rewrite the references (a visitor over expression trees) |
+| "Undo and redo" | the Command pattern over `set` (see the text editor lesson) |
+| "Many sheets, references between sheets" | `Sheet!A1` references. A `Workbook` owns the sheets. The graph covers all sheets |
+| "Faster, in parallel" | independent branches of the DAG can run together once the layers are known |
+| "Saving" | save the inputs, not the values. Recalculate when loading |
+| "Working together" | operations on cell ids merged with CRDT-style last-writer-wins registers |
+
+## Short answer to say in an interview
+
+:::interview How do you recalculate a spreadsheet correctly and efficiently?
+"Cells form a directed graph with no loops. Each cell keeps what it depends on and what depends on it. When a cell changes, I collect the cells that depend on it, directly or not, and calculate them in topological order using Kahn's method, so each cell is calculated once and only after the cells it reads. Formulas are expression trees built once. A loop is found because those cells cannot be put in order, so they get #CYCLE!. Errors pass through the maths, and listeners are told about the changed cells."
+:::
 
 ```quiz
 ? Why keep both dependencies and dependents for each cell?
 - Memory is cheap
-+ Dependencies let you check cycles and rewire; dependents let you find what to recalculate when a cell changes
++ Dependencies help check loops and rewire. Dependents tell us what to recalculate when a cell changes
 - Excel does it
-> The two directions serve different traversals of the DAG.
-? How is a circular reference detected?
+> The two directions are used for two different walks over the DAG.
+? How is a circular reference found?
 - By running the formulas until they overflow
-+ In the affected subgraph a topological sort cannot order the cells on a cycle, so they remain unordered and get #CYCLE!
-- It cannot be detected
-> Kahn's algorithm leaves cycle members with non-zero pending counts.
++ In the affected part, a topological sort cannot put the cells on a loop in order, so they stay unordered and get #CYCLE!
+- It cannot be found
+> Kahn's method leaves loop members with a waiting count that is not zero.
 ```
 
 :::keypoints
-- Cells form a DAG: store deps and dependents; recalc the affected subgraph once each in topological (Kahn) order.
-- Formulas are expression trees (Interpreter); values are Number|Text|Error with error propagation; cycles give `#CYCLE!`.
-- Listeners get changed cells; extend with a function registry, relative references, undo, batching and parallel layers.
+- Cells form a DAG. Keep deps and dependents. Recalculate the affected part once, in topological order (Kahn).
+- Formulas are expression trees (Interpreter). A value is Number, Text or Error, and errors pass on. Loops give `#CYCLE!`.
+- Listeners get the changed cells. Extend with a function registry, relative references, undo, batching and parallel layers.
 :::

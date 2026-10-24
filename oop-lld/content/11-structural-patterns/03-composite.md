@@ -2,18 +2,30 @@
 title: Composite
 level: intermediate
 time: 35
-summary: Treating single objects and groups of objects uniformly in a tree: the Component, Leaf and Composite roles, a file-system example with sizes and search, an expression tree, design choices (child management in the base or not), and traversal.
+summary: Treat a single item and a group of items in the same way, using a tree. See a files-and-folders example, a search, an expression tree, and the design choices.
 ---
 
+## What is the Composite pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "A folder can contain files and other folders. But when I ask 'what is your size?', I do not want to care whether it is a file or a folder. I just ask."
+
+That is the whole idea. You treat **one item** and **a group of items** in the **same way**.
+
 :::def Composite
-Compose objects into **tree structures** to represent part-whole hierarchies. Composite lets clients treat **individual objects and compositions of objects uniformly**.
+Arrange objects in a **tree**, so that a single object and a group of objects can be used **through the same interface**.
 :::
 
-You meet trees everywhere: a file system (files and folders), a UI (buttons inside panels inside windows), an organisation chart (employees and managers), a menu (items and submenus), an arithmetic expression (numbers and operations), a graphics scene (shapes and groups).
+You see trees everywhere: files and folders, a screen with buttons inside panels inside windows, a company with employees and managers, a menu with items and submenus, a maths expression like `(2 + 3) * 4`.
 
-## The idea
+## The idea in three roles
 
-All nodes share **one interface**. A **leaf** does the work itself. A **composite** holds children and **delegates** to them (often by recursion). The caller never checks "is this a file or a folder?".
+- **Component**: the common interface (for example `size()`).
+- **Leaf**: a simple item with no children (a file). It does the work itself.
+- **Composite**: an item that holds children (a folder). It does its work by **asking each child**.
+
+The caller never asks "is this a file or a folder?".
 
 ```viz algo=uml title="Composite"
 interface FileSystemItem
@@ -32,7 +44,7 @@ Folder ..|> FileSystemItem
 Folder o-- FileSystemItem : children 0..*
 ```
 
-## A file system
+## Example: a file system
 
 ```cpp run title="Files and folders, treated alike"
 #include <algorithm>
@@ -92,11 +104,16 @@ int main() {
 }
 ```
 
-`size()` and `print()` are written once for the whole tree. The call `child->size()` works for a file or a folder with no `if`. A new leaf type (`Symlink`) or composite type (`Archive`) slots in without touching existing code.
+Read `size()`:
+
+- For a **file**, it returns the file's own size.
+- For a **folder**, it adds up the size of every child. Each child may be a file or another folder, and the same call works.
+
+`size()` and `print()` are written once for the whole tree, and there is no `if (isFolder)` anywhere. A new type, like `Symlink` or `Archive`, fits in without changing old code.
 
 ## A search that works on any node
 
-The same trick applies to any operation that walks the tree.
+The same trick works for any job that walks the tree.
 
 ```cpp run title="Find files matching a predicate"
 #include <functional>
@@ -138,9 +155,9 @@ int main() {
 }
 ```
 
-## Another composite: an expression tree
+## Another example: an expression tree
 
-Numbers are leaves; operations are composites whose children are sub-expressions.
+Numbers are leaves. Operations (`+`, `*`) are composites whose children are smaller expressions.
 
 ```cpp run title="(2 + 3) * 4 as a tree"
 #include <iostream>
@@ -179,49 +196,51 @@ int main() {
 
 ## Design choices
 
-**Where do `add`/`remove` live?**
+**Where should `add` and `remove` live?**
 
-| Choice | Pros | Cons |
+| Choice | Good | Not so good |
 |---|---|---|
-| In the **base** `Component` (transparency) | uniform interface; client never casts | a `File` must implement `add` (throw or ignore): violates LSP/ISP |
-| Only in **Composite** (safety) | a leaf cannot be given children | the client must know it is holding a composite (a cast) |
+| In the **common interface** (transparent) | callers never need a cast | a `File` must have an `add` method that makes no sense |
+| Only in **Composite** (safe) | a file can never get children | the caller must know it holds a folder |
 
-Prefer **safety**: keep `add` in `Folder`, and build the tree through `Folder` references (as above). Keep the *query* operations (`size`, `print`) in the common interface.
+We prefer **safety**: put `add` only in `Folder`. Keep the "question" methods (`size`, `print`) in the common interface.
 
-**Ownership:** the composite **owns** its children (`unique_ptr`). A child holding a parent pointer should use a **non-owning** raw pointer.
+**Who owns the children?** The composite owns them (`unique_ptr`). If a child keeps a pointer to its parent, that pointer should be a plain, non-owning one.
 
-**Cost:** a recursive operation costs O(n) in tree size; cache values (like folder size) if you read them often, and invalidate on change.
+**Speed:** a call that walks the whole tree costs time in proportion to the tree size. If you ask often (like folder size), save the answer and refresh it when something changes.
 
-**Cycles:** a composite must never contain itself, directly or indirectly. Guard `add` if users can build arbitrary graphs.
+**Loops:** a folder must never contain itself, directly or through others. Check this when users can build any tree they like.
 
-## Where it appears in LLD problems
+## Where you will meet it in LLD problems
 
-File system design, UI component trees, menu systems, org charts, shopping bundles ("a bundle of items is itself an item with a price"), permissions groups, expression evaluators, game scenes.
+File system, UI components, menus, company charts, shopping bundles ("a bundle is also an item with a price"), permission groups, expression calculators, game scenes.
 
-:::interview What is the Composite pattern? Where did you use it?
-"Composite lets clients treat single objects and groups the same way. Leaf and composite classes implement one component interface; a composite holds children and delegates operations to them recursively. A file system is the classic example: `size()` on a folder sums its children and on a file returns its own size, with no type checks. I keep child management in the composite for type safety and have the composite own its children via `unique_ptr`."
+## Short answer to say in an interview
+
+:::interview What is the Composite pattern?
+"Composite lets me treat a single object and a group of objects the same way. Both follow one interface. A leaf does the work itself. A composite holds children and passes the work to each of them. A file system is the classic example: size() on a file returns its own size, and on a folder adds up its children, with no type checks. The folder owns its children with unique_ptr."
 :::
 
 ```quiz
-? What is the key benefit of Composite?
-- Faster iteration
-+ Clients treat leaves and composites uniformly through one interface
+? What is the main benefit of Composite?
+- Faster loops
++ The caller treats leaves and groups in the same way through one interface
 - Fewer classes
-> The recursion hides the structure from the caller.
+> The caller does not care about the tree shape.
 ? Who should own the children of a Folder?
 - A global registry
-+ The Folder itself, via unique_ptr
-- The children's parent pointers
-> The composite owns its children; back-pointers to the parent are non-owning.
-? A downside of putting `add()` in the common base interface is...
++ The Folder itself, using unique_ptr
+- The children
+> The composite owns its children. A back-pointer to the parent is non-owning.
+? What is a downside of putting add() in the common interface?
 - Slower code
-+ Leaves must implement an operation that makes no sense for them
++ Leaves get a method that makes no sense for them
 - It needs templates
-> That is the transparency versus safety trade-off.
+> That is the trade-off between "transparent" and "safe".
 ```
 
 :::keypoints
-- Composite: a tree where leaves and composites share one interface; composites delegate to children recursively.
-- Typical operations: `size`, `price`, `print`, `search`, `evaluate`. New node types need no changes elsewhere.
-- Prefer type safety (child management only on the composite). The composite owns its children with `unique_ptr`; parent links are non-owning.
+- Composite = a tree where leaves and groups share one interface. A group passes work to its children.
+- Common jobs: `size`, `price`, `print`, `search`, `evaluate`. New node types need no other changes.
+- Prefer safety: keep child management only in the composite. The composite owns children with `unique_ptr`.
 :::

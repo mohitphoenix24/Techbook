@@ -1,21 +1,27 @@
 ---
-title: S: Single Responsibility Principle
+title: "S: Single Responsibility Principle"
 level: intermediate
 time: 30
-summary: A class should have one reason to change. A violation with three stakeholders in one class, the refactoring, how to spot responsibilities, how far to go, and the common misreadings.
+summary: One class should have one reason to change. A simple example with three people in one class, how to split it, how to spot the problem, and how far to go.
 ---
 
+**S** in SOLID stands for **Single Responsibility Principle**, or **SRP**.
+
+Don't memorise the long definition yet. Think of it like this:
+
+> "If I need to change something, how many different reasons could make me open this class? If the answer is more than one, the class is doing too much."
+
 :::def Single Responsibility Principle (SRP)
-A class should have **one, and only one, reason to change**. More precisely (Robert Martin): a module should be responsible to **one actor**, one group of people who would ask for changes.
+A class should have **only one reason to change**. In other words, it should serve **one purpose** for **one group of people**.
 :::
 
-"One reason to change" is the key. It does **not** mean "a class has only one method". It means everything inside the class changes for the *same kind of reason*.
+One important thing: this does **not** mean "a class can have only one method". A `Money` class can have many methods (add, subtract, compare). They all have **one purpose**: handling money. That is fine.
 
-:::analogy Think of it like this
-A restaurant cook who also takes orders, handles the till and cleans the toilets. When the menu changes, the till rules change, or the cleaning schedule changes, you disturb the same person. Better: separate roles, so a change in one does not break the others.
+:::analogy Think of a restaurant
+One person cooks, takes orders, handles the cash counter and cleans the toilets. When the menu changes, or the billing rules change, or the cleaning schedule changes, that same person is disturbed. It is better to have separate people for separate jobs. Then a change in one job does not break the others.
 :::
 
-## A violation
+## A bad example
 
 ```cpp run title="Employee with three reasons to change"
 #include <iostream>
@@ -49,11 +55,15 @@ int main() {
 }
 ```
 
-Why is it bad? **Three different teams** edit one class, so their changes collide in version control and in behaviour. If HR's report formula shares a helper with the pay calculation (say, a `regularHours()` method), an HR change can silently change salaries. Also, to test pay you must build an object that knows about databases.
+Why is this bad?
 
-## The refactoring
+- **Three different teams** would edit this one class: HR (reports), finance (salary), and the database team (saving). Their changes can clash.
+- Suppose HR's report and the pay calculation both use a helper like `regularHours()`. If HR changes it, **salaries change by accident**.
+- To test the pay calculation, you must also set up a database. That is painful.
 
-Split by **reason to change** (by actor). Keep the data in a small class, and move each responsibility to its own class.
+## The fix: split by job
+
+Keep the data in a small class. Give each job its own class.
 
 ```cpp run title="One class per reason to change"
 #include <iostream>
@@ -95,7 +105,9 @@ int main() {
 }
 ```
 
-Now each class has one reason to change and can be tested on its own. `PayCalculator` can be tested with no database at all.
+Now each class has **one reason to change**. `PayCalculator` can be tested without any database.
+
+Here is how the pieces work together:
 
 ```viz algo=uml title="After applying SRP"
 class EmployeeData
@@ -113,24 +125,24 @@ HoursReporter ..> EmployeeData
 EmployeeRepository ..> EmployeeData
 ```
 
-## How to spot a violation
+## How to spot a problem
 
-| Smell | Example |
+| Warning sign | Example |
 |---|---|
-| The class name needs "And" or "Manager", "Helper", "Util", "Processor" | `OrderManagerAndMailer` |
-| Methods that use disjoint groups of fields | half the methods touch `balance_`, half touch `smtpHost_` |
-| Imports/includes from unrelated areas (UI, DB, network, maths) | a `Report` that includes `<sqlite3.h>` and `<smtp.h>` |
-| One feature request keeps editing the same class from many teams | merge conflicts every sprint |
-| You cannot name the class's purpose in **one sentence without "and"** | "validates input and writes to disk and..." |
-| Hard to unit test | you need a database to test arithmetic |
+| The class name has "And", "Manager", "Helper", "Util" or "Processor" | `OrderManagerAndMailer` |
+| Some methods use some fields, other methods use other fields | half the methods use `balance_`, half use `smtpHost_` |
+| The class imports things from unrelated areas | a `Report` that includes both a database library and an email library |
+| Many teams keep editing the same class | merge conflicts every week |
+| You cannot explain the class in one sentence without "and" | "it validates input and writes files and..." |
+| It is hard to test | you need a database to test simple maths |
 
-## How far to go? (Do not over-apply it)
+## Do not go too far
 
-SRP is a **guide, not a goal**. If you split too far you get dozens of tiny classes that are hard to follow ("class explosion"). Use these checks:
+SRP is a **guide**, not a goal. If you split everything into tiny classes, nobody can follow the code. Use these checks:
 
-1. Split when the parts **change at different times, for different reasons**, not just because they are different.
-2. Keep things together that **always change together** (that is cohesion).
-3. A tiny class used in exactly one place and unlikely to vary may not need its own type.
+1. Split when parts **change at different times for different reasons**. Do not split only because they look different.
+2. Keep things together if they **always change together**.
+3. A tiny class used in only one place, which will probably never change, may not need its own type.
 
 ```cpp run title="Same responsibility, so keep it together"
 #include <iostream>
@@ -154,36 +166,38 @@ int main() {
 }
 ```
 
-Five methods, one reason to change. That is perfectly fine under SRP.
+This class has five methods and still follows SRP, because all of them serve one purpose.
 
-## SRP at every level
+## SRP is not only for classes
 
-SRP applies to **functions** too. A function that parses, validates, computes and prints should be four small functions. It applies to **modules** and **services**: a "UserService" that handles profiles, emails and billing is three services.
+A function that reads input, checks it, calculates and prints should be four small functions. A "UserService" that handles profile, emails and billing should be three services.
 
-:::interview Explain SRP. Does it mean a class should have one method?
-"SRP says a class should have only one reason to change, meaning it is responsible to one stakeholder or concern. It does not limit the number of methods: `Money` has many, all about money. I look for classes where different kinds of change would hit the same class, such as tax rules, report layout and storage, and I split those so a change stays local and the class stays easy to test."
+## Short answer to say in an interview
+
+:::interview Explain SRP. Does it mean one method per class?
+"SRP says a class should have only one reason to change, meaning one purpose for one group of people. It does not limit the number of methods. For example, Money can have many methods and all of them are about money. When I see a class that mixes things like tax rules, report format and database code, I split it, so a change in one place does not break the others and each class is easy to test."
 :::
 
 ```quiz
 ? What does "one reason to change" mean?
 - The class has exactly one method
-+ All the class's code would change for the same kind of reason (one actor or concern)
++ All the code in the class would change for the same kind of reason
 - The class has one data member
-> Many methods are fine when they serve the same responsibility.
-? Which is a symptom of an SRP violation?
+> Many methods are fine if they all serve the same purpose.
+? Which one is a sign that SRP is broken?
 - A class named Money with add and subtract
-+ A class that mixes business rules, report formatting and database access
++ A class that mixes business rules, report printing and database code
 - A class with a virtual destructor
-> Those parts change for different reasons and for different people.
-? What is the danger of applying SRP too aggressively?
+> Those parts change for different reasons.
+? What is the danger of applying SRP too much?
 - Faster code
-+ Many tiny classes that are hard to navigate (class explosion)
-- It breaks Liskov
-> Split along real axes of change, not just because things differ.
++ Too many tiny classes that are hard to follow
+- It breaks the Liskov principle
+> Split only where there are real, separate reasons to change.
 ```
 
 :::keypoints
-- One class, one reason to change (one actor, one concern). It is about **change**, not about the number of methods.
-- Violation signs: "And/Manager/Util" names, disjoint field groups, many teams editing one class, hard to test.
-- Split by reason to change; keep together what changes together; do not over-split.
+- One class, one reason to change (one purpose, one group of people). It is about **change**, not about counting methods.
+- Warning signs: names with "And/Manager/Util", fields used by separate groups of methods, many teams editing one class, hard to test.
+- Split by reason to change, keep together what changes together, and do not over-split.
 :::

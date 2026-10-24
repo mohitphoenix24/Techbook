@@ -2,31 +2,31 @@
 title: Design a Food Delivery App
 level: intermediate
 time: 60
-summary: Restaurants and menus, carts, an order lifecycle state machine, assigning delivery partners with a pluggable strategy, delivery fee and pricing, status notifications through observers, and cancellation rules that depend on the order state.
+summary: Restaurants, menus and orders, an order life cycle as a state machine, choosing a delivery partner with a strategy, delivery fee, status messages through observers, and cancel rules that depend on the order state.
 ---
 
 :::problem Design a Food Delivery App {level=medium tags="State,Strategy,Observer,e-commerce,Swiggy,order lifecycle"}
-Design the core of a food delivery platform like Swiggy or Zomato. Customers browse restaurants and menus, place an order from a single restaurant, and pay. The restaurant accepts and prepares the order; a delivery partner is assigned, picks it up and delivers it. Customers get status updates and can cancel while it is still allowed.
+Design the core of a food delivery platform like Swiggy or Zomato. Customers browse restaurants and menus, place an order from one restaurant, and pay. The restaurant accepts and prepares the order. A delivery partner is assigned, picks it up, and delivers it. Customers get status updates and can cancel while it is still allowed.
 
 :::hint Hint
-An order has a clear lifecycle, so model it as a **state machine** with guarded transitions. Assigning a partner is a **strategy**. Status updates go to subscribers (**observer**). Keep restaurants, orders and delivery partners as separate aggregates that talk through the service.
+An order has a clear life cycle, so make it a **state machine** with checked transitions. Choosing a partner is a **strategy**. Status updates go to subscribers (**observer**). Keep restaurants, orders and partners as separate parts that talk through the service.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | Customer, Restaurant (menu items with price and availability), Order, DeliveryPartner |
-| Ordering? | one restaurant per order; items with quantities; unavailable items rejected |
-| Pricing? | items + delivery fee (distance based) + taxes; a promo code optional |
-| Lifecycle? | Placed → Accepted → Preparing → ReadyForPickup → PickedUp → Delivered; Cancelled/Rejected |
-| Assignment? | when the order is accepted, find a partner: nearest free partner within 5 km |
-| Cancellation? | by customer until the restaurant starts preparing (free); after that not allowed |
-| Notifications? | customer, restaurant and partner are told about relevant transitions |
-| Out of scope | payments (interface), maps/routing (distance function), ratings |
+| Main things? | Customer, Restaurant (menu items with price and availability), Order, DeliveryPartner |
+| Ordering? | one restaurant for each order. Items with quantities. Items that are not available are refused |
+| Price? | items + delivery fee (by distance) + taxes. A promo code is optional |
+| Life cycle? | Placed, Accepted, Preparing, ReadyForPickup, PickedUp, Delivered. Or Cancelled or Rejected |
+| Choosing a partner? | when the order is accepted, find the nearest free partner within 5 km |
+| Cancel? | by the customer until the restaurant starts preparing (free). After that, not allowed |
+| Messages? | the customer, restaurant and partner hear about the changes that matter to them |
+| Not needed | payments (an interface), maps and routes (a distance function), ratings |
 
-## Step 2: the order lifecycle
+## Step 2: The life cycle of an order
 
 ```viz algo=state title="Order states"
 state Placed "Placed" [initial] @0,1
@@ -46,9 +46,9 @@ PickedUp -> Delivered : delivered
 play: restaurant accepts, kitchen starts, customer cancels, food ready, partner picks up, delivered
 ```
 
-(The play sequence shows a rejected action: after the kitchen starts, a customer cancel is **not allowed**.)
+(In the play sequence, one action is refused: once the kitchen has started, a customer cancel is **not allowed**.)
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Food delivery"
 class DeliveryService
@@ -91,16 +91,16 @@ Restaurant *-- MenuItem
 Order --> DeliveryPartner
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Transition table** (`allowed(from, event)`) centralises the rules; invalid transitions return a clear refusal. A full State-class design is possible, but the table keeps the lifecycle in one readable place for ~7 states (use classes if each state has lots of behaviour).
-- **Assignment Strategy**: `NearestFree` picks the closest non-busy partner within a radius. Swap in "least busy" or batching without touching the service.
-- **Observer**: `OrderListener` receives `(order, from, to)`; customer app, restaurant tablet and partner app each subscribe.
-- **Price computed once at placement** and stored on the order (menu prices may change later).
-- **Atomic partner claim**: a partner flagged `busy` under a lock when assigned, so two orders cannot grab the same partner.
-- **Restaurant availability** is checked when the order is placed (and could be re-checked at accept).
+- **A transition table** (`allowed(from, event)`) keeps all the rules in one place. A wrong transition gets a clear refusal. We could use State classes, but for about 7 states a table is easier to read. Use classes if each state has a lot of behaviour.
+- **Partner choice is a Strategy.** `NearestFree` picks the closest partner who is not busy, within a distance. We can swap in "least busy" or batching without touching the service.
+- **Observer:** `OrderListener` receives `(order, from, to)`. The customer app, restaurant tablet and partner app each subscribe.
+- **The price is worked out once when the order is placed** and saved on the order, because menu prices may change later.
+- **Partners are claimed safely.** A partner is marked `busy` under a lock when assigned, so two orders cannot take the same partner.
+- **Restaurant availability** is checked when the order is placed (and can be checked again at accept).
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Orders, lifecycle, partner assignment, notifications"
 #include <algorithm>
@@ -251,44 +251,50 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| No partner available when accepted | the order stays `Placed` with a message (or waits in a queue and retries) |
-| Cancel after preparing starts | refused by the transition table |
-| Restaurant rejects | `Reject` from Placed leads to Cancelled; the customer is refunded (payment interface) |
-| Item sold out between cart and order | availability checked at placement (and again at accept) |
-| Partner cancels mid-way | reassign: a `Reassign` event back to Ready with the partner cleared |
-| Two orders, one partner | the `busy` flag is set under the service lock |
-| Prices changed after placing | the order stores unit prices |
+| No partner is free when the order is accepted | the order stays `Placed` with a message (or waits in a queue and tries again) |
+| Cancel after preparing has started | refused by the transition table |
+| The restaurant rejects | `Reject` from Placed leads to Cancelled, and the customer is refunded (payment interface) |
+| An item sells out between cart and order | availability is checked when placing (and again at accept) |
+| The partner cancels midway | reassign: a `Reassign` event goes back to Ready with the partner cleared |
+| Two orders and one partner | the `busy` flag is set under the service lock |
+| Prices change after placing | the order stores the unit prices |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Batch two nearby orders for one partner" | a different `AssignmentStrategy` and a partner capacity > 1 |
-| "Surge pricing and promo codes" | `PricingStrategy` / rule chain (like the shopping cart lesson) |
-| "Live location tracking" | partner publishes locations; customers subscribe (pub/sub) |
-| "Estimated delivery time" | an `EtaEstimator` strategy using distance and kitchen load |
-| "Restaurant ratings and search/ranking" | read models and a ranking strategy |
-| "Scale: city-level sharding" | partition restaurants/partners by geo-cell; matching within a cell |
-| "Persist/event-source orders" | store events; derive state |
-| "Concurrency" | per-order lock instead of one global mutex |
+| "One partner takes two nearby orders" | a different `AssignmentStrategy` and a partner capacity above 1 |
+| "Surge pricing and promo codes" | a `PricingStrategy` or a chain of rules (like the shopping cart lesson) |
+| "Live location" | the partner sends locations, and customers subscribe (pub/sub) |
+| "Estimated delivery time" | an `EtaEstimator` strategy using distance and how busy the kitchen is |
+| "Restaurant ratings, search and ranking" | read models and a ranking strategy |
+| "Big scale: city by city" | split restaurants and partners by area. Match inside one area |
+| "Save orders as events" | store the events and work out the state from them |
+| "Threads" | a lock for each order instead of one global mutex |
+
+## Short answer to say in an interview
+
+:::interview How do you model the order life cycle?
+"As a state machine with a table of allowed transitions: Placed, Accepted, Preparing, ReadyForPickup, PickedUp, Delivered, and Cancelled or Rejected. A wrong action, like a customer cancel after the kitchen has started, is refused. Partner choice is a strategy, like nearest free partner, and it claims the partner safely under a lock. Status changes go to subscribers through an observer, and the price is saved on the order when it is placed."
+:::
 
 ```quiz
-? Why centralise transitions in one table?
+? Why keep all transitions in one table?
 - It is shorter
-+ The lifecycle rules live in one place and invalid transitions are refused uniformly
++ The life cycle rules are in one place, and wrong transitions are refused in the same way
 - Maps are faster
 > One source of truth for what may happen next.
-? Why is partner assignment a Strategy?
-- Because strategies are popular
-+ Nearest, least-busy or batching policies change independently of the order flow
+? Why is choosing a partner a Strategy?
+- Strategies are popular
++ Nearest, least busy or batching rules change independently of the order flow
 - C++ requires it
-> It is the variation point of the problem.
+> It is the part of the problem that can change.
 ```
 
 :::keypoints
-- Order = state machine with a transition table; assignment strategy; observers for status updates.
-- Store prices at placement; claim partners atomically; free them on cancel or delivery.
-- Extensions: pricing rules, ETA, batching, geo-sharding.
+- Order = a state machine with a transition table. A partner-choice strategy. Observers for status messages.
+- Save prices when the order is placed. Claim partners safely. Free them on cancel or delivery.
+- Extensions: pricing rules, delivery time estimate, batching, splitting by area.
 :::

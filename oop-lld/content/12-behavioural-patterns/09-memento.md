@@ -2,22 +2,32 @@
 title: Memento
 level: intermediate
 time: 30
-summary: Capturing and restoring an object's internal state without breaking encapsulation: originator, memento and caretaker, an editor and a game save with undo, deep copies, storing diffs, how it complements Command, and its costs.
+summary: Save a snapshot of an object's state and restore it later, without exposing its private data. See the three roles, an editor with undo, a game save, deep copies, memory costs, and how Memento works with Command.
 ---
 
+## What is the Memento pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Before I try something risky, I **save the game**. If it goes wrong, I **load the save** and everything comes back."
+
+That save file is the memento.
+
 :::def Memento
-Without violating encapsulation, **capture and externalise an object's internal state** so that the object can be **restored to this state later**.
+Take a **snapshot of an object's state** so you can **restore it later**, without breaking the object's privacy.
 :::
 
-You need this for **undo**, **checkpoints**, **save games**, **transaction rollback**, and "restore previous version". The challenge: the state is **private**. If you expose getters for everything just to save it, you break encapsulation.
+You need this for **undo**, **checkpoints**, **save games**, **rollback** and "restore the previous version".
 
-## Roles
+The challenge: the object's data is **private**. If we add public getters for everything just so we can save it, we break encapsulation (the privacy we wanted to protect).
+
+## The three roles
 
 | Role | Job |
 |---|---|
-| **Originator** | the object whose state is saved. It creates a memento of itself and restores from one. |
-| **Memento** | an **opaque snapshot** of the originator's state. Only the originator can read its contents. |
-| **Caretaker** | **keeps** the mementos (a history stack) but never looks inside them. |
+| **Originator** | the object whose state is saved. It creates a snapshot of itself, and can restore from one. |
+| **Memento** | the **snapshot**. It is sealed: only the originator can read what is inside. |
+| **Caretaker** | **keeps** the snapshots (for example in a history stack) but never looks inside. |
 
 ```viz algo=uml title="Memento"
 class Editor
@@ -38,9 +48,9 @@ History o-- Memento
 History --> Editor
 ```
 
-## Implementation: a nested private memento
+## How to build it in C++
 
-The trick in C++: make the Memento a **nested class with private members**, and let only the `Editor` be its friend. The caretaker can store and pass it, but cannot read it.
+The trick: make the Memento a **nested class with private members**, and make only the `Editor` its friend. The caretaker can store and hand it back, but it cannot read it.
 
 ```cpp run title="Undo with snapshots"
 #include <iostream>
@@ -89,9 +99,9 @@ int main() {
 }
 ```
 
-The `History` can hold any number of snapshots and give them back, but it **cannot see or change** what is inside. The editor's fields stay private.
+The `History` can hold many snapshots and return them, but it **cannot see or change** what is inside. The editor's data stays private.
 
-## A game: save points
+## Example: save points in a game
 
 ```cpp run title="Checkpoints in a game"
 #include <iostream>
@@ -136,34 +146,34 @@ int main() {
 }
 ```
 
-## Important design points
+## Important points
 
-**1. Deep copy.** A memento must hold an **independent copy** of the state. If it stores a pointer to a shared object that later changes, restoring brings back the *changed* object. Use value members (`string`, `vector`, structs), or deep-copy owned objects.
+**1. Make a deep copy.** A memento must hold its **own copy** of the state. If it only stores a pointer to something that is shared, and that thing changes later, restoring will bring back the **changed** thing. Use value members (`string`, `vector`, structs), or copy owned objects fully.
 
-**2. Memory cost.** Snapshotting a 100 MB document at every keystroke is wasteful. Options:
+**2. Watch the memory.** Saving a 100 MB document on every keystroke is wasteful. Options:
 
-| Strategy | How |
+| Idea | How |
 |---|---|
-| **Limit** the history | keep the last N snapshots |
-| **Store diffs** | save only the changes (what Command's `undo` does) |
-| **Coalesce** | group quick consecutive edits into one snapshot |
-| **Copy-on-write / persistent structures** | share unchanged parts |
-| **Snapshot occasionally**, replay commands in between | combine both patterns |
+| **Limit the history** | keep only the last N snapshots |
+| **Save only the changes (diffs)** | like the `undo` of a Command |
+| **Group quick edits** | one snapshot for many small edits |
+| **Share unchanged parts** | copy-on-write structures |
+| **Snapshot now and then**, replay commands in between | combine both patterns |
 
-**3. Encapsulation.** Keep the memento opaque (nested private class with friend, or an `std::any`-like opaque token). Do not add public getters just for saving.
+**3. Keep it sealed.** Use a nested private class with a friend. Do not add public getters just for saving.
 
-**4. Serialisation.** A memento can also be written to disk (save file) if you design a stable format. Then it becomes data, so version it.
+**4. Saving to disk.** A memento can be written to a file (a save game) if you choose a stable format. Then it is data, so give it a version number.
 
 ## Memento vs Command for undo
 
 | | Command-based undo | Memento-based undo |
 |---|---|---|
-| Stores | the **operation** (and enough to reverse it) | the **state** itself |
-| Memory | small | can be large |
-| Correctness | each command must implement an exact inverse (hard for some ops) | restoring is trivial and always correct |
-| Best for | fine-grained edits; operations with cheap inverses | complex state; coarse checkpoints; "restore the whole thing" |
+| What it stores | the **action** (and how to reverse it) | the **whole state** |
+| Memory | small | can be big |
+| Correctness | every command needs an exact reverse (hard for some actions) | restoring is easy and always correct |
+| Best for | small edits with easy reverses | complex state, big checkpoints, "restore everything" |
 
-Many real systems use **both**: commands for fast incremental undo, mementos as periodic checkpoints.
+Many real systems use **both**: commands for quick small undos, and mementos as checkpoints now and then.
 
 ```cpp run title="Combining: a memento taken before a risky command"
 #include <iostream>
@@ -200,30 +210,32 @@ int main() {
 }
 ```
 
-:::interview How do you implement undo, and how does Memento fit?
-"I can undo with commands that know how to reverse themselves, or with mementos: before a change the originator creates an opaque snapshot of its state, the caretaker keeps them on a stack, and undo restores the latest. The memento is a nested class with private members that only the originator can read, so encapsulation stays intact. Memento is simple and always correct but may cost memory, so I limit history, store diffs, or combine it with commands."
+## Short answer to say in an interview
+
+:::interview How do you implement undo, and where does Memento fit?
+"I can undo with commands that know how to reverse themselves, or with mementos. Before a change, the object saves a sealed snapshot of its state. A history keeps the snapshots on a stack, and undo restores the latest one. The memento is a nested class with private members that only the object itself can read, so privacy is kept. It is simple and always correct, but it can use a lot of memory. So I limit the history, store only changes, or combine it with commands."
 :::
 
 ```quiz
-? Who is allowed to read a memento's contents?
+? Who may read the inside of a memento?
 - The caretaker
-+ Only the originator that created it
-- Any client
-> The caretaker only stores and returns it. That is how encapsulation is preserved.
++ Only the originator that made it
+- Any user
+> The caretaker only stores it and gives it back. That keeps the privacy safe.
 ? Why must a memento hold a deep copy?
 - For speed
-+ So that later changes to the originator do not alter the saved snapshot
++ So later changes to the object do not change the saved snapshot
 - To save memory
-> A shallow copy of a shared object would be silently changed along with the original.
-? What is the downside of snapshot-based undo?
-- It is incorrect
-+ It can use a lot of memory for large states
+> A shallow copy of something shared would change along with the original.
+? What is the downside of undo by snapshots?
+- It is not correct
++ It can use a lot of memory if the state is big
 - It needs inheritance
-> Mitigate with limited history, diffs or periodic snapshots.
+> Limit the history, store changes only, or take snapshots now and then.
 ```
 
 :::keypoints
-- Memento: snapshot and restore private state without exposing it. Originator creates/restores, memento is opaque, caretaker stores.
+- Memento = save and restore private state without exposing it. The originator creates and restores, the memento is sealed, the caretaker stores.
 - In C++: a nested class with private members and `friend class Originator`. Use value members for a deep copy.
-- Costs memory: limit, diff, or combine with Command. Good for undo, checkpoints and rollback.
+- It costs memory: limit it, store changes, or combine with Command. Good for undo, checkpoints and rollback.
 :::

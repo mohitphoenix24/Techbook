@@ -2,30 +2,32 @@
 title: Design an Expression Calculator
 level: easy
 time: 50
-summary: A calculator that parses arithmetic text with precedence, parentheses, unary minus, variables and functions into a tree, evaluates it with a visitor-style interface, and reports errors with positions, built from a tokenizer, a recursive-descent parser and a Composite AST.
+summary: A calculator that reads text like 2 + 3 * (4 - 1), builds a tree, and evaluates it. Learn the tokenizer, the recursive-descent parser, operator precedence, variables and functions, and clear error messages with positions.
 ---
 
 :::problem Design an Expression Calculator {level=easy tags="parsing,Composite,Interpreter,Visitor,error handling"}
-Design a calculator that evaluates expressions such as `2 + 3 * (4 - 1)`, `-x ^ 2`, and `max(a, 10) / 4`. Support the operators `+ - * / ^`, parentheses, unary minus, named variables and a few built-in functions. Report clear errors (unknown variable, divide by zero, a syntax error with its position). Make it easy to add new operators and functions.
+Design a calculator that evaluates expressions like `2 + 3 * (4 - 1)`, `-x ^ 2` and `max(a, 10) / 4`. Support the operators `+ - * / ^`, brackets, unary minus, named variables and a few built-in functions. Give clear errors (unknown variable, divide by zero, a syntax error with its position). Make it easy to add new operators and functions.
 
 :::hint Hint
-Split the work: a **tokenizer** (text to tokens), a **parser** (tokens to a tree, respecting precedence), and an **evaluator** (tree to number). The tree is a Composite. Functions live in a registry so adding one is a one-liner.
+Split the work in three: a **tokenizer** (text to tokens), a **parser** (tokens to a tree, respecting precedence), and an **evaluator** (tree to a number). The tree is a Composite. Keep functions in a registry, so adding one is a single line.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Operators? | `+ - * / ^` with the usual precedence; `^` is right-associative; unary `-` |
-| Numbers? | decimals (`3.14`); doubles |
-| Variables? | letters/underscore names, looked up in a context |
-| Functions? | `max`, `min`, `sqrt`, `abs`; extensible; any number of arguments |
-| Errors? | unknown variable/function, division by zero, syntax errors reported with a column |
-| Extras? | print the tree back as a string; evaluate many times with different variable values |
-| Out of scope | complex numbers, units, statements |
+| Operators? | `+ - * / ^` with the usual precedence. `^` groups from the right. Unary `-` too |
+| Numbers? | decimals (`3.14`), as doubles |
+| Variables? | names with letters and underscore, looked up in a context |
+| Functions? | `max`, `min`, `sqrt`, `abs`. Can be extended. Any number of arguments |
+| Errors? | unknown variable or function, divide by zero, syntax errors shown with a column |
+| Extras? | print the tree back as text. Evaluate again and again with different variable values |
+| Not needed | complex numbers, units, statements |
 
-## Step 2: the grammar and precedence
+## Step 2: The grammar and precedence
+
+First, a quick word. A **grammar** is a list of rules that say how an expression may look. Here it is:
 
 ```text
 expression := term (("+" | "-") term)*
@@ -35,9 +37,9 @@ unary      := "-" unary | primary
 primary    := number | name | name "(" args ")" | "(" expression ")"
 ```
 
-Lower in the grammar binds tighter: `^` over `*` over `+`. A **recursive-descent parser** has one function per rule, which makes precedence and associativity visible in the code.
+The rules lower down bind **tighter**: `^` before `*` before `+`. A **recursive-descent parser** has one small function for each rule. That makes precedence and grouping easy to see in the code.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Calculator"
 class Calculator
@@ -70,14 +72,14 @@ Calculator --> Parser
 Parser ..> Node
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Composite AST**: leaves (`Number`, `Variable`) and composites (`Unary`, `Binary`, `Call`) share `Node::eval`. A new operator is a new node type, and a new operation on trees (simplify, compile) can be a Visitor.
-- **Errors carry a position**, thrown as a `CalcError` inside the parser/evaluator and converted to a `Result` at the `Calculator` boundary (one place).
-- **Function registry** maps names to `function<double(const vector<double>&)>`; a new function is a registration line, with no change to the parser.
-- **The parse is separate from evaluation**, so an expression can be parsed once and evaluated many times with different variables (a `Compiled` object).
+- **Composite tree.** Leaves (`Number`, `Variable`) and nodes with children (`Unary`, `Binary`, `Call`) all share `Node::eval`. A new operator is a new node type. A new job on trees (simplify, compile) can be a Visitor.
+- **Errors carry a position.** A `CalcError` is thrown inside the parser and evaluator, and turned into a `Result` at one place: the `Calculator`.
+- **A function registry** maps names to `function<double(const vector<double>&)>`. A new function is one line of registration. The parser does not change.
+- **Parsing is separate from evaluating.** So we can parse once and evaluate many times with different variables (a `Compiled` object).
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Tokenizer, parser, AST and evaluator"
 #include <algorithm>
@@ -275,42 +277,48 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| `-2 ^ 2` | unary binds tighter than `^` in this grammar, so it is `(-2) ^ 2 = 4` (many languages choose `-(2^2)`; state which you chose) |
-| `2 ^ 3 ^ 2` | right-associative: `2 ^ 9 = 512` |
-| Division by zero | a `CalcError` with the operator's column |
-| Unknown names | variable at evaluation, function at evaluation (so one parse works for different contexts) |
-| Empty argument list `max()` | a function may throw; registry functions validate arity |
-| Deep nesting | recursion depth limited by the stack; add a depth limit if input is untrusted |
+| `-2 ^ 2` | in this grammar, unary minus binds tighter than `^`, so it is `(-2) ^ 2 = 4`. (Many languages choose `-(2^2)`. Say which one you chose) |
+| `2 ^ 3 ^ 2` | groups from the right: `2 ^ 9 = 512` |
+| Divide by zero | a `CalcError` with the column of the operator |
+| Unknown names | variables and functions are checked when evaluating, so one parse works for different contexts |
+| Empty argument list `max()` | the function can throw. Registry functions check the number of arguments |
+| Very deep nesting | the stack limits recursion. Add a depth limit if the input is not trusted |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "More operators (`%`, comparison, `&&`)" | add token kinds and a grammar level; new `Binary` ops |
-| "Operator table instead of fixed functions" | precedence-climbing with a table of `{symbol, precedence, assoc}` |
-| "Print/simplify/differentiate the tree" | a **Visitor** over `Node`; `simplify` folds constants |
-| "Compile to bytecode for speed" | a `Compiler` visitor emitting a stack-machine program |
-| "Assignments and a REPL" | a statement layer holding the variable map |
+| "More operators (`%`, comparisons, `&&`)" | add token kinds and a grammar level, and new `Binary` operations |
+| "A table of operators instead of fixed code" | precedence climbing with a table of `{symbol, precedence, grouping}` |
+| "Print, simplify or differentiate the tree" | a **Visitor** over `Node`. `simplify` can fold constants |
+| "Compile to bytecode for speed" | a `Compiler` visitor that makes a stack-machine program |
+| "Assignments and a REPL" | a statement layer that holds the variable map |
 | "Units and types" | typed values (`Quantity`) instead of `double` |
-| "Thread-safety" | trees are immutable after parsing; evaluation takes a const context, so it is safe to share |
+| "Threads" | trees never change after parsing, and evaluation takes a read-only context, so sharing is safe |
+
+## Short answer to say in an interview
+
+:::interview How do you design an expression calculator?
+"I split it into a tokenizer, a recursive-descent parser and an evaluator. The parser has one function for each grammar rule, so precedence and grouping come from the order of the rules. It builds a tree of nodes, which is a Composite, and each node knows how to evaluate itself. Functions live in a registry, so adding one needs no parser change. Errors carry a column, and I turn exceptions into a result at one place."
+:::
 
 ```quiz
-? Why does precedence appear in the grammar rather than in if-statements?
+? Why is precedence in the grammar and not in if-statements?
 - It is faster
-+ Each rule level (expression, term, power) binds tighter than the previous, so precedence is encoded by the call structure
++ Each rule level binds tighter than the one before, so precedence comes from how the functions call each other
 - C++ requires it
-> The recursive-descent functions mirror the grammar.
-? Why register functions in a map?
+> The parser functions copy the grammar.
+? Why keep functions in a map?
 - To avoid inheritance
-+ A new function is added with one registration, without changing the parser or the nodes
++ A new function needs only one registration, with no change to the parser or the nodes
 - Because lambdas need maps
-> That is the extension point (Open/Closed).
+> That is the extension point (open for adding, closed for editing).
 ```
 
 :::keypoints
-- Tokenizer → recursive-descent parser → Composite AST → evaluator. Precedence and associativity come from the grammar functions.
-- Errors carry columns; convert exceptions to results at the calculator boundary.
-- Function registry for extension; parse once, evaluate many times; Visitor for further operations.
+- Tokenizer, then recursive-descent parser, then a Composite tree, then the evaluator. Precedence and grouping come from the grammar functions.
+- Errors carry columns. Turn exceptions into results at the calculator's edge.
+- A function registry for extension. Parse once, evaluate many times. Use a Visitor for more jobs.
 :::

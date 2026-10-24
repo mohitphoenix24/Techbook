@@ -2,35 +2,45 @@
 title: Design a Cron-Style Job Scheduler
 level: advanced
 time: 75
-summary: Parsing cron expressions, computing the next run time from first principles with a small calendar, a job registry with run history, policies for missed runs and overlapping runs, retries with backoff, and how to make exactly-one-runner work across many machines.
+summary: A scheduler that runs jobs using cron expressions like */15 9-17 * * MON-FRI. Learn how to read a cron expression, how to find the next run time, rules for missed runs and overlapping runs, retries with waiting time, and how to make sure only one machine runs a job.
 ---
 
 :::problem Design a Cron-Style Job Scheduler {level=hard tags="scheduling,cron,Strategy,time,retries,distributed locks"}
-Design a job scheduler that runs registered jobs on cron schedules (for example `*/15 9-17 * * MON-FRI`). It computes the next run time for each job, runs jobs when due, keeps a run history, retries failed runs with backoff, and applies policies for runs that were missed (the scheduler was down) and for overlapping runs (the previous run is still going). Think about how it behaves with several scheduler instances running.
+Design a job scheduler that runs registered jobs on cron schedules (for example `*/15 9-17 * * MON-FRI`). It works out the next run time of each job, runs jobs when they are due, keeps a history of runs, retries failed runs with waiting time, and has rules for runs that were missed (the scheduler was down) and for overlapping runs (the last run is still going). Think about what happens when several scheduler copies are running.
 :::
 
 :::hint Hint
-The core is a function **`nextAfter(schedule, time)`**: given a cron schedule and a time, return the next matching minute. Build it from a tiny calendar (days since the epoch ↔ year, month, day, weekday). Jobs live in a priority queue keyed by next run; the runner is the previous lesson's scheduler loop. Everything else is policy: missed runs, overlap, retries, distribution.
+The heart is a function **`nextAfter(schedule, time)`**: given a cron schedule and a time, it returns the next matching minute. Build it from a tiny calendar (days since 1970, turned into year, month, day, weekday). Jobs live in a priority queue ordered by next run, and the runner is the scheduler loop from the previous lesson. Everything else is a rule (policy): missed runs, overlap, retries, many machines.
 :::
 
-## Step 1: requirements
+## First, what is cron?
 
-| Question | Assumption |
+Cron is the classic Unix tool that runs jobs on a schedule. A schedule has 5 fields:
+
+```text
+minute  hour  day-of-month  month  day-of-week
+```
+
+For example, `*/15 9-17 * * MON-FRI` means: every 15 minutes, between 9:00 and 17:59, on weekdays. `*` means "any". `1,15` is a list. `9-17` is a range. `*/15` is "every 15".
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Schedule syntax? | 5 fields: minute (0-59), hour (0-23), day-of-month (1-31), month (1-12), day-of-week (0-6, SUN=0, or names); supports `*`, lists `1,15`, ranges `9-17`, steps `*/15`, `10-50/10` |
-| Day matching? | if both day-of-month and day-of-week are restricted, run when **either** matches (classic cron); if one is `*`, only the other applies |
-| Time? | UTC minutes since 1970-01-01 (integers); a clock interface |
-| Jobs? | id, schedule, action, retry policy, overlap policy, missed-run policy |
-| History? | each run: scheduled time, start, end, status, attempt |
-| Missed runs? | policy: `Skip` (ignore), `RunOnce` (one catch-up run), `RunAll` (up to N) |
-| Overlap? | policy: `Skip` (don't start), `Queue` (wait), `Allow` |
-| Retries? | N attempts with exponential backoff |
-| Concurrency? | jobs run on workers; scheduler loop is single; multiple instances need a lock |
-| Out of scope | time zones and DST, persistence format, UI |
+| The syntax? | 5 fields: minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-6, SUN=0, or names). Supports `*`, lists `1,15`, ranges `9-17`, steps `*/15`, `10-50/10` |
+| Matching the day? | if both day-of-month and day-of-week are set, run when **either** matches (classic cron). If one is `*`, only the other counts |
+| Time? | UTC minutes since 1970-01-01 (integers). A clock interface |
+| Jobs? | id, schedule, action, retry rule, overlap rule, missed-run rule |
+| History? | for each run: the scheduled time, start, end, status, attempt |
+| Missed runs? | a rule: `Skip` (ignore), `RunOnce` (one catch-up run), `RunAll` (up to N) |
+| Overlap? | a rule: `Skip` (do not start), `Queue` (wait), `Allow` |
+| Retries? | N tries with longer and longer waiting |
+| Many threads? | jobs run on workers. The scheduler loop is one thread. Several copies need a lock |
+| Not needed | time zones and daylight saving, the save format, a screen |
 
-## Step 2: computing the next run
+## Step 2: Finding the next run
 
-A cron schedule is five **sets of allowed values**. To find the next match after time T, increment minute by minute? Too slow for rare schedules (yearly). The efficient way is to **jump field by field**:
+A cron schedule is five **sets of allowed values**. To find the next match after time T, we could go minute by minute, but that is too slow for rare schedules (like once a year). The fast way is to **jump field by field**:
 
 ```text
 nextAfter(T):                       start at T + 1 minute
@@ -42,9 +52,9 @@ nextAfter(T):                       start at T + 1 minute
     return this time
 ```
 
-Each jump moves a whole month/day/hour at once, so even "February 29" schedules resolve in a handful of iterations (bounded by a few years).
+Each jump moves a whole month, day or hour at once. So even a "February 29" schedule is found in a few steps (within a few years).
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Cron scheduler"
 class JobScheduler
@@ -95,17 +105,17 @@ Job *-- Run
 ExponentialBackoff ..|> RetryPolicy
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **`CronSchedule` is a value object** holding five `bitset`s. `nextAfter` is a pure function, easy to test exhaustively.
-- **`Calendar` helpers** convert between days-since-epoch and (year, month, day) (Hinnant's civil algorithms, no dependency on `<chrono>` calendar support) and compute the weekday.
-- **Policies as Strategies**: `MissedRunPolicy` decides which of the missed scheduled times to run when the scheduler wakes after a gap; `OverlapPolicy` decides what to do if the previous run is still active; `RetryPolicy` yields delays.
-- **Scheduler loop** (as in the Task Scheduler lesson): keep jobs in a min-heap by `nextRun`; `runDue(now)` pops due jobs, applies the policies, runs the action, records history, computes the new `nextRun = schedule.nextAfter(scheduledTime)`.
-- **Computing `nextRun` from the scheduled time, not from `now`**, prevents drift and makes missed-run handling exact.
-- **Multiple scheduler instances**: each tick, before running job J for scheduled time T, `tryAcquire("J@T")` on a **shared lease store** (a database row with unique key, Redis `SET NX`, ZooKeeper): only one instance wins. The run key makes this idempotent.
-- **Injected clock** for deterministic tests.
+- **`CronSchedule` is a value** that holds five `bitset`s. `nextAfter` is a pure function, so it is easy to test fully.
+- **`Calendar` helpers** change between days-since-1970 and (year, month, day) (Hinnant's civil date methods, which do not depend on `<chrono>` calendar support), and give the weekday.
+- **The rules are Strategies:** `MissedRunPolicy` decides which of the missed times to run when the scheduler wakes after a gap. `OverlapPolicy` decides what to do if the last run is still going. `RetryPolicy` gives the delays.
+- **The scheduler loop** (as in the Task Scheduler lesson): keep jobs in a min-heap by `nextRun`. `runDue(now)` takes out the due jobs, applies the rules, runs the action, saves history, and works out the new `nextRun = schedule.nextAfter(scheduledTime)`.
+- **Work out `nextRun` from the scheduled time, not from `now`.** This stops drift and makes missed-run handling exact.
+- **Several scheduler copies:** each tick, before running job J for scheduled time T, call `tryAcquire("J@T")` on a **shared lease store** (a database row with a unique key, Redis `SET NX`, ZooKeeper). Only one copy wins. The run key makes it safe to repeat.
+- **A clock passed in** for predictable tests.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Cron parsing, next-run computation, missed runs, overlap and retries"
 #include <bitset>
@@ -276,9 +286,9 @@ int main() {
 }
 ```
 
-## Distributed operation: exactly one runner
+## Many machines: exactly one runner
 
-If three scheduler instances run for high availability, each would fire the same job. Fix with a **lease on the run, not on the job**:
+If three scheduler copies run for high availability, each would start the same job. The fix is a **lease on the run, not on the job**:
 
 ```text
 for each due (job J, scheduled time T):
@@ -290,49 +300,55 @@ for each due (job J, scheduled time T):
         skip                                         // another instance has it
 ```
 
-Because the key contains the scheduled time, a crash after acquiring leaves a lease that **expires** (ttl), and another instance can retry; the job must be idempotent or write its own completion record.
+The key contains the scheduled time. If a copy crashes after getting the lease, the lease **expires** (ttl), and another copy can try again. So the job must be safe to repeat (idempotent), or write its own "done" record.
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| `0 0 29 2 *` (Feb 29) | the month/day jumps find the next leap year within a few iterations |
-| Both day-of-month and day-of-week restricted | OR semantics (classic cron); document it |
-| DST gaps/overlaps and time zones | schedule in UTC; or convert local schedule times with a time-zone library and decide policy for skipped/duplicated hours |
-| Clock changes (NTP) | use a monotonic clock for waits, wall-clock for matching |
-| Long-running job and `Allow` overlap | concurrent runs: the action must be re-entrant; limit concurrency per job |
-| Very many jobs | heap keyed by `nextRun`; one timer for the earliest |
-| Job removed or schedule edited | recompute `nextRun` from "now"; keep history |
-| Retry exhausted | status Failed, alert; optional dead-letter |
+| `0 0 29 2 *` (Feb 29) | the month and day jumps find the next leap year in a few steps |
+| Both day-of-month and day-of-week are set | OR rule (classic cron). Write it down |
+| Daylight saving and time zones | schedule in UTC. Or convert local schedule times with a time-zone library and decide a rule for skipped or repeated hours |
+| Clock changes (NTP) | use a steady clock for waiting, and the wall clock for matching |
+| A long job with `Allow` overlap | runs happen together. The action must be safe to run together. Limit how many for each job |
+| Very many jobs | a heap by `nextRun`. One timer for the earliest |
+| A job removed or a schedule edited | work out `nextRun` again from "now". Keep the history |
+| Retries used up | status Failed, send an alert. Optionally a dead-letter list |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Run once at a specific time" | a `OneShot` schedule implementing the same `nextAfter` interface (`Schedule` strategy) |
-| "Dependencies between jobs" | hand off to the workflow engine (next lessons) |
-| "Pause/resume, manual trigger, run now" | job states and commands via an admin API |
-| "Persist jobs and history" | a `JobRepository`; reload `nextRun` on start-up (applying the missed-run policy) |
-| "Jitter to avoid thundering herds" | add a random offset to start times |
-| "Timeouts and cancellation" | a stop token passed to the action; the runner enforces a deadline |
-| "Metrics" | lateness (start − scheduled), duration, failure rate |
-| "Cron extensions (`@daily`, `L` last day, `#` nth weekday)" | extra parse cases producing the same bitsets or a richer `Schedule` |
+| "Run once at a given time" | a `OneShot` schedule with the same `nextAfter` interface (a `Schedule` strategy) |
+| "Jobs that depend on each other" | pass it to the workflow engine (the next lessons) |
+| "Pause, resume, run now" | job states and commands through an admin API |
+| "Save jobs and history" | a `JobRepository`. Load `nextRun` at start (applying the missed-run rule) |
+| "Spread out start times (jitter)" | add a random shift to start times |
+| "Time limits and cancelling" | a stop token passed to the action. The runner enforces a deadline |
+| "Numbers to watch" | lateness (start minus scheduled), how long it ran, failure rate |
+| "Cron extras (`@daily`, `L` last day, `#` nth weekday)" | extra parse cases that give the same bitsets, or a richer `Schedule` |
+
+## Short answer to say in an interview
+
+:::interview How do you compute the next run time of a cron job?
+"A cron schedule is five sets of allowed values: minute, hour, day, month, weekday. To find the next run after a time, I start one minute later and jump field by field. If the month is not allowed, I jump to the start of the next allowed month. Then the same for the day, the hour and the minute. Each jump skips a whole unit, so even rare schedules like February 29 take only a few steps. I work out the next run from the scheduled time, not from now, so there is no drift and missed runs can be counted exactly."
+:::
 
 ```quiz
-? Why jump by month/day/hour when computing the next run?
-- It looks cleverer
-+ Searching minute by minute could take millions of steps for rare schedules; jumping skips whole non-matching units
+? Why jump by month, day and hour when finding the next run?
+- It looks clever
++ Going minute by minute could take millions of steps for rare schedules. Jumping skips whole units that do not match
 - Cron requires it
-> Each jump advances to the next candidate at the coarsest non-matching field.
-? Why compute the next run from the scheduled time rather than from "now"?
+> Each jump goes to the next candidate at the biggest field that does not match.
+? Why work out the next run from the scheduled time and not from "now"?
 - It is simpler
-+ It avoids drift and makes missed-run handling exact (every scheduled time is accounted for)
-- Because clocks are unreliable
-> The sequence of scheduled times is a property of the schedule, not of when the scheduler happens to wake.
++ It stops drift and makes missed-run handling exact (every scheduled time is counted)
+- Clocks are not reliable
+> The list of scheduled times belongs to the schedule, not to when the scheduler happens to wake up.
 ```
 
 :::keypoints
-- `CronSchedule` = five bitsets + `nextAfter`, which jumps by month, day and hour using a small calendar.
-- Policies (missed, overlap, retry) are strategies; advance from the scheduled time; history per run.
-- Multiple instances: a lease on (job, scheduled time) so exactly one executes; actions should be idempotent.
+- `CronSchedule` = five bitsets plus `nextAfter`, which jumps by month, day and hour using a small calendar.
+- Rules (missed, overlap, retry) are strategies. Move forward from the scheduled time. Keep a history for each run.
+- Several copies: a lease on (job, scheduled time), so exactly one runs it. Actions should be safe to repeat.
 :::

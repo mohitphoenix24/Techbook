@@ -2,18 +2,22 @@
 title: Prototype
 level: intermediate
 time: 30
-summary: Creating new objects by copying existing ones through a clone interface, why you cannot use the copy constructor through a base pointer, the clone idiom with covariant returns, a prototype registry, deep versus shallow copies, and a CRTP helper that removes the boilerplate.
+summary: Make new objects by copying an existing one. See why copying through a base pointer is a problem, the clone() solution, a prototype catalogue, deep and shallow copy, and a small helper that removes repeated code.
 ---
 
+## What is Prototype?
+
+Think of a photocopier. If you need ten copies of a form, you do not write the form ten times. You write it once and **copy** it.
+
 :::def Prototype
-Specify the kinds of objects to create using a **prototypical instance**, and create new objects by **copying** this prototype.
+Keep one ready-made object (the **prototype**). To create a new object, **copy** that one.
 :::
 
-When is that useful?
+When is this useful?
 
-- Creating an object is **expensive** (loading data, computing), and copies of a configured object are cheap.
-- You want to copy an object **when you only know its base type** (`Shape*`).
-- You want to avoid a parallel hierarchy of factories; you just keep a set of ready-made **prototypes** and clone them.
+- Creating an object is **slow or costly** (loading data, heavy work), but copying a ready object is cheap.
+- You have only a **base pointer** (like `Shape*`) and you want a copy of the real object behind it.
+- You want to avoid many factory classes. Instead, you keep a set of ready-made objects and copy them.
 
 ## The problem: copying through a base pointer
 
@@ -22,9 +26,11 @@ Shape* copy = new Shape(*original);    // original is really a Circle: error, Sh
                                        // even if it compiled, it would SLICE the Circle into a Shape
 ```
 
-C++ constructors cannot be virtual. The copy constructor needs the **exact** type at compile time. The solution is a **virtual `clone()`** function: each class knows its own type and copies itself.
+Why does this not work? In C++, a constructor cannot be `virtual`, and the copy constructor must know the **exact type** while compiling. But with a `Shape*`, we only know the type at run time. Even if it compiled, a `Circle` would be cut down to a plain `Shape` (this is called **slicing**).
 
-## The clone idiom
+The fix: add a **virtual `clone()` function**. Each class knows its own type, so each class copies itself.
+
+## The clone idea
 
 ```cpp run title="clone(): a virtual copy constructor"
 #include <iostream>
@@ -93,9 +99,11 @@ Rectangle ..|> Shape
 ShapeRegistry o-- Shape
 ```
 
-## A prototype registry
+In the code, `clone()` is a virtual function. When you call it on a `Shape*`, the correct class runs, and a copy of the **real** object comes back.
 
-Keep a catalogue of preconfigured prototypes by name. "Creating" an object is cloning one of them, then tweaking.
+## A prototype catalogue
+
+Keep a catalogue of ready-made objects by name. To "create" a new object, **clone** one from the catalogue and change a few things.
 
 ```cpp run title="Game units spawned from prototypes"
 #include <iostream>
@@ -145,9 +153,11 @@ int main() {
 }
 ```
 
-## Shallow vs deep copy matters
+## Shallow copy and deep copy
 
-If the object holds **pointers**, the default copy copies the *pointer* (shallow): the clone and the original then share the same pointee. A correct `clone()` must produce an **independent** object (deep copy). Use members that copy themselves (`string`, `vector`, `unique_ptr` with a custom copy that clones). If a member is a `unique_ptr<Part>` you must write the copy constructor to clone it.
+If an object holds **pointers**, the normal copy copies only the **pointer**, not the thing it points to. Then the copy and the original **share** the same data. This is a **shallow copy**, and changing one changes the other. That is usually a bug.
+
+A good `clone()` gives an **independent** object (a **deep copy**). Use members that copy themselves, like `string` and `vector`. If a member is a `unique_ptr`, you must write the copy code yourself and clone the thing it points to.
 
 ```cpp run title="Deep copy of an owned part"
 #include <iostream>
@@ -178,9 +188,9 @@ int main() {
 }
 ```
 
-## CRTP helper: remove the clone boilerplate
+## A helper to avoid repeating code
 
-Writing `clone()` in every class is repetitive. A small CRTP base writes it once.
+Writing `clone()` in every class is boring. A small helper base class (using the CRTP trick) can write it once.
 
 ```cpp run title="Cloneable<Derived>: clone() generated for free"
 #include <iostream>
@@ -209,41 +219,47 @@ int main() {
 }
 ```
 
-## When to use Prototype
+:::note Advanced (optional)
+CRTP means a class inherits from a template that uses the class itself as the argument: `class Circle : public Cloneable<Circle>`. It lets the base class know the exact child type at compile time. You do not need to explain this in detail in most interviews. Just say "a helper base class that writes clone() for us".
+:::
 
-| Use | Avoid |
+## When to use it
+
+| Use Prototype when | Do not use it when |
 |---|---|
-| Object creation is costly and copies are cheap | Objects are trivial: just construct them |
-| You must copy through a base pointer | Types are known at compile time: use the copy constructor |
-| Configurations are chosen at run time from a catalogue | Objects hold resources that cannot be duplicated (sockets, mutexes): clone makes no sense |
-| Avoid a deep hierarchy of factories | Objects have complex cyclic references (deep copy is hard) |
+| Creating is costly and copying is cheap | Objects are simple, just create them |
+| You must copy through a base pointer | You know the type at compile time, use the copy constructor |
+| Settings are chosen at run time from a catalogue | The object holds things that cannot be duplicated (sockets, mutexes) |
+| You want to avoid many factory classes | Objects have loops of references, so deep copy is hard |
 
-In modern C++, `clone()` often appears as the **clone idiom** for polymorphic copy rather than as a formally named "Prototype".
+In modern C++ you will mostly meet this as the **clone idiom**, which is "copy through a base pointer".
 
-:::interview Why can't you copy a polymorphic object through a base pointer, and what do you do?
-"Constructors cannot be virtual, and `Base(*ptr)` would slice or fail if Base is abstract. I add a pure virtual `clone()` to the base; each derived class overrides it to return a copy of itself, using its own copy constructor. A prototype registry stores ready-made objects and creates new ones by cloning. I make sure clone does a deep copy so clones are independent."
+## Short answer to say in an interview
+
+:::interview Why can't you copy an object through a base pointer, and what do you do?
+"A constructor cannot be virtual, and copying through the base would cut off the child part. So I add a virtual clone() to the base class. Each child class returns a copy of itself. I can also keep a catalogue of ready objects and create new ones by cloning. I make sure clone() makes a deep copy, so the clone does not share data with the original."
 :::
 
 ```quiz
-? Why do we need `clone()` instead of just the copy constructor?
-- Because copy constructors are slow
-+ Constructors cannot be virtual, so copying through a base pointer needs a virtual function
-- Because clone is shorter
-> Only a virtual function can dispatch to the right derived copy.
+? Why do we need clone() instead of the normal copy constructor?
+- Copy constructors are slow
++ A constructor cannot be virtual, so copying through a base pointer needs a virtual function
+- Clone is shorter
+> Only a virtual function can run the right child's copy code.
 ? What is the danger of a shallow clone?
 - It is slower
-+ The clone and the original may share pointed-to data, so changing one affects the other
-- It cannot be compiled
-> Clones must be independent, which requires copying owned pointees (deep copy).
-? What does a prototype registry store?
++ The clone and the original may share data, so a change in one shows up in the other
+- It does not compile
+> A clone must be independent, which needs a deep copy.
+? What does a prototype catalogue store?
 - Factories
-+ Pre-configured objects to clone
++ Ready-made objects that we can clone
 - Singletons
-> Creating a new object means cloning one of the stored prototypes.
+> To make a new object, clone one from the catalogue.
 ```
 
 :::keypoints
-- Prototype = create objects by cloning a configured instance. In C++, use a virtual `clone()` (the virtual copy constructor).
-- Clone must be a deep, independent copy. A registry of prototypes avoids factory hierarchies.
-- A CRTP `Cloneable<Derived>` base removes the boilerplate.
+- Prototype = make new objects by copying a ready one. In C++ we use a virtual `clone()`.
+- A clone must be a deep, independent copy. A catalogue of prototypes can replace many factories.
+- A small helper base class (CRTP) can write `clone()` once for all classes.
 :::

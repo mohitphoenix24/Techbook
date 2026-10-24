@@ -2,30 +2,30 @@
 title: Design a URL Shortener (class level)
 level: easy
 time: 40
-summary: The object design behind a short-link service: base-62 ids, custom aliases, expiry with an injected clock, click counters, a repository abstraction, thread-safety, and how the same classes scale into the high-level design.
+summary: The classes behind a short-link service. Learn base-62 ids, custom aliases, expiry with a replaceable clock, click counters, a storage interface, thread safety, and how these classes fit into the bigger system design.
 ---
 
 :::problem Design a URL Shortener {level=easy tags="classic,encoding,repository,expiry,counters"}
-Design the classes for a URL shortening service like bit.ly. Given a long URL it returns a short code; visiting the short code returns the long URL. Support optional custom aliases, optional expiry, and click statistics. (This is the **low-level** design; the system-design version adds databases, caches and scale.)
+Design the classes for a URL shortening service like bit.ly. Given a long URL, it gives back a short code. Visiting the short code gives back the long URL. Support custom names (aliases), optional expiry, and click counts. (This is the **low-level** design. The system-design version adds databases, caches and scale.)
 
 :::hint Hint
-Generate codes from a **counter** encoded in base 62, so codes are unique without collision checks. Put storage behind an interface. Treat "expired" and "unknown" as different answers.
+Make codes from a **counter** written in base 62, so every code is unique and you never have to check for clashes. Put storage behind an interface. Treat "expired" and "unknown" as two different answers.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Code format? | base-62 (`0-9a-zA-Z`); generated from an auto-increment id; custom aliases 4 to 12 chars |
-| Same long URL twice? | returns a new code each time (simplest) unless dedupe is requested (extension) |
-| Expiry? | optional; expired links return "gone" |
-| Stats? | click count per code; last access time |
-| Validation? | URL must start with `http://` or `https://`, max 2000 chars |
-| Concurrency? | many threads shorten and resolve |
-| Out of scope | auth, analytics dashboards, abuse protection |
+| Code format? | base 62 (`0-9a-zA-Z`), made from an increasing id. Custom aliases are 4 to 12 characters |
+| The same long URL twice? | gives a new code each time (simplest). Reusing the code is an extension |
+| Expiry? | optional. An expired link says "gone" |
+| Stats? | a click count for each code, and the last access time |
+| Checks? | the URL must start with `http://` or `https://`, and be at most 2000 characters |
+| Many threads? | yes, both for shortening and for opening |
+| Not needed | login, dashboards, abuse protection |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="URL shortener"
 class UrlShortener
@@ -57,16 +57,16 @@ InMemoryLinkRepository ..|> LinkRepository
 UrlShortener ..> Link
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Counter + base 62**: each new id maps to a unique code, so there are **no collisions** and no retry loops. (`Base62::encode(125) = "21"`.) To avoid guessable sequences you could encode a permuted/shuffled id, or add random padding.
-- **Custom aliases** go through the same `save`, which **fails if the code exists** (atomic `insert-if-absent`).
-- **Resolution result is an enum + value**: `Found(url)`, `NotFound`, `Expired`. A caller (HTTP layer) maps these to 301, 404, 410.
-- **Injectable `Clock` and `IdGenerator`** make tests deterministic.
-- **Repository interface** isolates storage: in memory here, SQL/Redis in production.
-- **Counters** use `atomic<long>` inside `Link`, so clicks do not need the repository lock.
+- **Counter plus base 62.** Each new id becomes a unique code, so there are **no clashes** and no retry loops. (`Base62::encode(125) = "21"`.) To make codes hard to guess, you can encode a shuffled id, or add random padding.
+- **Custom aliases** use the same `save`, which **fails if the code already exists** (an all-in-one "insert if not present").
+- **The result of opening a link is an enum plus a value:** `Found(url)`, `NotFound`, `Expired`. The web layer turns these into 301, 404 and 410.
+- **A replaceable `Clock` and `IdGenerator`** make tests predictable.
+- **A Repository interface** hides storage: memory here, SQL or Redis in real use.
+- **Counters** use `atomic<long>` inside `Link`, so counting clicks does not need the repository's lock.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="URL shortener: shorten, resolve, expire, count"
 #include <algorithm>
@@ -191,41 +191,47 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Alias equals a generated code later | `saveIfAbsent` fails for the generator, which simply takes the next id |
-| Expired vs unknown | different `Status` values so the API returns 410 vs 404 |
-| Extremely long or invalid URL | validated before any state changes |
-| Click counting under concurrency | `atomic<long>` increments |
-| Reusing an id after restart | the generator must persist its counter (or use a DB sequence) |
-| Open redirect/abuse | blocklists and rate limits (outside this design) |
+| An alias is the same as a code made later | `saveIfAbsent` fails for the generator, which just takes the next id |
+| Expired vs unknown | different `Status` values, so the API answers 410 or 404 |
+| A very long or bad URL | checked before anything changes |
+| Counting clicks with many threads | `atomic<long>` increments |
+| The id repeats after a restart | the generator must save its counter (or use a database sequence) |
+| Abuse and open redirects | block lists and rate limits (outside this design) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Same long URL → same code" | a second index `longUrl → code` in the repository (and decide TTL semantics) |
-| "Unguessable codes" | encode a Feistel-permuted id, or random 7-char codes with a retry on collision |
-| "Per-user links, delete, update" | `owner` field and ownership checks in the service |
-| "Analytics by country/time" | resolve emits a `ClickEvent` to a queue; consumers aggregate (Observer / messaging) |
-| "Expiry cleanup" | a background sweeper (or lazy deletion on access) |
-| "Scale to billions" | HLD: key-value store, caching, ID ranges per node (the classes stay the same) |
+| "The same long URL gives the same code" | a second index `longUrl to code` in the repository (and decide how expiry works) |
+| "Codes that cannot be guessed" | encode a shuffled id, or use random 7-character codes and retry on a clash |
+| "Links for each user, delete, update" | an `owner` field and ownership checks in the service |
+| "Stats by country and time" | opening a link sends a `ClickEvent` to a queue. Consumers add up the numbers (Observer, messaging) |
+| "Clean up expired links" | a background sweeper, or delete when the link is opened |
+| "Billions of links" | HLD: a key-value store, caches, id ranges for each machine. The classes stay the same |
+
+## Short answer to say in an interview
+
+:::interview Why do you make short codes from a counter in base 62?
+"Every new id gives a different code, so there are no clashes to detect and no retries. Base 62 keeps the code short. If I need codes that cannot be guessed, I can encode a shuffled id. Custom aliases go through an insert-if-absent that fails when the name is taken. Opening a link returns found, not found or expired, so the web layer can answer 301, 404 or 410."
+:::
 
 ```quiz
-? Why generate codes from a counter encoded in base 62?
-- Because base 62 is faster than base 10
-+ Each id maps to a unique code, so there are no collisions to detect and retry
+? Why make codes from a counter written in base 62?
+- Base 62 is faster than base 10
++ Each id gives a unique code, so there are no clashes to find and retry
 - To make codes random
-> Uniqueness comes from the id.
+> The uniqueness comes from the id.
 ? Why return different results for "expired" and "unknown"?
-- Only to be verbose
-+ The caller can respond differently (HTTP 410 Gone vs 404 Not Found)
+- Only to be wordy
++ The caller can answer differently (HTTP 410 Gone or 404 Not Found)
 - Expiry is not supported
 > They are different situations with different meanings.
 ```
 
 :::keypoints
-- Counter → base 62 gives unique short codes; custom aliases use an atomic insert-if-absent.
-- Repository, Clock and IdGenerator are injected; resolve returns `Found/NotFound/Expired`.
-- Atomic counters for clicks; the same classes sit inside the large-scale HLD.
+- Counter and base 62 give unique short codes. Custom aliases use an atomic insert-if-absent.
+- Repository, Clock and IdGenerator are passed in. Opening a link returns `Found`, `NotFound` or `Expired`.
+- Atomic counters for clicks. The same classes sit inside the large-scale HLD.
 :::

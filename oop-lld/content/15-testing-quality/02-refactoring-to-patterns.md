@@ -2,19 +2,23 @@
 title: Refactoring step by step toward patterns
 level: intermediate
 time: 40
-summary: A catalogue of the small, safe refactorings that lead to design patterns (extract method, replace conditional with polymorphism, introduce parameter object, replace constructor with factory, replace inheritance with delegation), with before-and-after code and the rhythm of refactoring with tests.
+summary: Small, safe changes that improve messy code and lead naturally to design patterns: extract method, replace a switch with classes, parameter objects, move method, factory, delegation and named constants. Each one has before and after code.
 ---
 
-Good design is often **grown**, not drawn. You start with simple code, notice a smell, and apply a small **refactoring**: a change that improves structure without changing behaviour. Repeated, these steps arrive at the patterns. This lesson shows the moves.
+Good design is often **grown**, not drawn on day one. You start with simple code. You notice a smell. You make a small change that makes the structure better **without changing what the code does**. This is called **refactoring**. If you repeat it, you often end up at a design pattern.
 
-## The rhythm
+This lesson shows the most useful moves.
 
-1. **Have a test** (even a tiny one) that pins the current behaviour.
-2. Make **one** small structural change.
-3. Run the test. Green? Continue. Red? Undo and make a smaller step.
+## The rhythm (very important)
+
+1. **Have a test**, even a tiny one, that shows what the code does now.
+2. Make **one** small change in the structure.
+3. Run the test. Green? Go on. Red? Undo and take a smaller step.
 4. Repeat. **Never mix refactoring with changing behaviour.**
 
-## 1. Extract Method (cure for the long method)
+## 1. Extract Method (for a long method)
+
+Take a block of code, give it a name, and make it a function.
 
 ```cpp run title="Before and after"
 #include <iostream>
@@ -54,7 +58,7 @@ int main() {
 }
 ```
 
-## 2. Replace Conditional with Polymorphism (leads to Strategy / State)
+## 2. Replace Conditional with Polymorphism (leads to Strategy or State)
 
 ```cpp run title="A switch on a type code becomes classes"
 #include <iostream>
@@ -88,7 +92,9 @@ int main() {
 }
 ```
 
-## 3. Introduce Parameter Object (cure for long parameter lists)
+## 3. Introduce Parameter Object (for long parameter lists)
+
+When the same values always travel together, make them one type.
 
 ```cpp run title="Parameters that travel together become a type"
 #include <iostream>
@@ -104,9 +110,9 @@ void book(const string& guest, const string& room, const Stay& s) {
 int main() { book("Asha", "204", {10, 13, true}); }
 ```
 
-A parameter object often grows behaviour (`nights()`), which is how a **value object** is born.
+A parameter object often grows its own methods (like `nights()`). That is how a **value object** is born.
 
-## 4. Move Method / Extract Class (cure for feature envy and god classes)
+## 4. Move Method / Extract Class (for feature envy and god classes)
 
 ```cpp run title="The method moves to the data it uses"
 #include <iostream>
@@ -155,7 +161,7 @@ int main() {
 }
 ```
 
-## 6. Replace Inheritance with Delegation (leads to Strategy / Decorator)
+## 6. Replace Inheritance with Delegation (leads to Strategy or Decorator)
 
 ```cpp run title="A Stack that HAS a vector instead of BEING one"
 #include <iostream>
@@ -174,11 +180,11 @@ public:
 int main() { Stack s; s.push(1); s.push(2); cout << s.pop() << s.pop() << "\n"; }
 ```
 
-## 7. Introduce Null Object / Special Case
+## 7. Introduce Null Object
 
-Replace repeated `if (customer == nullptr)` branches with a `GuestCustomer` that has neutral behaviour (see the Null Object lesson).
+Replace repeated `if (customer == nullptr)` checks with a `GuestCustomer` that has harmless behaviour (see the Null Object lesson).
 
-## 8. Replace Magic Number with Named Constant (and enum)
+## 8. Replace Magic Number with a Named Constant (or enum)
 
 ```cpp run title="Name your constants"
 #include <iostream>
@@ -194,45 +200,47 @@ int fine(LoanStatus s, int days) { return (s == LoanStatus::Overdue && days > kL
 int main() { cout << fine(LoanStatus::Overdue, 20) << " " << fine(LoanStatus::Active, 20) << "\n"; }
 ```
 
-## The map: smell to refactoring to pattern
+## The map: smell, refactoring, pattern
 
-| Smell | Refactoring | Pattern you end up with |
+| Smell | Refactoring | Pattern you reach |
 |---|---|---|
 | Switch on a type code | Replace Conditional with Polymorphism | Strategy / State |
-| Constructor with many `if`s on a type | Replace Constructor with Factory | Factory Method |
+| A constructor full of `if`s on a type | Replace Constructor with Factory | Factory Method |
 | Many optional constructor parameters | Introduce Builder | Builder |
-| Same code wrapping several classes (logging, retry) | Extract Decorator | Decorator |
-| A complex subsystem used the same way everywhere | Introduce Facade | Facade |
-| Code that checks `if (x == nullptr)` repeatedly | Introduce Null Object | Null Object |
+| The same wrapper code around several classes (logging, retry) | Extract Decorator | Decorator |
+| A complex group of classes used the same way everywhere | Introduce Facade | Facade |
+| Repeated `if (x == nullptr)` | Introduce Null Object | Null Object |
 | One object must tell many others about changes | Extract Observer | Observer |
-| Several steps repeated in similar classes | Form Template Method | Template Method |
+| The same steps repeated in similar classes | Form Template Method | Template Method |
 | Inheritance only for reuse | Replace Inheritance with Delegation | composition, Strategy |
-| Operation scattered over a class hierarchy | Move to a Visitor / `variant` | Visitor |
+| A job scattered over a class family | Move to a Visitor or `variant` | Visitor |
+
+## Short answer to say in an interview
 
 :::interview How would you improve this messy code?
-"I would first write a test to pin its behaviour. Then in small steps: extract methods to name the sections, replace the type-code switch with polymorphism, introduce a parameter object for the long argument list, move behaviour to the class that owns the data, and inject the dependencies. After each step I run the tests. I name each smell and the pattern it leads to."
+"First I would write a test that shows what it does now. Then I would make small steps: extract methods to name the parts, replace the type switch with classes, make a parameter object for the long list of arguments, move behaviour to the class that owns the data, and pass dependencies in. After each step I run the test. I also name each smell and the pattern it leads to."
 :::
 
 ```quiz
-? What is the most important rule when refactoring?
+? What is the most important rule of refactoring?
 - Change behaviour as you go
 + Keep behaviour the same, in small steps, with tests passing
 - Rewrite everything at once
-> Refactoring changes structure only; mixing in behaviour changes hides bugs.
-? Replacing a type-code switch with classes leads to which pattern?
+> Refactoring changes only the structure. Mixing in new behaviour hides bugs.
+? Replacing a switch on a type code with classes leads to which pattern?
 - Singleton
 + Strategy or State
 - Facade
-> Each case becomes a class behind a shared interface.
-? Which refactoring fixes a class that wrongly inherits just to reuse code?
+> Each case becomes a class behind a common interface.
+? Which refactoring fixes a class that inherits only to reuse code?
 - Extract Method
 + Replace Inheritance with Delegation
 - Introduce Parameter Object
-> Hold the other class as a member and forward the calls you really want.
+> Hold the other class as a member and pass on only the calls you want.
 ```
 
 :::keypoints
-- Refactor in small steps under test: extract method, replace conditional with polymorphism, parameter object, move method, factory, delegation, null object, named constants.
-- Each refactoring cures a smell and often arrives at a pattern.
-- Never mix refactoring with behaviour changes.
+- Refactor in small steps with tests: extract method, replace conditional with polymorphism, parameter object, move method, factory, delegation, null object, named constants.
+- Each refactoring cures a smell, and often leads to a pattern.
+- Never mix refactoring with changing behaviour.
 :::

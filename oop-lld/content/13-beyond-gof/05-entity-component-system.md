@@ -1,11 +1,20 @@
 ---
 title: Entity-Component-System (ECS)
-level: advanced
+level: intermediate
 time: 30
-summary: Why deep inheritance trees fail for game objects, how composition goes further with entities as ids, components as plain data and systems as behaviour, a small ECS in C++, and the cache and flexibility benefits compared with classical OOP.
+summary: Why game objects do not fit well in deep class trees, and how to build them from small parts instead. Entities are ids, components are plain data, and systems hold the behaviour. A small C++ example and the speed benefits.
 ---
 
-Games and simulations have **many kinds of objects** with overlapping abilities: a tree is drawn; a crate is drawn and has physics; a player is drawn, has physics, health and input; an enemy is drawn, has physics, health and AI. Classical inheritance struggles with this.
+## Why do we need this?
+
+Games have **many kinds of objects** that share different abilities:
+
+- a tree is drawn,
+- a crate is drawn and has physics,
+- a player is drawn, has physics, health and input,
+- an enemy is drawn, has physics, health and AI.
+
+Using normal inheritance for this gets messy very quickly.
 
 ## The inheritance trap
 
@@ -18,17 +27,25 @@ GameObject
  └─ ??? Boss (a Character with a health bar, AI, and special physics)
 ```
 
-Every new combination bends the hierarchy, forces multiple inheritance, or pushes features up into a "fat" base class that every object pays for. We already saw this with birds: behaviour belongs in **parts**, not in the class tree.
+Every new combination bends the class tree. You are forced into multiple inheritance, or you push features up into a "fat" base class that every object has to carry. We saw the same problem with birds earlier. The fix is the same: abilities should be **parts**, not branches of a family tree.
 
 ## The ECS idea
 
-| Concept | What it is | Example |
-|---|---|---|
-| **Entity** | just an **id** (a number): "a thing in the world" | `Entity 17` |
-| **Component** | a **plain data** struct with no behaviour; one aspect of a thing | `Position{x,y}`, `Velocity{dx,dy}`, `Health{hp}` |
-| **System** | **behaviour**: a function that processes all entities having a certain set of components | `MovementSystem` updates every entity with Position + Velocity |
+Don't memorise the names yet. Think of building a character in a game by **ticking boxes**: "can move", "can be hurt", "can be drawn". The character is just the set of ticked boxes.
 
-An entity **is defined by which components it has**. A tree = `{Position, Sprite}`. A crate = `{Position, Sprite, Velocity}`. A player = `{Position, Sprite, Velocity, Health, Input}`. Adding "flying" means adding a component or two. No class changes.
+| Word | What it is | Example |
+|---|---|---|
+| **Entity** | only an **id** (a number): "a thing in the world" | `Entity 17` |
+| **Component** | a **plain data** struct with no behaviour: one side of a thing | `Position{x,y}`, `Velocity{dx,dy}`, `Health{hp}` |
+| **System** | **behaviour**: a function that works on **all** entities that have certain components | `MovementSystem` updates every entity that has Position and Velocity |
+
+An entity is defined by **which components it has**:
+
+- A tree = `{Position, Sprite}`.
+- A crate = `{Position, Sprite, Velocity}`.
+- A player = `{Position, Sprite, Velocity, Health, Input}`.
+
+To make something "fly", you add a component or two. No class changes.
 
 ```viz algo=uml title="ECS: data in components, logic in systems"
 class World
@@ -120,11 +137,17 @@ int main() {
 }
 ```
 
-The tree never moves because it has no `Velocity`; the crate moves but cannot be hurt because it has no `Health`; the hero does both. **No class hierarchy**, and a new behaviour (poison, say) is a new component plus a new system, with no edit to existing code.
+Look at the result:
 
-## Why it scales: data-oriented design
+- The tree never moves, because it has no `Velocity`.
+- The crate moves, but cannot be hurt, because it has no `Health`.
+- The hero does both.
 
-Real ECS libraries (EnTT, flecs, Unity DOTS, Bevy) store each component type in a **contiguous array** (struct of arrays). A system then loops over memory in order, which is excellent for the CPU cache.
+There is **no class tree**. To add something new, like poison, you write a new component and a new system. No old code is edited.
+
+## Why it is fast (data-oriented design)
+
+Real ECS libraries (EnTT, flecs, Unity DOTS, Bevy) keep each kind of component in a **continuous array**. A system then walks through memory in order, which the CPU cache loves.
 
 ```cpp run title="Contiguous component arrays (struct of arrays)"
 #include <iostream>
@@ -147,50 +170,52 @@ int main() {
 }
 ```
 
-An array of polymorphic `GameObject*` scatters objects over the heap and makes a virtual call per object. Component arrays are processed linearly with no virtual calls, often **several times faster** for large worlds.
+A list of `GameObject*` pointers is scattered around the heap, and each object needs a virtual call. Component arrays are read one after another with no virtual calls. For big worlds this is often **several times faster**.
 
-## ECS vs classical OOP
+## ECS vs normal OOP
 
 | | Inheritance-based objects | ECS |
 |---|---|---|
-| Combining abilities | multiple inheritance / deep trees | add components |
-| Behaviour location | in each object's methods | in systems, over many entities |
-| Data layout | object-by-object (pointer chasing) | component arrays (cache friendly) |
-| Adding a behaviour | edit classes | add a component and a system |
-| Weak point | rigid, fragile base classes | harder to reason about interactions; less encapsulation; overkill for small apps |
+| Mixing abilities | multiple inheritance or deep trees | add components |
+| Where behaviour lives | in each object's methods | in systems, over many entities |
+| Memory layout | object by object (jumping around) | component arrays (cache friendly) |
+| Adding behaviour | edit classes | add a component and a system |
+| Weak point | rigid, fragile base classes | interactions are harder to follow; less encapsulation; too much for small apps |
 
 ## When to use it
 
-- **Games, simulations, particle systems**, with thousands of entities that mix abilities.
-- Any domain where "things" gain and lose capabilities at run time.
-- When performance of bulk updates matters.
+- **Games, simulations, particle systems** with thousands of objects that mix abilities.
+- Anywhere things **gain and lose abilities** while running.
+- When fast bulk updates matter.
 
-For a typical business-logic LLD problem (parking lot, library), classes with composition and patterns are better. ECS is a good thing to *mention* when asked about game design ("design a game engine", "design Mario").
+For a normal business LLD problem (parking lot, library), classes with composition and patterns are better. ECS is great to **mention** when asked about game design ("design a game engine", "design Mario").
 
-:::interview What is ECS and why use it instead of inheritance?
-"Entity-Component-System splits game objects into entities (just ids), components (plain data) and systems (logic that processes all entities having certain components). An entity's abilities are the components it has, so I combine abilities without class hierarchies, and add behaviour with a new component and system. Because components are stored in contiguous arrays, systems iterate cache-friendly with no virtual calls. It is composition over inheritance taken to its limit."
+## Short answer to say in an interview
+
+:::interview What is ECS, and why use it instead of inheritance?
+"ECS splits a game object into three things. Entities are just ids. Components are plain data. Systems are the logic that works on all entities that have certain components. An entity's abilities are the components it has, so I can mix abilities without class trees, and add behaviour with a new component and system. Components are stored in continuous arrays, so systems run fast with no virtual calls. It is composition over inheritance taken as far as it can go."
 :::
 
 ```quiz
 ? In ECS, what is an entity?
 - A class with virtual methods
-+ An identifier that groups components
++ An id that groups components
 - A system
-> Entities are ids; data lives in components and logic in systems.
-? What does a MovementSystem process?
+> Entities are ids. Data is in components and logic is in systems.
+? What does a MovementSystem work on?
 - Every entity
-+ Entities that have both Position and Velocity components
++ Entities that have both Position and Velocity
 - Only the player
-> Systems select entities by the set of components they need.
-? Why is ECS often faster than an object hierarchy?
+> A system selects entities by the components it needs.
+? Why is ECS often faster than a class hierarchy?
 - It uses fewer classes
-+ Components are stored contiguously and processed in tight loops without virtual calls
++ Components sit side by side in memory and are processed in tight loops without virtual calls
 - It uses threads
-> Better cache locality and no dynamic dispatch per object.
+> Better cache use, and no dynamic dispatch per object.
 ```
 
 :::keypoints
-- ECS: entities are ids, components are plain data, systems are behaviour over entities with certain components.
-- Composition instead of inheritance: abilities are added or removed by adding components. New behaviour = a new component and system.
-- Contiguous component storage gives cache-friendly speed. Best for games and simulations, not for every domain.
+- ECS: entities are ids, components are plain data, systems are the behaviour over entities that have certain components.
+- It is composition instead of inheritance. Add or remove abilities by adding or removing components. New behaviour is a new component and a new system.
+- Continuous component storage makes it fast. Best for games and simulations, not for every domain.
 :::

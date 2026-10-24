@@ -2,61 +2,61 @@
 title: "LLD cheat sheet"
 level: easy
 time: 15
-summary: One page: the interview routine, pattern chooser, SOLID in a line, problem shapes and the key data structure or pattern for each classic problem.
+summary: One page to look at before the interview: the routine, which pattern for which hint, SOLID in a line, types of problems, and the key idea for each classic problem.
 ---
 
 ## The routine (45 minutes)
 
-| Minutes | Do |
+| Minutes | What to do |
 |---|---|
-| 0 to 5 | Clarify requirements, actors, scale, out of scope |
-| 5 to 15 | Entities, relationships, class diagram, patterns |
-| 15 to 35 | Code interfaces, core classes, the main flow |
-| 35 to 45 | Edge cases, concurrency, tests, extensions |
+| 0 to 5 | Ask questions: users, scale, what is not needed |
+| 5 to 15 | Find the classes, connect them, draw, choose patterns |
+| 15 to 35 | Code the interfaces, main classes and main flow |
+| 35 to 45 | Edge cases, threads, tests, extensions |
 
-## Pattern chooser
+## Which pattern for which hint
 
-| If the problem says... | Think |
+| If the problem says... | Think about |
 |---|---|
-| "different algorithms / policies" | Strategy |
-| "modes / lifecycle / allowed actions" | State |
-| "notify others when X changes" | Observer |
-| "undo / queue / log requests" | Command (+ Memento) |
+| "different ways of doing one job / policies" | Strategy |
+| "modes / life cycle / allowed actions" | State |
+| "tell others when X changes" | Observer |
+| "undo / queue / record actions" | Command (and Memento) |
 | "tree of parts and wholes" | Composite |
-| "add behaviour dynamically" | Decorator |
-| "wrap legacy / third party" | Adapter |
-| "simplify a complex subsystem" | Facade |
+| "add features by wrapping" | Decorator |
+| "wrap old or third-party code" | Adapter |
+| "make a complicated group easy to use" | Facade |
 | "control access / lazy / cache" | Proxy |
-| "create by type / by family" | Factory / Abstract Factory |
-| "many optional parameters" | Builder |
-| "pipeline of handlers" | Chain of Responsibility |
-| "fixed steps, varying details" | Template Method |
+| "create by type / matching set" | Factory / Abstract Factory |
+| "many optional settings" | Builder |
+| "a line of handlers" | Chain of Responsibility |
+| "fixed steps, changing details" | Template Method |
 | "many objects talk to many" | Mediator |
-| "add operations to stable types" | Visitor |
-| "only one instance" | Singleton (or inject one) |
+| "add jobs to stable classes" | Visitor |
+| "only one object" | Singleton (or pass one in) |
 
 ## SOLID in a line each
 
-S: one reason to change · O: extend, don't edit · L: subtypes honour the base contract · I: small client-specific interfaces · D: depend on abstractions.
+S: one reason to change. O: add, do not edit. L: a child must be safe to use in place of the parent. I: small interfaces. D: depend on interfaces.
 
-## Problem shapes
+## Types of problems
 
-| Shape | Examples | Key idea |
+| Type | Examples | The key idea |
 |---|---|---|
-| Booking / allocation | parking lot, movie, hotel | atomic check-and-reserve; time ranges; holds with expiry |
-| State machine | vending, ATM, traffic light, order | State pattern or transition table |
-| Games | tic-tac-toe, chess, snake-ladder | board model, move validation, strategy for players |
-| Money | splitwise, bank, payment | integer minor units, atomic transfers, idempotency |
-| Cache / store | LRU, KV store, typeahead | hash map + list/heap/trie, eviction, TTL |
+| Booking | parking lot, movie, hotel | check and reserve in one step. Time ranges. Hold with expiry |
+| State machine | vending, ATM, traffic light, order | State pattern or a table of transitions |
+| Games | tic-tac-toe, chess, snake and ladder | board model, check moves, a strategy for players |
+| Money | splitwise, bank, payment | integer paise, safe transfers, idempotency |
+| Cache and store | LRU, key-value store, typeahead | hash map with list, heap or trie. Removing items. TTL |
 | Scheduler | task, cron, workflow | priority queue, clock, retries, DAG |
-| Messaging | pub/sub, notification, chat, feed | queues, fan-out, ack/retry, observers |
-| Tree / parser | file system, calculator, spreadsheet | Composite, Interpreter, DAG recompute |
+| Messaging | pub/sub, notification, chat, feed | queues, sending to many, ack and retry, observers |
+| Tree and parser | file system, calculator, spreadsheet | Composite, Interpreter, DAG recalculation |
 
-## Always mention
+## Always say
 
-Validation and error handling · concurrency on the shared state · injectable clock/id/random · how to test · one or two extensions.
+Checks and errors, threads on shared data, a clock and ids you can replace, how to test, and one or two extensions.
 
 :::keypoints
-- Requirements first, patterns from variation, code the main flow, then edge cases.
-- Name the data structure and its complexity for every problem.
+- Ask first, then patterns from what can change, then code the main flow, then edge cases and extensions.
+- For each problem, name the data structure and its cost.
 :::

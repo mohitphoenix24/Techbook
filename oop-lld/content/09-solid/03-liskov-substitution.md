@@ -1,29 +1,39 @@
 ---
-title: L: Liskov Substitution Principle
-level: advanced
+title: "L: Liskov Substitution Principle"
+level: intermediate
 time: 35
-summary: Subtypes must be usable wherever their base type is expected, the contract rules (preconditions, postconditions, invariants), classic violations (Rectangle/Square, a read-only list, a non-refundable payment), how to detect and fix them, and the role of substitutability in polymorphism.
+summary: If a child class replaces its parent, the program should still work correctly. Simple examples (Penguin and Bird, a limited transfer, shapes), how to fix them, and an easy test to catch the problem.
 ---
 
+**L** in SOLID stands for **Liskov Substitution Principle**, or **LSP**. The name sounds scary, but the idea is simple.
+
+Don't memorise the formal definition yet. Think of it as one question:
+
+> "If I say **B is an A**, can I safely replace an A with B?"
+
+If the answer is **yes**, the design is fine. If the code breaks or behaves in a surprising way, the design is wrong.
+
 :::def Liskov Substitution Principle (LSP)
-If `S` is a subtype of `T`, then objects of type `T` may be **replaced by objects of type `S`** without breaking the correctness of the program. In plain words: **a derived class must be usable anywhere the base class is expected, with no surprises.**
+Wherever your code uses a parent object, you should be able to give it a child object **and the code should still work correctly**. The child should not surprise the code that is using the parent.
 :::
 
-Inheritance in C++ lets the compiler accept any `Derived` where a `Base&` is needed. LSP is about whether the **behaviour** is acceptable, not just the types.
+## A real-life picture
 
-## The contract view
+You hire a driver. The job is "drive me to the office". If the company sends a new driver, you expect that he can also drive.
 
-Think of a base class as a **contract** with its callers. A derived class may keep the contract, or give *more*; it may never give *less*.
+Now imagine they send someone who says "I can sit in the car, but I do not drive". He is called a driver, but he **cannot replace** the old driver. That is exactly what LSP is about.
 
-| Contract part | Rule for the derived class |
-|---|---|
-| **Preconditions** (what the caller must provide) | may be **weaker** (accept more), never **stronger** (demand more) |
-| **Postconditions** (what the function guarantees) | may be **stronger** (promise more), never **weaker** |
-| **Invariants** (what is always true about the object) | must be **preserved** |
-| **Exceptions / errors** | must not throw new kinds of errors the base never mentioned |
-| **History** | must not allow state changes the base forbids (e.g. mutating an immutable base) |
+In C++, the compiler will happily accept any child where a parent is expected. But the compiler only checks **types**. It does not check **behaviour**. LSP is about behaviour.
 
-## Violation 1: strengthened precondition
+## A simple way to think: promise
+
+Think of the parent class as making a **promise** to the people who use it. A child class is allowed to keep the promise. But it must not break it. In simple terms:
+
+1. **Do not ask for more.** If the parent accepts any amount, the child should not suddenly refuse some amounts.
+2. **Do not give less.** If the parent promises a result, the child must give that result.
+3. **Do not surprise.** Do not throw strange errors or do nothing where the parent did something.
+
+## Problem 1: the child asks for more
 
 ```cpp run title="A derived class that demands more than the base"
 #include <iostream>
@@ -55,11 +65,11 @@ int main() {
 }
 ```
 
-`payRent` was correct for `Transfer`. Substituting `LimitedTransfer` breaks it. The subtype is not substitutable.
+`payRent` was fine with a normal `Transfer`. But when we give it a `LimitedTransfer` (which refuses big amounts), it fails. The child is **not a safe replacement** for the parent.
 
-## Violation 2: a subtype that refuses behaviour
+## Problem 2: the child refuses to do the job
 
-A common beginner structure: `Bird` has `fly()`, `Penguin` inherits and throws.
+A very common mistake: a `Bird` class has `fly()`. Then `Penguin` inherits from `Bird`... and has to throw an error in `fly()`, because penguins cannot fly.
 
 ```cpp run title="Penguin throws: the Bird contract is broken"
 #include <iostream>
@@ -91,11 +101,11 @@ int main() {
 }
 ```
 
-**Smell:** an override that throws "not supported", returns a dummy value, or does nothing. It tells you the base class promises too much.
+Warning sign: **a child that says "not supported", does nothing, or returns a fake value.** It means the parent promised too much.
 
-## The fix: put capabilities in the right places
+## The fix: put each ability in the right place
 
-Not every `Bird` can fly, so `fly()` does not belong on `Bird`. Model the capability separately.
+Not every bird can fly. So `fly()` should not be in `Bird`. Put the ability in a separate place.
 
 ```cpp run title="Restructured hierarchy: only flying things promise fly()"
 #include <iostream>
@@ -133,11 +143,13 @@ int main() {
 }
 ```
 
-The mistake is caught at **compile time** now. Whenever you can turn a LSP bug into a type error, do it.
+Now if we try to make a penguin fly, the program **does not even compile**. Whenever you can change a runtime surprise into a compile error, do it. It is much safer.
 
-## Violation 3: mutating an immutable base
+## Problem 3: the Square and Rectangle problem
 
-The Rectangle/Square problem you saw earlier is of this kind: `Square` adds an invariant (`w == h`) that `Rectangle`'s callers do not expect, and `setWidth` stops behaving as promised (postcondition: height unchanged). Fixes: do not inherit; make both immutable value types, or both implement `Shape` with just `area()`.
+We already saw this one. A `Square` that inherits from `Rectangle` breaks code that sets width and height separately.
+
+The easy fix is to make the shapes **unchangeable** (no setters). Then there is no problem.
 
 ```cpp run title="Immutable shapes: no setters, no problem"
 #include <iostream>
@@ -168,9 +180,9 @@ int main() {
 }
 ```
 
-## Detecting LSP violations: a contract test
+## A simple way to catch the problem: one test for all children
 
-A powerful technique: write **one test suite against the base contract** and run it on *every* subclass. If any subclass fails, it is not substitutable.
+Write **one test** based on what the parent promises. Then run that same test on **every child**. If any child fails the test, it is not a safe replacement.
 
 ```cpp run title="One contract test, run on every implementation"
 #include <iostream>
@@ -211,39 +223,51 @@ int main() {
 }
 ```
 
-## Red flags checklist
+## Warning signs
 
-- An override that **throws** an exception the base does not declare, or "not implemented".
-- An override that **does nothing** where the base does something.
-- A subclass that **narrows** accepted inputs (stronger precondition).
-- Callers do `if (dynamic_cast<Special*>(p))` to avoid a subclass's quirks.
-- A subclass that **changes** state the base promises is constant.
-- A base-class function documented "except for class X".
+- A child method that **throws** "not implemented".
+- A child method that **does nothing** where the parent does something.
+- A child that **accepts fewer inputs** than the parent.
+- Code that asks `if (it is a Penguin)` to avoid a child's problem.
+- A comment like "works for all except class X".
 
-:::interview What is the Liskov Substitution Principle? Give an example of a violation.
-"A subtype must be usable wherever its base is expected, honouring the base's contract: preconditions no stronger, postconditions no weaker, invariants kept. The classic violation is making `Square` inherit `Rectangle`: code that sets width and height independently breaks. Another is `Penguin` inheriting `Bird::fly()` and throwing. I fix these by restructuring: separate the capability into its own interface, or make them siblings under a smaller common base."
+:::note Advanced (optional): the formal words
+You may hear these terms in some books. They only say the same three rules above in formal language.
+
+- **Preconditions** (what the caller must give): a child may accept the same or more, never less.
+- **Postconditions** (what the method promises): a child may promise the same or more, never less.
+- **Invariants** (things that must always stay true): a child must keep them.
+
+You do not need these words for most interviews. The simple question "can I safely replace the parent with the child?" is enough.
+:::
+
+## Short answer to say in an interview
+
+:::interview What is the Liskov Substitution Principle? Give an example.
+"It means that if I replace a parent object with a child object, the program should still work correctly. The child should not surprise the code using the parent. For example, if Penguin inherits from Bird and throws an error in fly(), then code that uses a Bird breaks. To fix it, I take fly() out of Bird and put it only in the classes that can really fly."
 :::
 
 ```quiz
-? Which change in a derived class violates LSP?
-- Returning a more specific type (covariant return)
-+ Throwing "not supported" from an overridden method
+? Which change in a child class breaks LSP?
 - Adding a new method
-> Callers of the base cannot expect the refusal; the override breaks the contract.
-? Preconditions in a subtype may be...
-- stronger
-+ weaker or the same
-- unrelated
-> A subtype may accept more inputs, never fewer.
-? What is a good practical way to find LSP violations?
-- Code review only
-+ Run one contract test suite against every implementation of the base
++ Throwing "not supported" from a method that the parent promises to do
+- Using a more specific return type
+> Code that uses the parent does not expect the refusal.
+? A child class should accept...
+- fewer inputs than the parent
++ the same inputs as the parent, or more
+- completely different inputs
+> It must work wherever the parent worked.
+? What is a good practical way to find LSP problems?
+- Hope for the best
++ Write one test for the parent's promise and run it on every child
 - Make everything final
-> If any subclass fails the base contract tests, it is not substitutable.
+> If any child fails the test, it is not a safe replacement.
 ```
 
 :::keypoints
-- A subtype must be usable anywhere its base is expected: weaker or equal preconditions, stronger or equal postconditions, invariants preserved, no new error types.
-- Smells: overrides that throw/do nothing, `dynamic_cast` on callers, "except for class X".
-- Fixes: separate capabilities into their own interfaces, use siblings instead of a parent/child, prefer immutability, and test the contract against all subclasses.
+- Simple test: "If B is an A, can I safely use B wherever I use A?"
+- Do not ask for more, do not give less, do not surprise.
+- Warning signs: children that throw "not supported", do nothing, or need special checks in the calling code.
+- Fix by moving abilities into the classes that really have them, using separate interfaces, or using unchangeable (immutable) shapes.
 :::

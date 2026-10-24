@@ -2,35 +2,35 @@
 title: Design a Parking Lot
 level: easy
 time: 50
-summary: The most-asked LLD question: multi-floor lot, vehicle and spot types, tickets, pluggable spot-allocation and pricing strategies, per-floor locking so several gates can work at once, and a complete runnable implementation with the follow-ups that interviewers ask next.
+summary: The most asked LLD question. A parking lot with many floors, different vehicle and spot sizes, tickets, rules for choosing a spot and for pricing that can be swapped, and safe locking so several gates can work together.
 ---
 
 :::problem Design a Parking Lot {level=easy tags="classic,Strategy,concurrency,booking,most asked"}
-Design the software for a multi-floor parking lot. Vehicles of different sizes enter through several gates, receive a ticket for a suitable spot, and pay by duration when they leave. Model the classes, implement park and leave, and make it safe when several gates operate at once.
+Design the software for a parking lot with many floors. Vehicles of different sizes come in through several gates, get a ticket for a suitable spot, and pay by the time they stayed when they leave. Design the classes, write park and leave, and make it safe when several gates work at the same time.
 
 :::hint Hint
-Find the variation points first: how a spot is chosen, and how the fee is computed. Both change in real businesses, so make them strategies. Then decide what must be atomic when two gates assign a spot at the same moment: finding a free spot and marking it taken is **one** critical step.
+First find what can change: **how a spot is chosen**, and **how the fee is worked out**. Both change in real businesses, so make both of them strategies. Then think about what must happen as one step when two gates ask for a spot at the same moment: finding a free spot and marking it as taken is **one** step.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
 | Vehicle types? | motorcycle, car, truck |
 | Spot types? | small (motorcycle), medium (car), large (truck) |
-| Which vehicle fits which spot? | a vehicle may use its own size **or larger**; smallest fit preferred |
-| Floors and gates? | several floors; several entry and exit gates operating **concurrently** |
-| Pricing? | per started hour by spot size, first 15 minutes free; rules may change |
-| Spot choice? | lowest floor first today; "nearest to the exit" possibly later |
-| Payment? | at exit; the payment system is out of scope (an interface) |
-| Display? | free spots per floor and type |
+| Which vehicle fits which spot? | a vehicle can use its own size **or a bigger one**. The smallest fit is preferred |
+| Floors and gates? | many floors. Many entry and exit gates working **at the same time** |
+| Price? | per started hour, depends on the spot size, the first 15 minutes are free. The rules may change |
+| Choosing a spot? | the lowest floor first for now. Maybe "nearest to the exit" later |
+| Payment? | at the exit. The payment system itself is not needed (an interface) |
+| Display? | free spots for each floor and type |
 
-Out of scope: reservations, monthly passes, number-plate cameras (mention as extensions).
+Not needed: reservations, monthly passes, number-plate cameras (we can mention them as extensions).
 
-## Step 2: entities
+## Step 2: Find the classes
 
-Nouns: **ParkingLot, Floor, Spot, Vehicle, Ticket, Gate**, plus two variation points: **SpotAllocationStrategy** and **PricingStrategy**.
+Nouns: **ParkingLot, Floor, Spot, Vehicle, Ticket, Gate**. And two things that can change: **SpotAllocationStrategy** and **PricingStrategy**.
 
 ```viz algo=uml title="Parking lot: class diagram"
 class ParkingLot
@@ -71,14 +71,14 @@ LowestFloorFirst ..|> SpotAllocationStrategy
 HourlyPricing ..|> PricingStrategy
 ```
 
-Responsibilities:
+What each class does:
 
-- **ParkingLot** (coordinator): issues and closes tickets, reports availability. No pricing or allocation rules inside (SRP).
-- **Floor** owns its spots and its **lock**. Reserving a spot on a floor is one atomic step.
+- **ParkingLot** (the main class): gives out and closes tickets, and tells how many spots are free. It holds no pricing or allocation rules (one job per class).
+- **Floor** owns its spots and its **lock**. Reserving a spot on a floor is one safe step.
 - **Spot** knows its size, whether it is free, and whether a vehicle **fits**.
 - **Strategies** hold the rules that change.
 
-## Step 3: flows
+## Step 3: The flows
 
 ```viz algo=seq title="Entry and exit"
 participant g EntryGate [gateway]
@@ -98,15 +98,20 @@ lot -> f : release(F1-M3)
 lot --> x : Receipt T-1, Rs 120
 ```
 
-## Step 4: design decisions
+In words:
 
-- **Strategy x2**: `SpotAllocationStrategy` and `PricingStrategy`. A new pricing model (weekend, EV discount) is a new class.
-- **Concurrency**: each `Floor` has its own mutex; `tryReserve` finds **and** marks the spot under it. Two gates parking at the same time on different floors never block each other; on the same floor they serialise only briefly. The active-ticket map has its own small lock.
-- **Time is injected** (`Minute` parameter) so the demo is deterministic.
-- **Results, not exceptions**, for "lot full" and "unknown ticket": these are normal outcomes.
-- A **Ticket** records the **Spot pointer and floor** so that `leave` is O(1), with no search.
+- **Entry:** the gate asks the lot to park. The lot asks the strategy which spot, the floor reserves it, and a ticket is returned.
+- **Exit:** the gate gives the ticket. The lot finds the spot from the ticket, frees it, asks the pricing strategy for the fee, and returns it.
 
-## Step 5: the code
+## Step 4: Design decisions
+
+- **Two strategies:** `SpotAllocationStrategy` and `PricingStrategy`. A new price rule (weekend, electric car discount) is a new class.
+- **Threads:** each `Floor` has its **own mutex**. `tryReserve` finds **and** marks the spot while holding it. Two gates on different floors never wait for each other. On the same floor they wait only for a very short time. The map of active tickets has its own small lock.
+- **Time is passed in** (a `Minute` value), so the demo gives the same result every time.
+- **Results, not exceptions,** for "lot is full" and "unknown ticket". These are normal things.
+- A **Ticket** remembers the **spot and floor**, so leaving is O(1). We never search.
+
+## Step 5: The code
 
 ```cpp run title="Parking lot: complete"
 #include <algorithm>
@@ -274,43 +279,49 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Lot full for that vehicle type | `park` returns an error result, no exception |
-| Ticket used twice / unknown ticket | the map erase makes a second `leave` fail cleanly |
-| Two gates, same spot | `tryReserve` finds and marks under the floor's lock |
-| Vehicle bigger than any spot | `fits` is false everywhere: "no free spot" |
-| Lost ticket | a `leaveByPlate` that looks up by plate and applies a penalty (extension) |
-| Clock goes backwards | validate `at >= entry` (not shown) |
+| Lot is full for that vehicle type | `park` returns an error result, no exception |
+| Ticket used twice, or unknown ticket | removing it from the map makes a second `leave` fail cleanly |
+| Two gates want the same spot | `tryReserve` finds and marks the spot while holding the floor's lock |
+| Vehicle bigger than every spot | `fits` is false everywhere: "no free spot" |
+| Lost ticket | a `leaveByPlate` that finds the vehicle by plate and adds a penalty (extension) |
+| Clock goes backwards | check that `at >= entry` (not shown) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Electric vehicle spots" | new `SpotSize`/`SpotKind` plus an allocation strategy preferring EV spots for EVs |
-| "Nearest to the exit" | a `NearestToGate` allocation strategy using spot coordinates |
-| "Dynamic pricing (peak hours)" | a new `PricingStrategy`, or a **Decorator** around `HourlyPricing` adding a surcharge |
-| "Reserve a spot" | a `Reservation` with a `TimeRange`; spot allocation checks overlaps |
-| "Display boards per floor" | **Observer**: floors publish availability changes |
-| "Multiple lots, one app" | a `ParkingService` holding many lots (a Facade) |
-| "Payment" | a `PaymentGateway` interface called by `leave`; keep the spot until payment succeeds |
-| "Thousands of gates" | per-floor locks already scale; shard floors across servers (leads into HLD) |
+| "Electric vehicle spots" | a new spot kind, and an allocation strategy that prefers EV spots for EVs |
+| "Nearest to the exit" | a `NearestToGate` allocation strategy using spot positions |
+| "Price changes at peak hours" | a new `PricingStrategy`, or a **Decorator** around `HourlyPricing` that adds an extra charge |
+| "Reserve a spot" | a `Reservation` with a `TimeRange`. The allocation checks for overlaps |
+| "Display boards on each floor" | **Observer**: floors announce when availability changes |
+| "Many lots in one app" | a `ParkingService` that holds many lots (a Facade) |
+| "Payment" | a `PaymentGateway` interface used by `leave`. Keep the spot until payment succeeds |
+| "Thousands of gates" | per-floor locks already scale. Spread the floors over servers (this leads to HLD) |
+
+## Short answer to say in an interview
+
+:::interview How do you stop two gates from giving the same spot to two cars?
+"Finding a free spot and marking it as taken must be one step. So each floor has its own mutex, and tryReserve does both under that lock. Gates on different floors do not block each other. I also keep the pricing rule and the spot-choosing rule as strategies, because those are the parts that change most."
+:::
 
 ```quiz
-? Why does `Floor::tryReserve` both find and occupy the spot under one lock?
+? Why does Floor::tryReserve find and take the spot under one lock?
 - To keep the code short
-+ If finding and marking were separate steps, two gates could choose the same spot (check-then-act race)
-- Because spots are immutable
-> One critical section makes the reservation atomic.
-? Why are pricing and allocation strategies, not code inside ParkingLot?
++ If finding and marking were separate steps, two gates could pick the same spot (a check-then-act race)
+- Because spots never change
+> One locked step makes the reservation safe.
+? Why are pricing and allocation strategies and not code inside ParkingLot?
 - To make the class bigger
-+ They are the parts most likely to change; strategies let new rules be added without editing ParkingLot
-- Because C++ requires interfaces
-> Open/Closed at the variation points.
++ They change most often, and strategies let us add new rules without editing ParkingLot
+- Because C++ needs interfaces
+> New rule, new class. Old code stays the same.
 ```
 
 :::keypoints
-- Coordinator (ParkingLot) + Floors (own spots and locks) + Spot (fits/free) + two Strategies (allocation, pricing).
-- Reserve atomically per floor; tickets give O(1) exit; results instead of exceptions for normal failures.
-- Inject time for determinism. Extensions mostly mean a new strategy, a decorator, or an observer.
+- ParkingLot (main class), Floors (own spots and locks), Spot (fits and free), and two strategies (allocation and pricing).
+- Reserve safely per floor. Tickets make exit O(1). Normal failures return results, not exceptions.
+- Pass time in for predictable tests. Most extensions mean a new strategy, decorator or observer.
 :::

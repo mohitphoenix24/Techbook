@@ -2,20 +2,26 @@
 title: Command
 level: intermediate
 time: 40
-summary: Turning a request into an object so it can be queued, logged, scheduled, undone and redone: the command interface, a text editor with undo and redo stacks, macro commands, a task queue, and when a lambda is enough.
+summary: Turn a request into an object, so you can store it, delay it, repeat it, or undo it. Learn the roles, undo and redo in a text editor, macros, a job queue, and when a lambda is enough.
 ---
 
+## What is the Command pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Instead of **doing** an action right now, I write the action on a **slip of paper** (an object). Then I can keep the slip, pass it to someone, do it later, do it again, or cancel it."
+
+:::analogy Think of a restaurant order slip
+The waiter writes your order on a slip and gives it to the kitchen. The slip can wait in a queue, be written in a log, be cancelled, or be repeated for another table. The waiter does not cook, and the cook does not talk to you.
+:::
+
 :::def Command
-**Encapsulate a request as an object**, thereby letting you parameterise clients with different requests, **queue or log** requests, and support **undoable operations**.
+A **request turned into an object**. Because it is an object, you can store it, queue it, log it, and **undo** it.
 :::
 
-A normal method call `light.turnOn()` happens **now**, and leaves no trace. If the request is an **object**, you can store it, pass it around, delay it, repeat it, record it, or reverse it.
+A normal call like `light.turnOn()` happens **now** and leaves no trace. If the request is an **object**, you can do much more with it.
 
-:::analogy Think of it like this
-A restaurant order slip. The waiter writes your order on a slip (the command) and hands it to the kitchen. The slip can wait in a queue, be logged, be cancelled, or be repeated for the next table. The waiter does not cook, and the cook does not talk to you.
-:::
-
-## Structure
+## The roles
 
 ```viz algo=uml title="Command"
 interface Command
@@ -40,9 +46,13 @@ DeleteText --> Editor : receiver
 History o-- Command
 ```
 
-Roles: **Command** (interface), **ConcreteCommand** (binds an action to a **receiver**), **Receiver** (does the real work: the `Editor`), **Invoker** (the `History`: triggers and stores commands), **Client** (creates commands).
+- **Command**: the common interface (`execute`, and often `undo`).
+- **ConcreteCommand**: one real action, tied to the object that does the work.
+- **Receiver**: the object that does the real work (for example the `Editor`).
+- **Invoker**: the one that runs and stores commands (for example `History`).
+- **Client**: the code that creates the commands.
 
-## A text editor with undo and redo
+## Example: a text editor with undo and redo
 
 ```cpp run title="Undo/redo with the Command pattern"
 #include <iostream>
@@ -108,11 +118,17 @@ int main() {
 }
 ```
 
-Every action goes through `History::run`, which gives you **undo, redo, history logs and macro recording** in one place. Each command stores exactly what it needs to reverse itself.
+Every action goes through `History::run`. This one place gives us **undo, redo and history**. Each command remembers exactly what it needs to reverse itself.
 
-## Macro commands (composite of commands)
+How undo and redo work with two stacks:
 
-A **macro** is a command made of commands.
+1. Run a command → push it on the **undo** stack, and **clear** the redo stack.
+2. Undo → pop from the undo stack, call `undo()`, push it on the **redo** stack.
+3. Redo → pop from the redo stack, run it again, push it on the undo stack.
+
+## Macro commands (a command made of commands)
+
+A **macro** runs several commands as one. Undo runs them in **reverse order**.
 
 ```cpp run title="MacroCommand: run and undo a group"
 #include <iostream>
@@ -155,9 +171,9 @@ int main() {
 }
 ```
 
-## Queueing and scheduling: commands as tasks
+## Queueing and scheduling
 
-Because a command is an object, a worker can run it later, on another thread.
+A command is an object, so a worker can run it later, maybe on another thread.
 
 ```cpp run title="A simple job queue"
 #include <functional>
@@ -198,7 +214,7 @@ int main() {
 
 ## When a lambda is enough
 
-If you do not need undo or inspection, a command is just a **callable**: `std::function<void()>`.
+If you do not need undo or inspection, a command can simply be a function: `std::function<void()>`.
 
 ```cpp run title="Commands as lambdas"
 #include <functional>
@@ -215,28 +231,29 @@ int main() {
 }
 ```
 
-Use a **class** when the command needs: undo, a description/name, serialization, inspection, or state. Use a **lambda** when it is fire and forget.
+Use a **class** when the command needs undo, a name, saving to disk, or its own data. Use a **lambda** when it is "run this later and forget it".
 
-## What commands unlock
+## What commands make possible
 
 | Feature | How |
 |---|---|
-| Undo/redo | a stack of executed commands, each with `undo()` |
-| Macros | a composite of commands |
-| Queues, schedulers, thread pools | store commands, run later |
-| Logging and **crash recovery** | persist the command list; replay it to rebuild state (event sourcing) |
-| Transactions | run commands; on failure undo the completed ones |
-| Decoupling UI from logic | a button holds a command, not business code |
+| Undo and redo | a stack of done commands, each with `undo()` |
+| Macros | a command that holds other commands |
+| Queues, schedulers, thread pools | store commands, run them later |
+| Logging and **recovery after a crash** | save the commands; replay them to rebuild the state |
+| Transactions | run commands; if one fails, undo the finished ones |
+| Separating UI from logic | a button holds a command, not business code |
 
 ## Design choices
 
-- **Command stores receiver or gets it at run time?** Store it (as above) for simple cases.
-- **Undo by inverse operation or by snapshot?** Inverse is cheap but must be exact; a snapshot (Memento) is simpler but heavier. Many editors combine both.
-- **Commands that cannot be undone** (send an email): mark them non-undoable, or make `undo` compensate (send a retraction).
-- **Merging**: typing many characters might merge into one undo step.
+- **Undo by doing the opposite** (cheap, but must be exact) or **by saving a snapshot** (simpler, but uses more memory). Many editors use both.
+- **Commands that cannot be undone** (like sending an email): mark them as not undoable, or make `undo` send a correction.
+- **Merging:** typing many letters can be merged into one undo step.
 
-:::interview How would you implement undo/redo?
-"Model each user action as a Command with `execute()` and `undo()`, holding the receiver and whatever state it needs to reverse itself. An invoker keeps an undo stack and a redo stack: running a command pushes it on the undo stack and clears the redo stack; undo pops, calls `undo()`, and pushes onto the redo stack. For groups I use a MacroCommand that undoes in reverse order. If inverse operations are hard, I save a memento of the state instead."
+## Short answer to say in an interview
+
+:::interview How would you implement undo and redo?
+"I make each user action a Command with execute() and undo(). It holds the object it works on and whatever it needs to reverse itself. A history object keeps an undo stack and a redo stack. When a new command runs, I push it on the undo stack and clear the redo stack. Undo pops a command, calls undo() and pushes it on the redo stack. For groups of actions I use a macro command that undoes in reverse order. If the opposite action is hard to write, I save a snapshot of the state."
 :::
 
 ```quiz
@@ -244,21 +261,21 @@ Use a **class** when the command needs: undo, a description/name, serialization,
 - A thread
 + An object that can be stored, queued, logged and undone
 - A global function
-> Having the request as data is what enables history and scheduling.
+> When the request is data, you can do much more with it.
 ? When a new command runs, what happens to the redo stack?
 - It is kept
-+ It is cleared, because the history branched
++ It is cleared, because the history has branched
 - It is undone
-> Standard editor behaviour: redo is only valid until you do something new.
-? In what order does a MacroCommand undo its steps?
-- The same order as execution
-+ The reverse order
+> Redo is only valid until you do something new.
+? In what order does a macro undo its steps?
+- Same as the order they ran
++ In reverse order
 - Random
-> The last change must be reversed first.
+> The last change must be undone first.
 ```
 
 :::keypoints
-- Command: a request as an object with `execute()` (and `undo()`); invoker stores them, receiver does the work.
-- Enables undo/redo (two stacks), macros (composite), queues/scheduling, logging, transactions, UI decoupling.
-- Use a lambda when you only need to defer a call; use a class when you need undo or inspection.
+- Command = a request as an object, with `execute()` and often `undo()`. An invoker stores commands. A receiver does the work.
+- It gives undo/redo (two stacks), macros, queues, logging, transactions and UI separation.
+- Use a lambda to simply delay a call. Use a class when you need undo or inspection.
 :::

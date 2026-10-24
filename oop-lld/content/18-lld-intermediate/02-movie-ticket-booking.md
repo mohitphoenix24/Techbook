@@ -2,32 +2,32 @@
 title: Design a Movie Ticket Booking System
 level: intermediate
 time: 60
-summary: Cinemas, screens, shows and seats; searching shows; selecting seats with a temporary hold that expires; confirming after payment; preventing double booking under concurrency with per-show locking; and an injectable clock for hold expiry.
+summary: Cinemas, screens, shows and seats. Learn how to hold seats for a few minutes while a user pays, how to let the hold expire, how to confirm the booking, and how to stop two users from getting the same seat.
 ---
 
 :::problem Design a Movie Ticket Booking System {level=medium tags="booking,concurrency,seat locking,state,BookMyShow"}
-Design a system like BookMyShow. Users search shows for a movie in a city, see the seat map, choose seats, pay and receive tickets. While a user is paying, their chosen seats must be held so nobody else can take them; if payment does not complete in time, the seats are released. Two users must never get the same seat.
+Design a system like BookMyShow. Users search for shows of a movie in a city, see the seat map, choose seats, pay and get tickets. While a user is paying, their chosen seats must be held so nobody else can take them. If the payment is not finished in time, the seats are released. Two users must never get the same seat.
 
 :::hint Hint
-A seat has a lifecycle per show: available → **held** (with an expiry) → booked. The critical operation is "hold these seats **all or none**" under a lock per show. Expiry is checked lazily against an injected clock when someone asks for the seat.
+A seat has a life cycle for each show: available, then **held** (with an expiry time), then booked. The key step is "hold these seats **all or none**" under a lock for each show. Check expiry only when someone asks for the seat, using a clock that you pass in.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | Cinema, Screen (seat layout), Movie, Show (movie + screen + start time), Seat, Booking |
+| Main things? | Cinema, Screen (seat layout), Movie, Show (movie + screen + start time), Seat, Booking |
 | Search? | shows by movie and city (and date) |
-| Seat selection? | choose 1 to 6 seats; all must be available or the request fails |
-| Hold? | a successful selection holds the seats for 5 minutes |
-| Payment? | confirm within the hold, otherwise the hold expires; payment itself behind an interface |
-| Cancel? | allowed before the show; seats return to available |
-| Pricing? | by seat category (regular, premium); a strategy (peak hours, weekends) |
-| Concurrency? | many users; no double booking; hold, confirm and expiry must be consistent |
-| Out of scope | food, coupons, refunds logic details |
+| Choosing seats? | 1 to 6 seats. All must be free, or the request fails |
+| Hold? | a successful choice holds the seats for 5 minutes |
+| Payment? | confirm within the hold time, or the hold expires. The payment itself is behind an interface |
+| Cancel? | allowed before the show. Seats become free again |
+| Price? | by seat type (regular, premium). A strategy (peak hours, weekends) |
+| Many users? | yes. No double booking. Hold, confirm and expiry must agree with each other |
+| Not needed | food orders, coupons, refund details |
 
-## Step 2: the seat lifecycle
+## Step 2: The life of a seat
 
 ```viz algo=state title="A seat in one show"
 state Available "Available" [initial] @0,1
@@ -40,7 +40,7 @@ Booked -> Available : booking cancelled
 play: hold, payment confirmed, booking cancelled
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Movie booking"
 class BookingService
@@ -85,16 +85,16 @@ BookingService --> PaymentGateway
 BookingService --> Clock
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Per-show mutex**: all seat-state changes for a show happen under that show's lock. Different shows never contend.
-- **`tryHold` is all-or-nothing**: check every requested seat (available, or held with an expired hold, treated as available), then mark all held. A partial hold would strand users.
-- **Lazy expiry**: no timer thread. A held seat whose `holdUntil <= now` counts as available when examined. (A background sweeper is only needed to free memory or notify.)
-- **Confirm re-validates**: it checks the hold still belongs to that user and has not expired, **then** calls payment, then marks booked. If payment fails, the seats stay held until expiry (or are released at once).
-- **Injected `Clock`** makes the expiry testable without waiting.
-- **Pricing** is a Strategy by seat category and time, kept out of `Show`.
+- **One mutex for each show.** All seat changes for a show happen while holding that show's lock. Different shows never wait for each other.
+- **`tryHold` is all or nothing.** First check every requested seat (it must be free, or held with an expired hold, which counts as free). Then mark all of them as held. A partial hold would leave users stuck.
+- **Lazy expiry.** There is no timer thread. A held seat whose `holdUntil <= now` counts as free when we look at it. (A background sweeper is only needed to free memory or to send messages.)
+- **Confirm checks again.** It checks that the hold still belongs to that user and has not expired, **then** calls payment, then marks the seats booked. If payment fails, the seats stay held until they expire (or are released at once).
+- **A clock passed in** lets us test expiry without waiting.
+- **Price is a Strategy** by seat type and time. It is kept out of `Show`.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Show, holds, confirmation, expiry, concurrent bookings"
 #include <atomic>
@@ -242,43 +242,49 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Two users pick overlapping seats | the second `tryHold` fails entirely (no partial hold) |
-| Hold expires, then someone else books, then the first user pays | confirm re-checks ownership and expiry: refused |
-| Payment fails | seats released immediately, not waiting for expiry |
-| Same user holds twice | second hold on the same seats succeeds only if they are free or held by them (extension) |
-| Show already started | `hold` rejects when `now >= start` (add the check) |
-| Hold ids guessable | use random ids; verify the hold belongs to the caller |
+| Two users choose overlapping seats | the second `tryHold` fails completely (no partial hold) |
+| A hold expires, someone else books, then the first user pays | confirm checks ownership and expiry again, and refuses |
+| Payment fails | seats are released at once, not after the expiry |
+| The same user holds twice | the second hold on the same seats works only if they are free or held by that user (extension) |
+| The show has already started | `hold` refuses when `now >= start` (add this check) |
+| Hold ids that can be guessed | use random ids, and check that the hold belongs to the caller |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Release held seats proactively" | a sweeper thread or a scheduled `release` per hold (Command on a timer) |
-| "Distributed: many servers" | the seat state moves to a database with conditional updates or Redis locks (`SET NX PX`); the same API |
-| "Dynamic pricing / coupons" | new `PricingStrategy`; a `Discount` chain |
-| "Notify the user" | Observer on booking events (email, SMS) |
-| "Waitlist for sold-out shows" | queue per show; offer seats on cancellation |
-| "Different seat maps" | `Screen` built from a layout description; categories by row |
-| "Search at scale" | an index by (city, movie, date) in a `ShowRepository` |
-| "Refunds" | the booking state machine adds `Cancelled` and a refund command |
+| "Release held seats on time" | a sweeper thread, or a `release` for each hold on a timer (Command) |
+| "Many servers" | seat state moves to a database with conditional updates, or Redis locks (`SET NX PX`). The same API |
+| "Changing prices, coupons" | a new `PricingStrategy` and a `Discount` chain |
+| "Tell the user" | Observer on booking events (email, SMS) |
+| "A waiting list for sold-out shows" | a queue for each show, and offer seats on cancellation |
+| "Different seat maps" | build `Screen` from a layout description. Seat types by row |
+| "Search on a big scale" | an index by (city, movie, date) in a `ShowRepository` |
+| "Refunds" | the booking state machine gets a `Cancelled` state and a refund command |
+
+## Short answer to say in an interview
+
+:::interview How do you stop two users from booking the same seat?
+"A seat goes through available, held and booked. All changes for a show happen under that show's mutex. tryHold checks every seat first and marks them all, or none. The hold has an expiry, and I check it lazily against a clock that I pass in. At confirm time I check that the hold still belongs to the user and has not expired, then I take payment, then I mark the seats booked. In a bigger system the same state machine works with conditional updates in a shared database."
+:::
 
 ```quiz
-? Why must tryHold validate all seats before changing any?
+? Why must tryHold check all seats before changing any?
 - It is faster
-+ A partial hold would leave the user holding some seats but not all, stranding them
-- Maps require it
-> All-or-nothing under one lock.
++ A partial hold would leave the user holding some seats but not all
+- Maps need it
+> All or nothing, under one lock.
 ? How are expired holds handled without a timer thread?
 - They stay forever
-+ A held seat whose expiry has passed counts as available when it is next examined (lazy expiry)
++ A held seat whose time has passed counts as free the next time it is checked (lazy expiry)
 - The database deletes them
-> The injected clock decides at check time.
+> The clock that we pass in decides at check time.
 ```
 
 :::keypoints
-- Seat state per show with a per-show lock; hold (all-or-nothing, expiring) then confirm (re-validate, pay, book).
-- Lazy expiry against an injected clock; payment failure releases seats; pricing is a strategy.
-- Scaling: conditional updates in a shared store; same state machine.
+- Seat state for each show, with one lock for each show. Hold (all or nothing, with expiry), then confirm (check again, pay, book).
+- Lazy expiry with a clock passed in. A failed payment releases the seats. Price is a strategy.
+- To scale: conditional updates in a shared store, with the same state machine.
 :::

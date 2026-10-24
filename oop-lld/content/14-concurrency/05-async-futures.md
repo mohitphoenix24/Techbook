@@ -2,12 +2,14 @@
 title: std::async, future, promise and packaged_task
 level: intermediate
 time: 30
-summary: Getting results back from other threads with futures, std::async and launch policies, promise and future for one-shot hand-offs, packaged_task, exceptions travelling through futures, and parallelising a computation.
+summary: How to get a result (or an error) back from another thread. Learn futures, std::async, promise and future for one-time hand-offs, packaged_task, running many tasks in parallel, and waiting with a time limit.
 ---
 
-Threads are low-level: you start them and cannot easily get a **return value** or an **exception** back. **Futures** solve that. A `std::future<T>` is a handle to a value that will exist later.
+A plain `std::thread` is low-level. You start it, but you cannot easily get a **return value** or an **error** back from it.
 
-## std::async
+A **future** solves this. Think of it as a **token** you get when you order food. You go and do other things. Later you show the token and get your food. In C++, a `std::future<T>` is a handle to a value that **will exist later**.
+
+## `std::async`
 
 ```cpp run title="async: run a function, get a future"
 #include <future>
@@ -32,16 +34,16 @@ int main() {
 }
 ```
 
-Facts:
+Things to know:
 
-- `future::get()` **blocks** until the result is ready and returns it (once; a future can be read only one time).
-- `launch::async` forces a new thread. `launch::deferred` runs lazily when `get()` or `wait()` is called, on the calling thread. The **default** may choose either, so always pass the policy you mean.
-- The destructor of a future from `async` **blocks** until the task finishes (a surprising trap: `async(...)` without storing the future runs synchronously).
-- Use `cref`/`ref` to pass by reference.
+- `future::get()` **waits** until the result is ready and gives it to you. You can call it **only once** on a normal future.
+- `launch::async` forces a **new thread**. `launch::deferred` runs the task **later**, on the calling thread, when you call `get()` or `wait()`. The default may choose either, so always write the policy you mean.
+- The destructor of a future returned by `async` **waits** for the task to finish. This is a trap: if you call `async(...)` and do not keep the future, the call runs like a normal blocking call.
+- Use `ref` or `cref` to pass arguments by reference.
 
-## Exceptions cross the thread boundary
+## Errors travel through the future
 
-If the task throws, the exception is stored in the future and **re-thrown by `get()`**.
+If the task throws an error, the error is stored in the future and **thrown again by `get()`**.
 
 ```cpp run title="Exceptions propagate through get()"
 #include <future>
@@ -63,9 +65,9 @@ int main() {
 }
 ```
 
-## promise and future: a one-shot channel
+## promise and future: a one-time channel
 
-A **promise** is the writing end; its **future** is the reading end. One thread calls `set_value`, another calls `get`. Use it when the "task" is not a simple function call.
+A **promise** is the **writing** end. Its **future** is the **reading** end. One thread calls `set_value`, the other calls `get`. Use it when the work is not a simple function call.
 
 ```cpp run title="promise/future hand-off"
 #include <future>
@@ -89,9 +91,9 @@ int main() {
 }
 ```
 
-## packaged_task: a callable bound to a future
+## packaged_task: a function tied to a future
 
-`packaged_task` wraps a function so that **running it** fulfils a future. It is the building block of thread pools: you queue the task and hand the caller the future.
+`packaged_task` wraps a function so that **running it fills a future**. It is the building block of thread pools: you put the task in a queue, and give the caller the future.
 
 ```cpp run title="packaged_task"
 #include <future>
@@ -109,7 +111,9 @@ int main() {
 }
 ```
 
-## Several futures: parallel map
+## Many futures: a parallel map
+
+Start many tasks, then collect all results.
 
 ```cpp run title="Fan out, then collect"
 #include <future>
@@ -129,9 +133,9 @@ int main() {
 }
 ```
 
-## shared_future and waiting with a timeout
+## shared_future and waiting with a time limit
 
-A normal `future` can be read once. A `shared_future` can be read by several threads. `wait_for` lets you give up.
+A normal `future` can be read once. A `shared_future` can be read by **many threads**. `wait_for` lets you **give up** after some time.
 
 ```cpp run title="shared_future and wait_for"
 #include <chrono>
@@ -160,39 +164,41 @@ int main() {
 
 ## Which tool when?
 
-| Need | Tool |
+| You need | Use |
 |---|---|
 | Run a function in the background and get the result | `std::async` |
-| Hand one value from one thread to another | `promise` / `future` |
+| Pass one value from one thread to another | `promise` and `future` |
 | Queue work for a pool and give callers a future | `packaged_task` |
 | Many readers of one result | `shared_future` |
 | Many results over time (a stream) | a blocking queue |
-| Long-lived worker threads | `std::thread` / thread pool |
+| Workers that live for a long time | `std::thread` or a thread pool |
 
-:::interview What is a future, and what pitfalls does std::async have?
-"A future is a handle to a result that will be available later; `get()` blocks and returns the value or rethrows the task's exception. `std::async` runs a task on another thread. The pitfalls are that the default launch policy may defer, so I pass `launch::async` explicitly, and that the destructor of an async future blocks until the task finishes, so discarding the future makes the call effectively synchronous."
+## Short answer to say in an interview
+
+:::interview What is a future, and what are the traps of std::async?
+"A future is a handle to a result that will be ready later. get() waits, and returns the value or throws the task's error. std::async runs a task on another thread. The traps are that the default launch policy may delay the task, so I pass launch::async explicitly, and that the destructor of an async future waits for the task, so if I throw the future away, the call becomes effectively synchronous."
 :::
 
 ```quiz
 ? What does future::get() do?
 - Starts the task
-+ Waits for the result and returns it, or rethrows the task's exception
++ Waits for the result and returns it, or throws the task's error
 - Cancels the task
 > It can be called only once on a normal future.
-? What happens if you call `async(launch::async, f)` and do not keep the returned future?
+? What happens if you call async(launch::async, f) and do not keep the future?
 - The task runs in the background forever
-+ The temporary future's destructor blocks until the task finishes, so it runs effectively synchronously
++ The temporary future's destructor waits for the task, so it behaves like a normal call
 - Nothing
-> Always store the future if you want concurrency.
-? Which wraps a callable so that running it fulfils a future?
+> Always keep the future if you want real concurrency.
+? Which one wraps a function so that running it fills a future?
 - promise
 + packaged_task
 - shared_future
-> It is the building block for thread pools.
+> It is the building block of thread pools.
 ```
 
 :::keypoints
-- `std::async` + `future` gives return values and exceptions across threads; choose `launch::async` explicitly and keep the future.
-- `promise`/`future` is a one-shot channel; `packaged_task` binds a callable to a future; `shared_future` has many readers.
-- `wait_for` enables timeouts. For streams of results, use a blocking queue.
+- `std::async` with a `future` gives back values and errors from other threads. Choose `launch::async` and keep the future.
+- `promise` and `future` is a one-time channel. `packaged_task` ties a function to a future. `shared_future` allows many readers.
+- `wait_for` gives a time limit. For a stream of results, use a blocking queue.
 :::

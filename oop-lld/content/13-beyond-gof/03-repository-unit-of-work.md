@@ -2,15 +2,21 @@
 title: Repository, DAO and Unit of Work
 level: intermediate
 time: 35
-summary: Keeping persistence out of business logic: the Repository interface with an in-memory and a pretend-SQL implementation, DAO versus Repository, the service layer, a Unit of Work that commits or rolls back several changes together, and how this makes testing easy.
+summary: Keep storage code away from business code. See the Repository interface with a memory and a pretend-SQL version, how DAO differs, a Unit of Work that saves several changes together or none, and how this makes testing easy.
 ---
 
-Almost every LLD problem eventually asks "where do the objects get stored?". The answer is not "inside the class": the **domain** classes (Order, Book, User) should not know about databases. Three patterns keep storage separate.
+Almost every LLD problem asks one question at some point: **"where do the objects get stored?"**
 
-## Repository
+The answer is **not** "inside the class". Your business classes (Order, Book, User) should not know about databases. Three small ideas keep storage separate.
+
+## 1. Repository
+
+Don't memorise the definition yet. Think of it like this:
+
+> "To the business code, the repository looks like a **simple box of objects**: add one, find one, list some. How the box stores them (memory, SQL, a file) is not its problem."
 
 :::def Repository
-A **collection-like interface** for retrieving and storing domain objects, hiding the storage mechanism. To the business code, a repository looks like an **in-memory collection** of aggregates.
+An interface that **looks like a collection** of your objects (add, find, remove) and **hides how they are stored**.
 :::
 
 ```viz algo=uml title="Repository"
@@ -130,26 +136,30 @@ int main() {
 }
 ```
 
-The `OrderService` is **identical** for both stores. In tests, use the in-memory version (fast, no setup). In production, swap in SQL, a REST API or a file. That is Dependency Inversion applied to persistence.
+`OrderService` is **exactly the same** for both stores. In tests we use the in-memory version (fast, nothing to set up). In real use we swap in SQL, a web service or a file. This is the Dependency Inversion idea (from SOLID) applied to storage.
 
 ## DAO vs Repository
 
 | | DAO (Data Access Object) | Repository |
 |---|---|---|
-| Level | close to the **table**: CRUD for one table | close to the **domain**: a collection of aggregates |
-| Language | `insertRow`, `updateRow`, `selectById` | `add`, `findOverdue`, `findByCustomer` |
-| Knows about | database details, mapping | domain concepts; it may use DAOs internally |
-| Typical return | rows/DTOs | domain objects |
+| Close to | the **table**: basic create, read, update, delete | the **business**: a collection of business objects |
+| Method names | `insertRow`, `updateRow`, `selectById` | `add`, `findOverdue`, `findByCustomer` |
+| Knows about | database details | business ideas (it may use DAOs inside) |
+| Gives back | rows or simple data objects | business objects |
 
-Rule of thumb: a **Repository** is what the **business code** talks to; **DAOs** (or an ORM) are tools a repository may use inside. In interviews they are often used loosely; state which you mean.
+Easy way to remember: the **business code talks to a Repository**. A DAO (or an ORM tool) is something the repository may use **inside**. In interviews people use these words loosely, so say which one you mean.
 
-## Unit of Work
+## 2. Unit of Work
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Placing an order changes **three things**. Either all three must happen, or **none**."
 
 :::def Unit of Work
-Maintain a list of objects **affected by a business transaction**, and **coordinate writing out the changes together**: all or nothing.
+A helper that **collects all the changes** of one business operation and **saves them together** (commit). If something fails, it **discards** them (rollback).
 :::
 
-Placing an order changes several things: create the order, reduce stock, update the customer's loyalty points. If the third step fails, the first two must be undone. A Unit of Work collects the changes and applies them in **one commit** (or discards them on error).
+Placing an order does this: create the order, reduce the stock, add loyalty points. If the third step fails, the first two must be undone.
 
 ```cpp run title="Collect changes, then commit or roll back"
 #include <functional>
@@ -207,11 +217,11 @@ int main() {
 }
 ```
 
-In order 2 the stock reduction had already been applied when the loyalty step failed, but the rollback restored it. That is the "all or nothing" guarantee.
+In order 2, the stock had already been reduced when the loyalty step failed. But the rollback put it back. That is the "all or nothing" promise.
 
-ORMs (Hibernate, Entity Framework, SQLAlchemy) implement Unit of Work for you via their session objects.
+Tools like Hibernate, Entity Framework and SQLAlchemy already give you a Unit of Work through their "session" objects.
 
-## Layers
+## How the layers fit together
 
 ```text
  UI / API layer            "POST /orders"
@@ -225,17 +235,19 @@ ORMs (Hibernate, Entity Framework, SQLAlchemy) implement Unit of Work for you vi
  Infrastructure            SqlOrderRepository, RedisCache, EmailClient (implementations)
 ```
 
-Dependencies point **downward to abstractions**, and the infrastructure at the bottom *implements* interfaces defined above it (DIP). This arrangement is the heart of "clean", "hexagonal" and "onion" architectures.
+The arrows point **down to interfaces**. The storage at the bottom **follows** interfaces defined above it. This arrangement is the heart of the "clean", "hexagonal" and "onion" architectures you may hear about.
 
-## Pitfalls
+## Mistakes to avoid
 
-- **Leaky repository**: exposing SQL fragments or database types in the interface defeats the purpose.
-- **Generic repository for everything** (`Repository<T>` with `findAll()`) tempts you to load too much. Add query methods named after real needs.
-- **Anemic domain**: if all logic is in services and entities are bags of data, behaviour is not where the data is. Put rules in entities and use services only to coordinate.
-- **Forgetting identity**: each loaded object must map to one in-memory instance within a unit of work (an "identity map"), or you get two copies of the same row.
+- **A leaky repository**: if its interface shows SQL text or database types, it is not hiding anything.
+- **One generic repository for everything** (`findAll()` on everything) tempts you to load too much. Add methods with names that match real needs.
+- **Empty entities**: if entities are only bags of data and all the logic is in services, the behaviour is away from the data. Keep the rules in the entities, and use services only to coordinate.
+- **Two copies of the same row**: inside one operation, one row should map to one object in memory.
 
-:::interview What is the Repository pattern and why use it?
-"A repository gives business code a collection-like interface for storing and loading domain objects, hiding the database. The service depends on the repository interface, so I can use an in-memory implementation in tests and SQL in production, which is Dependency Inversion. A Unit of Work records the changes of a business transaction and commits or rolls them back together. DAOs are table-level access objects a repository may use internally."
+## Short answer to say in an interview
+
+:::interview What is the Repository pattern, and why use it?
+"A repository gives the business code a simple, collection-like interface to store and load objects, and it hides the database. The service depends on the repository interface, so I can use a memory version in tests and SQL in production. A Unit of Work collects the changes of one business operation and commits them together or rolls them back. A DAO is a table-level helper that a repository may use inside."
 :::
 
 ```quiz
@@ -243,21 +255,21 @@ Dependencies point **downward to abstractions**, and the infrastructure at the b
 - The SQL repository class
 + The repository interface
 - The database driver
-> Interfaces make storage swappable and testable.
-? What does a Unit of Work guarantee?
+> An interface makes storage easy to swap and easy to test.
+? What does a Unit of Work promise?
 - Faster queries
-+ A group of changes is committed together or not at all
++ A group of changes is saved together, or not at all
 - That objects are cached
-> It is the transaction boundary for a business operation.
-? How do DAO and Repository differ?
-- They are identical
-+ DAO is table-oriented CRUD; a Repository is a domain-oriented collection that may use DAOs
-> Repositories speak the domain's language.
+> It marks the boundary of one business transaction.
+? How are DAO and Repository different?
+- They are the same
++ A DAO works at table level. A Repository works with business objects and may use DAOs inside
+> Repositories speak the language of the business.
 ```
 
 :::keypoints
-- Repository: a domain-facing, collection-like interface that hides storage; implementations are swappable (memory, SQL, REST).
-- DAO = table-level access; Repository = aggregate-level. Services depend on the interface (DIP).
-- Unit of Work = collect the changes of one business transaction; commit or roll back as a unit.
-- Layer your code: API → service → domain → repository interfaces → infrastructure.
+- Repository = a collection-like interface that hides storage. Implementations are swappable (memory, SQL, web).
+- DAO = table-level access. Repository = business-level. Services depend on the interface.
+- Unit of Work = collect the changes of one business operation, then commit or roll back together.
+- Keep layers: API, service, business objects, repository interfaces, storage.
 :::

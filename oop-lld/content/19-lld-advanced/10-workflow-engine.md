@@ -2,32 +2,36 @@
 title: Design a Workflow Engine (DAG executor)
 level: advanced
 time: 75
-summary: Tasks with dependencies forming a DAG, validation and cycle detection, topological scheduling with parallel execution of independent tasks, failure policies (stop, continue, retry), task states and results passing between tasks, and how this relates to build systems and Airflow.
+summary: Run tasks that depend on each other. Learn how to check the graph, how to run independent tasks at the same time, what to do when a task fails (stop, continue, retry), how to track task states and pass results along, and how this is the same idea as build tools and Airflow.
 ---
 
 :::problem Design a Workflow Engine {level=hard tags="DAG,topological sort,concurrency,thread pool,Command,State"}
-Design an engine that runs a workflow made of tasks with dependencies (a directed acyclic graph). For example: `fetch → (clean, validate) → merge → report`. Tasks whose dependencies have all finished may run **in parallel**. Handle failures (retry, stop the workflow, or continue with unaffected branches), track the state of each task, allow tasks to pass results to dependents, and report the final outcome.
+Design an engine that runs a workflow made of tasks with dependencies (a directed graph with no loops, a DAG). For example: `fetch → (clean, validate) → merge → report`. Tasks whose dependencies have all finished may run **at the same time**. Handle failures (retry, stop the whole workflow, or go on with the branches that are not affected), track the state of each task, let tasks pass results to the tasks that depend on them, and report the final result.
 :::
 
 :::hint Hint
-Compute for each task the number of **unfinished dependencies** (its in-degree). Tasks with zero are **ready** and go to a worker pool. When a task finishes, decrement the counters of its **dependents**; those reaching zero become ready. That is Kahn's algorithm executed concurrently. Validate the graph first (no cycles, no missing dependencies).
+For each task, count the number of **dependencies that are not finished yet**. Tasks with zero are **ready**, and go to a worker pool. When a task finishes, reduce the counters of the tasks that **depend on it**. The ones that reach zero become ready. This is Kahn's algorithm run at the same time on many threads. Check the graph first (no loops, no missing dependencies).
 :::
 
-## Step 1: requirements
+## First, an everyday picture
 
-| Question | Assumption |
+Think of cooking a meal. You cannot make the sauce before you chop the onions. But chopping onions and boiling water can happen **at the same time**. A workflow engine is the cook that knows this: it starts every task as soon as everything that task needs is ready.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Model? | a workflow is a set of named tasks; each lists the tasks it depends on |
-| Task? | a function taking its dependencies' results and returning a result (string here) or failing |
-| Validation? | unknown dependency, duplicate name, **cycle** → rejected before running |
-| Execution? | parallel across ready tasks on a worker pool; a task runs at most once per workflow run |
-| Failure policy? | per workflow: `FailFast` (stop scheduling new tasks), `ContinueIndependent` (skip only the failed task's descendants); per task: retries |
-| States? | Pending → Ready → Running → Succeeded / Failed / Skipped (upstream failed) / Cancelled |
-| Results? | a task receives a map `dependencyName → result` |
-| Observability? | events per state change; final report |
-| Out of scope | persistence of runs, distributed workers, dynamic task generation (mention) |
+| The model? | a workflow is a set of named tasks. Each lists the tasks it depends on |
+| A task? | a function that takes the results of its dependencies and returns a result (a string here), or fails |
+| Checks? | an unknown dependency, a repeated name, or a **loop** is refused before running |
+| Running? | ready tasks run at the same time on a worker pool. A task runs at most once in a run |
+| If a task fails? | rule for the workflow: `FailFast` (stop starting new tasks) or `ContinueIndependent` (skip only the tasks that depend on the failed one). A task can also have retries |
+| States? | Pending, Ready, Running, then Succeeded, Failed, Skipped (a task before it failed) or Cancelled |
+| Results? | a task gets a map `dependencyName → result` |
+| Watching? | events for each state change, and a final report |
+| Not needed | saving runs, workers on other machines, tasks made while running (we mention it) |
 
-## Step 2: how execution works
+## Step 2: How running works
 
 ```text
           ┌── clean ──┐
@@ -43,7 +47,7 @@ ready queue:    [fetch]
  if validate FAILS (ContinueIndependent): merge and report are SKIPPED (descendants); clean still finishes.
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Workflow engine"
 class WorkflowEngine
@@ -81,19 +85,19 @@ FailFast ..|> FailurePolicy
 ContinueIndependent ..|> FailurePolicy
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Definition vs run**: `Workflow` (static graph of `TaskDef`) is separate from a **run** (the `TaskRun` states for one execution). The same workflow can run many times, even concurrently.
-- **Validation before running**: names unique, dependencies exist, no cycle (DFS with colours or Kahn: if the topological sort visits fewer nodes than exist, there is a cycle; report the cycle members).
-- **Executor** uses the in-degree counters under one mutex: `markDone(task)` decrements dependents; newly ready tasks are submitted to the pool. A **condition variable** (or counting of outstanding tasks) signals completion.
-- **Skip propagation**: when a task fails permanently, mark all its **descendants** `Skipped` (transitively), so the run still terminates and reports precisely what did not run.
-- **Failure policy** as a Strategy: `FailFast` also cancels all not-yet-started tasks; `ContinueIndependent` lets unaffected branches finish.
-- **Retries** inside the task runner (with backoff in production). A task is an idempotent unit.
-- **Results**: each task's result is stored in its `TaskRun`; when a task starts it gets the map of its dependencies' results.
-- **Command-like tasks**: `TaskDef.action` is a callable; you could subclass for rich tasks (shell, HTTP, SQL) through an interface.
-- **Events** via listener (Observer) for UI, logs and metrics.
+- **Definition and run are separate.** `Workflow` (the fixed graph of `TaskDef`) is different from a **run** (the `TaskRun` states for one execution). The same workflow can run many times, even together.
+- **Check before running:** names are unique, dependencies exist, and there is no loop (a DFS with colours, or Kahn: if the topological sort reaches fewer nodes than there are, there is a loop. Report the members of the loop).
+- **The executor** uses the counters under one mutex. `markDone(task)` reduces the counters of the dependents. Newly ready tasks go to the pool. A **condition variable** (or counting the tasks still out) says when it is all finished.
+- **Skipping:** when a task fails for good, mark all the tasks that depend on it (directly or not) as `Skipped`. So the run still ends, and tells exactly what did not run.
+- **Failure rule is a Strategy:** `FailFast` also cancels all tasks that have not started. `ContinueIndependent` lets the unaffected branches finish.
+- **Retries** are inside the task runner (with waiting time in real use). A task should be safe to repeat.
+- **Results:** each task's result is stored in its `TaskRun`. When a task starts, it gets the map of the results of its dependencies.
+- **Tasks like Commands:** `TaskDef.action` is something you can call. You could make subclasses for richer tasks (shell, HTTP, SQL) through an interface.
+- **Events** go to a listener (Observer) for screens, logs and numbers.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="DAG validation, parallel execution, retries, failure policies"
 #include <atomic>
@@ -244,60 +248,66 @@ int main() {
 }
 ```
 
-## Design notes
+## Notes on the design
 
 | Topic | Note |
 |---|---|
-| **Complexity** | O(V + E) to validate and to schedule; each edge decrements one counter |
-| **Why counters, not repeated scans** | each completion touches only its dependents |
-| **Deadlock risk** | none from the DAG itself; do not let tasks wait on other tasks inside the pool (starvation) |
-| **Locks** | one mutex guards the run state; actions run outside it |
-| **Determinism** | order among simultaneously ready tasks is unspecified; results must not depend on it |
-| **Skipped vs cancelled** | `Skipped` = never ran because a dependency failed; `Cancelled` = stopped by the user or fail-fast |
-| **Same engine, different domains** | build systems (make, Bazel), CI pipelines, data pipelines (Airflow), job orchestration |
+| **Cost** | O(V + E) to check and to schedule. Each link reduces one counter |
+| **Why counters, not scanning again and again** | each finished task touches only the tasks that depend on it |
+| **Deadlock risk** | none from the DAG itself. Do not let tasks wait for other tasks inside the pool (starvation) |
+| **Locks** | one mutex protects the run state. Actions run outside it |
+| **Order** | the order of tasks that are ready at the same time is not fixed. Results must not depend on it |
+| **Skipped or cancelled** | `Skipped` = never ran because something it needs failed. `Cancelled` = stopped by the user or by fail-fast |
+| **Same engine, many places** | build tools (make, Bazel), CI pipelines, data pipelines (Airflow), job orchestration |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Empty workflow | succeeds immediately |
-| A task depends on itself | a one-node cycle: rejected by validation |
-| Diamond dependencies | the join task has a counter of 2 and starts once |
-| Task throws a non-std exception | catch-all in the runner |
-| Timeout on a task | a deadline per attempt (async + `wait_for`, or cooperative cancellation) |
-| Very large graphs | avoid the O(V·E) dependents scan used in `validate` by building the reverse adjacency once (as `run` does) |
-| Retries with side effects | tasks should be idempotent; use attempt ids as idempotency keys |
-| Run history | persist `Report` per run id |
+| An empty workflow | succeeds at once |
+| A task depends on itself | a loop of one node, refused by the check |
+| Diamond dependencies | the joining task has a counter of 2 and starts once |
+| A task throws something that is not a std error | a catch-all in the runner |
+| A time limit for a task | a deadline for each try (async and `wait_for`, or polite cancelling) |
+| Very big graphs | avoid the O(V·E) scan used in `validate`. Build the reverse links once (as `run` does) |
+| Retries with side effects | tasks should be safe to repeat. Use the attempt id as an idempotency key |
+| Run history | save the `Report` for each run id |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Conditional branches / if-else tasks" | a task returns a decision; edges carry conditions; unselected branches become `Skipped` |
-| "Dynamic fan-out (one task per input item)" | a task can add tasks to the running graph (under the lock) |
-| "Resume after a crash" | persist task states and results; on restart skip `Succeeded` tasks |
-| "Priorities and resource limits (max 2 GPU tasks)" | per-resource semaphores; a priority queue instead of FIFO |
-| "Scheduling workflows (daily at 2am)" | the cron scheduler from the previous lesson triggers `run` |
-| "Distributed workers" | the pool becomes a queue; workers pull tasks; the state lives in a database |
-| "Visualise progress" | listener events drive a live DAG view |
-| "Workflow versioning and parameters" | definitions are data (JSON/YAML) loaded by a `WorkflowBuilder` |
+| "If-else branches" | a task returns a decision. Links carry conditions. Branches not chosen become `Skipped` |
+| "One task for each input item (fan-out)" | a task can add tasks to the running graph (under the lock) |
+| "Continue after a crash" | save task states and results. On restart, skip tasks that `Succeeded` |
+| "Priorities and limits (max 2 GPU tasks)" | a semaphore for each resource. A priority queue instead of a plain queue |
+| "Run workflows on a schedule (daily at 2 am)" | the cron scheduler from the earlier lesson calls `run` |
+| "Workers on other machines" | the pool becomes a queue. Workers pull tasks. The state lives in a database |
+| "Show progress" | listener events feed a live DAG view |
+| "Versions and parameters" | definitions are data (JSON or YAML) read by a `WorkflowBuilder` |
 | "Sub-workflows" | Composite: a task whose action runs another workflow |
 
+## Short answer to say in an interview
+
+:::interview How does a workflow engine run tasks in the right order, in parallel?
+"I first check the graph: names are unique, dependencies exist, and there is no cycle. Then I give each task a counter of unfinished dependencies. Tasks with a counter of zero are ready and go to a worker pool. When a task finishes, I reduce the counters of its dependents, and the ones that reach zero are submitted. This is Kahn's algorithm run concurrently, and it costs O(V plus E). If a task fails for good, I mark all tasks that depend on it as skipped, so the run always ends and reports clearly. The failure rule, like fail-fast, is a strategy."
+:::
+
 ```quiz
-? How does the engine know when a task is ready?
-- It polls every task repeatedly
-+ Each task has a counter of unfinished dependencies; when the last dependency finishes, the counter hits zero
+? How does the engine know a task is ready?
+- It checks every task again and again
++ Each task has a counter of unfinished dependencies. When the last one finishes, the counter reaches zero
 - By sorting names
-> Counters make scheduling O(edges), driven by completions.
-? What happens to descendants of a permanently failed task?
+> Counters make scheduling cost O(links), driven by finished tasks.
+? What happens to tasks that depend on a task that failed for good?
 - They run anyway with empty inputs
-+ They are marked Skipped, since they can never receive their input, and the run still terminates
-- They are retried forever
-> Skip propagation guarantees the run finishes and reports exactly what did not run.
++ They are marked Skipped, because they can never get their input, and the run still ends
+- They are retried for ever
+> Skipping makes sure the run finishes and tells exactly what did not run.
 ```
 
 :::keypoints
-- Validate (unknown deps, cycles via Kahn), then execute with in-degree counters: ready tasks go to a worker pool, completions release dependents.
-- Failure policies as strategies (fail fast vs continue independent); descendants of failures are skipped; per-task retries.
-- Results flow along edges; events for observability. The same core powers build systems, CI and data pipelines.
+- Check first (unknown dependencies, loops with Kahn). Then run with counters: ready tasks go to a worker pool, and finished tasks release the ones that depend on them.
+- Failure rules are strategies (fail fast or continue the independent ones). Tasks that depend on a failure are skipped. Each task can have retries.
+- Results flow along the links. Events help watching. The same core powers build tools, CI and data pipelines.
 :::

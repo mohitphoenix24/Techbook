@@ -2,31 +2,35 @@
 title: Design an In-Memory Pub/Sub Message Broker
 level: intermediate
 time: 60
-summary: Topics, publishers and subscribers, an append-only log per topic with consumer offsets, consumer groups that share the work, at-least-once delivery with acknowledgements and redelivery, per-subscriber worker threads, and the guarantees you can state.
+summary: A small message broker like a mini Kafka. Learn topics, a log of messages for each topic, where each consumer is up to (offsets), groups that share work, retries with acknowledgements, a thread for each subscriber, and what delivery promises you can make.
 ---
 
 :::problem Design an In-Memory Pub/Sub Message Broker {level=medium tags="messaging,Observer,concurrency,queues,Kafka-like"}
-Design a broker like a tiny Kafka or RabbitMQ. Publishers send messages to named topics. Subscribers receive every message published after they subscribe. Consumers in the same **group** share the messages (each message goes to one member of the group); different groups each see all messages. Messages are delivered in order per topic, and a failed delivery is retried. Subscribers must be slow or fast without affecting each other.
+Design a broker like a tiny Kafka or RabbitMQ. Publishers send messages to named topics. Subscribers get every message published after they subscribe. Consumers in the same **group** share the messages (each message goes to one member of the group). Different groups each see all messages. Messages are delivered in order for a topic, and a failed delivery is tried again. A slow subscriber must not slow down a fast one.
 :::
 
 :::hint Hint
-Store each topic as an **append-only log** with a monotonically increasing offset. Each consumer (group) tracks its own **offset**. Delivery is then "read the next message from my offset, process, acknowledge by advancing the offset". That one idea gives ordering, replay, independent speeds and retries.
+Keep each topic as an **append-only log** (new messages are only added at the end), with a number (offset) for each message that keeps growing. Each consumer group remembers its own **offset**, like a bookmark. Delivering is then: "read the next message from my bookmark, process it, and move the bookmark when it is done". This one idea gives ordering, replay, different speeds and retries.
 :::
 
-## Step 1: requirements
+## What is pub/sub?
 
-| Question | Assumption |
+Think of a newspaper. **Publishers** (the newsroom) write articles. **Subscribers** (readers) subscribe to a section (a **topic**) like Sports. The newsroom does not know who the readers are, and the readers do not know who wrote the articles. A **broker** sits in between and delivers.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Entities? | Topic, Message, Publisher, Subscriber, ConsumerGroup |
-| Ordering? | per topic (a single log); within a group's member, in log order |
-| Delivery? | **at-least-once**: unacknowledged messages are redelivered; handlers must be idempotent |
-| Groups? | members of one group split messages (load balancing); separate groups each get all messages |
-| Slow consumers? | each consumer has its own offset and (in a real system) its own thread; a slow one does not block others |
-| Retention? | keep all messages in this version; a retention policy as an extension |
-| Concurrency? | many publishers and consumers; thread-safe log |
-| Out of scope | persistence, partitions across machines, exactly-once |
+| Main things? | Topic, Message, Publisher, Subscriber, ConsumerGroup |
+| Order? | for each topic (one log). Inside a group member, in the order of the log |
+| Delivery? | **at-least-once**: a message that is not acknowledged is sent again. So handlers must be safe to run twice (idempotent) |
+| Groups? | members of one group split the messages (sharing the work). Different groups each get all messages |
+| Slow consumers? | each has its own offset and (in a real system) its own thread. A slow one does not block others |
+| Keeping messages? | we keep all in this version. A rule to delete old ones is an extension |
+| Many threads? | many publishers and consumers. The log is thread-safe |
+| Not needed | saving to disk, splitting across machines, exactly-once |
 
-## Step 2: how it works
+## Step 2: How it works
 
 ```text
 Topic "orders" (append-only log)
@@ -40,9 +44,9 @@ Topic "orders" (append-only log)
    group "audit"    offset=0 (just started: replays everything)
 ```
 
-Each group's offset is its **bookmark**. Many consumers in one group take turns claiming the next unclaimed message.
+Each group's offset is its **bookmark**. Many consumers in one group take turns claiming the next message that nobody has claimed yet.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Pub/sub broker"
 class Broker
@@ -77,16 +81,16 @@ Broker *-- Subscription
 Subscription ..> Topic
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Per-topic log + per-group `GroupState`**: `nextOffset` (the next never-delivered message), `inFlight` (delivered, not yet acknowledged) and `retryQueue` (negatively acknowledged, to redeliver first).
-- **`claim(group)`** hands out the next message **to exactly one waiting member** of the group (under the topic lock): first the retry queue, then `nextOffset++`. A new group starts at offset 0 (replay) or at the end (only new messages), by policy.
-- **Acknowledgement**: the consumer handler returns success or failure. Failure puts the offset on `retryQueue` (limited attempts, then a dead-letter list).
-- **Each subscription owns a worker thread** that loops: wait for a message (condition variable on the topic), claim, run the handler, ack/nack. Slow handlers slow only their own thread.
-- **Blocking wait** with `condition_variable` (notified on `append`), plus a `stop` flag for clean unsubscribe (the closable-queue pattern).
-- **Observer vs this**: classic Observer pushes synchronously to every observer. A broker **decouples with a log**, so it supports replay, back-pressure, ordering and failure handling.
+- **A log for each topic, and a `GroupState` for each group.** `nextOffset` (the next message never given out), `inFlight` (given out but not yet acknowledged), and `retryQueue` (refused with a "no", to be sent again first).
+- **`claim(group)`** gives the next message to **exactly one waiting member** of the group (while holding the topic lock): first from the retry queue, otherwise `nextOffset++`. A new group starts at offset 0 (it replays everything) or at the end (it only gets new messages), as the policy says.
+- **Acknowledgement:** the handler returns success or failure. On failure the offset goes to `retryQueue` (a limited number of tries, then a dead-letter list).
+- **Each subscription has its own worker thread** that loops: wait for a message (a condition variable on the topic), claim it, run the handler, ack or nack. A slow handler slows only its own thread.
+- **Blocking wait** uses a `condition_variable` (notified on `append`), plus a `stop` flag so unsubscribing is clean (the same closable queue idea you saw before).
+- **Compared with Observer:** plain Observer pushes to every observer at once, in the same thread. A broker puts a **log in between**, so it supports replay, back-pressure, order and failure handling.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Topics, offsets, consumer groups, retries"
 #include <atomic>
@@ -225,56 +229,62 @@ int main() {
 }
 ```
 
-## Delivery guarantees (state them precisely)
+## Delivery promises (say them exactly)
 
-| Guarantee | In this design |
+| Promise | In this design |
 |---|---|
-| **Ordering** | messages are appended in order; each message goes to one member of a group; per-key ordering across members needs partitioning by key |
-| **At-least-once** | a message is redelivered until acked, so handlers must be **idempotent** |
-| **At-most-once** | would need acking *before* processing (can lose messages) |
-| **Exactly-once** | needs transactional offsets or idempotent processing; not provided |
-| **Isolation of slow consumers** | each has its own thread and offset; the log keeps growing (retention policy needed) |
+| **Order** | messages are added in order. Each message goes to one member of a group. Order for each key across members needs splitting by key (partitions) |
+| **At-least-once** | a message is sent again until acknowledged, so handlers must be **idempotent** |
+| **At-most-once** | would mean acknowledging *before* processing (messages can be lost) |
+| **Exactly-once** | needs transactions on offsets or idempotent processing. Not provided |
+| **Slow consumers do not block others** | each has its own thread and offset. The log keeps growing, so a rule to delete old messages is needed |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Subscribe to a missing topic | create on demand or reject (policy) |
-| Consumer crashes mid-message | in-flight offsets time out and return to the retry queue (not shown; track `inFlight` with deadlines) |
-| Poison messages | max attempts then a dead-letter list for inspection |
-| Unsubscribe while processing | `stop` flag and a wake-up; the current message finishes |
-| Memory growth | retention by size or time; compaction by key |
-| Publisher faster than consumers | bounded log with back-pressure, or drop oldest (policy) |
-| Two members in a group, ordering | not guaranteed between members; use partitions keyed by the entity id |
+| Subscribing to a topic that does not exist | create it, or refuse (a policy) |
+| A consumer crashes in the middle of a message | in-flight offsets time out and go back to the retry queue (not shown. Track `inFlight` with deadlines) |
+| Poison messages (always fail) | a maximum number of tries, then a dead-letter list to look at |
+| Unsubscribe while processing | the `stop` flag and a wake-up. The current message finishes |
+| Memory grows | delete by size or time. Compact by key |
+| Publisher faster than consumers | a limited log that pushes back, or drop the oldest (a policy) |
+| Two members in a group, and order | not guaranteed between members. Use partitions keyed by the entity id |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Partitions for parallelism with per-key ordering" | topic = N partitions; producer picks `hash(key) % N`; a group assigns partitions to members (rebalancing) |
-| "Persistence and crash recovery" | write the log to disk (append-only files), store offsets durably |
-| "Filtering subscriptions" | a predicate or topic wildcard (`orders.*`) |
-| "Request/reply, delayed messages" | reply topics; a scheduler for delayed publish |
-| "Back-pressure and flow control" | bounded in-flight window per subscriber |
-| "Message schemas and versioning" | typed payloads with a schema registry |
-| "Distributed brokers" | replicate each partition (leader/followers, consensus): HLD |
-| "Observability" | lag (log size minus offset) per group as the main health metric |
+| "Partitions for speed with order for each key" | a topic has N partitions. The producer picks `hash(key) % N`. A group gives partitions to members (and rebalances) |
+| "Save to disk, recover after a crash" | write the log to files (append-only) and save offsets safely |
+| "Filter what a subscriber gets" | a yes/no function, or topic patterns (`orders.*`) |
+| "Request and reply, delayed messages" | reply topics. A scheduler for delayed publishing |
+| "Back-pressure and flow control" | a limited window of in-flight messages for each subscriber |
+| "Message formats and versions" | typed messages with a schema registry |
+| "Brokers on many machines" | copy each partition (leader and followers, consensus): HLD |
+| "Watching" | the lag (log size minus offset) for each group is the main health number |
+
+## Short answer to say in an interview
+
+:::interview How does a pub/sub broker let groups share messages but still let every group see everything?
+"Each topic is an append-only log. Every consumer group keeps its own offset in that log, like a bookmark. Different groups have different bookmarks, so each sees every message. Inside a group, members claim the next message under a lock, so each message goes to exactly one member. If a handler fails, the message goes to a retry queue, so delivery is at-least-once and handlers must be idempotent. Each subscriber has its own thread, so a slow one does not block others."
+:::
 
 ```quiz
-? What lets two groups each see every message while members of one group share them?
+? What lets two groups each see every message, while the members of one group share them?
 - Two copies of every message
-+ One shared log, with an independent offset per group and one claim per message within a group
++ One shared log, with an offset for each group, and one claim for each message inside a group
 - Two threads
-> Offsets are per consumer group; claiming advances the group's offset.
-? Why must handlers be idempotent under at-least-once delivery?
+> Offsets belong to a consumer group. Claiming moves the group's offset forward.
+? Why must handlers be idempotent with at-least-once delivery?
 - Because threads are fast
 + A message may be delivered more than once (a retry after a failure or a lost ack)
 - Because of ordering
-> The broker cannot know whether processing succeeded before the failure.
+> The broker cannot know whether the processing worked before the failure.
 ```
 
 :::keypoints
-- Append-only log per topic + an offset per consumer group: ordering, replay and independent speeds for free.
-- Groups share messages; separate groups each get all. Ack/nack with retries and a dead-letter list: at-least-once.
-- Worker thread per subscription with condition-variable wake-up and a clean stop flag. Partitions give scale and per-key order.
+- An append-only log for each topic, and an offset for each consumer group: order, replay and different speeds come for free.
+- Groups share messages. Different groups each get all. Ack and nack with retries and a dead-letter list: at-least-once.
+- A worker thread for each subscription, woken by a condition variable, with a clean stop flag. Partitions give scale and order for each key.
 :::

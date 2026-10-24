@@ -2,23 +2,33 @@
 title: Interpreter
 level: advanced
 time: 40
-summary: Representing a small language as a class hierarchy and evaluating sentences with it: grammar rules as classes, an AST built with Composite, a tokenizer and a recursive-descent parser, a rule engine for conditions like age > 18 AND country == IN, and when not to use it.
+summary: Turn the rules of a tiny language into classes and evaluate sentences with them. See a rule like "age > 18 AND country == IN" built as a tree, a simple parser that reads text, and when you should not use this pattern.
 ---
 
+## What is the Interpreter pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Someone writes a small rule as text, like `age > 18 AND country == IN`. My program must **read it and decide true or false**."
+
+The pattern teaches you how to do that neatly: turn each piece of the rule into a small class, and join them in a tree.
+
 :::def Interpreter
-Given a language, define a **representation for its grammar** along with an **interpreter** that uses the representation to interpret sentences in the language.
+For a small language, make **one class for each grammar rule**, so a sentence in that language becomes a **tree of objects** that can **evaluate itself**.
 :::
 
-It is for small, stable **domain-specific languages** (DSLs): search filters, pricing rules, validation rules, access policies, simple formulas, configuration expressions. For a full programming language, use a parser generator and a proper compiler design.
+(A **grammar** is just the list of rules that say how a sentence may look. For example: "a condition is two conditions joined by AND or OR".)
 
-## The idea
+This is for small, simple **mini-languages**: search filters, pricing rules, validation rules, access rules, simple formulas. For a full programming language, use a parser tool and a real compiler design.
+
+## The idea in four steps
 
 1. Write the **grammar** of your mini-language.
-2. Make **one class per grammar rule**. Each class has an `interpret(context)` method.
-3. A sentence becomes a **tree of these objects** (an abstract syntax tree, AST), which is a **Composite**: terminals are leaves, non-terminals combine sub-expressions.
-4. Evaluating the sentence = calling `interpret` on the root.
+2. Make **one class per rule**. Each has an `interpret(context)` method.
+3. A sentence becomes a **tree** of these objects. This tree is a **Composite**: simple items are leaves, and bigger items combine smaller ones.
+4. To evaluate, call `interpret` on the **root** of the tree.
 
-Grammar for boolean conditions over a user record:
+Here is the grammar for yes/no conditions on a user record:
 
 ```text
 expression := or_expr
@@ -114,11 +124,11 @@ int main() {
 }
 ```
 
-The tree is a **Composite**; `interpret` is a recursive evaluation. The grammar's structure *is* the class structure.
+The tree is a **Composite**, and `interpret` is a recursive evaluation. The **shape of the grammar is the shape of the classes**.
 
-## Step 2: parse text into the tree
+## Step 2: read the text and build the tree
 
-The pattern itself does not say how to build the tree. Usually a **parser** turns text into the AST. For a small grammar, a **recursive-descent parser** (one function per grammar rule) is short and clear.
+The pattern does not say how to make the tree from text. For that you use a **parser**. For a small grammar, a **recursive-descent parser** (one small function for each grammar rule) is short and clear.
 
 ```cpp run title="Rules as text: tokenizer + recursive-descent parser + interpreter"
 #include <cctype>
@@ -202,55 +212,57 @@ int main() {
 }
 ```
 
-Now **non-programmers can write rules** as text (a config file, an admin panel), and the engine turns them into objects. This is how many access-control, pricing and fraud-rule engines start.
+Now **non-programmers can write rules** as text (in a config file or an admin page), and the program turns them into objects. This is how many access, pricing and fraud rule engines begin.
 
-## Interpreter vs Composite vs Visitor
+## How Interpreter relates to Composite and Visitor
 
-- The AST is a **Composite**.
-- The `interpret` method in each node is one operation. If you need **several** operations over the same grammar (evaluate, print, optimise, type-check), move them out into **Visitors** so node classes do not grow.
-- The tree is often built with **Builder** or a **parser**.
+- The tree is a **Composite**.
+- The `interpret` method in each class is one operation. If you need **many** operations on the same tree (evaluate, print, optimise, check types), move them into **Visitors**, so the node classes stay small.
+- The tree is often made by a **parser** or a **Builder**.
 
-## When to use Interpreter, and when not
+## When to use it, and when not
 
 | Use it when | Avoid it when |
 |---|---|
-| The language is **small and simple** (a handful of rules) | The grammar is large or complex: classes multiply; use a parser generator (ANTLR, Bison, PEG) |
-| **Performance is not critical** (tree walking is slow) | You need speed: compile to bytecode or machine code |
-| The rules change often and are configured at run time | A fixed set of rules known at compile time: just write code or use `std::function` |
-| Non-developers or external config supply the sentences | A general-purpose language would do: embed Lua, Python, JavaScript |
+| The language is **small and simple** | The grammar is big: the classes multiply. Use a parser tool (ANTLR, Bison, PEG) |
+| Speed is **not critical** (walking a tree is slow) | You need speed: compile to bytecode or machine code |
+| Rules change often and are set at run time | The rules are fixed and known while writing code: just write the code or use `std::function` |
+| Non-developers supply the rules | A full language would do: embed Lua or Python |
 
-## Other examples where this pattern fits
+## More places where this fits
 
-- A **regular-expression** matcher (grammar: union, concatenation, star).
-- **SQL-like filters** for a search box: `price < 500 AND brand == acme`.
+- A **regular-expression** matcher.
+- **Search filters**: `price < 500 AND brand == acme`.
 - **Pricing rules**: `if quantity > 10 then 5% else 0%`.
-- **Spreadsheet formulas** (see the Spreadsheet problem later in this course).
+- **Spreadsheet formulas** (you will see this in the Spreadsheet problem later).
 - **Feature flags**: `country in [IN, US] AND version > 3`.
 
-:::interview Interpreter in one paragraph
-"Interpreter represents a small language's grammar as classes, one per rule, so that a sentence becomes a tree (an AST, which is a Composite) and evaluating it is a recursive `interpret(context)` call. A parser, often recursive descent, builds the tree from text. It suits small DSLs such as filter and pricing rules that change at run time. For large grammars or performance-critical use, I would use a parser generator or compile to bytecode, and if there are many operations over the tree I would move them into Visitors."
+## Short answer to say in an interview
+
+:::interview Explain Interpreter in a few lines.
+"Interpreter turns the rules of a small language into classes, one class per rule. A sentence becomes a tree of objects, which is a Composite, and calling interpret on the root evaluates it. A parser, often recursive descent, builds the tree from text. It suits small rule languages, like filters and pricing rules, that change at run time. For big grammars or fast evaluation I would use a parser tool or compile the rules, and if there are many operations on the tree I would use Visitors."
 :::
 
 ```quiz
-? What data structure does an Interpreter's sentence become?
+? What does a sentence become in the Interpreter pattern?
 - A hash map
-+ A tree of expression objects (an AST), structured like a Composite
++ A tree of expression objects, shaped like a Composite
 - A queue
-> Each grammar rule is a class; sub-expressions are children.
+> Each grammar rule is a class, and the smaller parts are children.
 ? What builds the tree from text?
 - The interpret method
 + A parser (for example recursive descent), which is separate from the pattern itself
 - The Composite
-> The pattern gives the classes and evaluation; parsing is a separate concern.
+> The pattern gives the classes and the evaluation. Parsing is a separate job.
 ? When should you avoid Interpreter?
 - For small rule languages
-+ For large grammars or performance-critical evaluation
++ For big grammars, or when evaluation must be very fast
 - When rules change at run time
-> Tree-walking classes multiply and are slow; use a parser generator or compile.
+> The classes multiply and tree walking is slow. Use a parser tool or compile.
 ```
 
 :::keypoints
-- Interpreter: one class per grammar rule; sentences become an AST (Composite); `interpret(context)` evaluates recursively.
-- A recursive-descent parser turns text into the tree. Great for small DSLs: filters, rules, formulas.
-- Many operations over the grammar → use Visitors. For big or fast languages use real parser/compiler tools.
+- Interpreter = one class per grammar rule. A sentence becomes a tree. `interpret(context)` evaluates it step by step.
+- A recursive-descent parser turns text into the tree. Great for small rule languages.
+- For many operations use Visitors. For big or fast languages use real parser and compiler tools.
 :::

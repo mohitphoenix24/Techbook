@@ -2,20 +2,26 @@
 title: Template Method
 level: intermediate
 time: 30
-summary: Fixing the skeleton of an algorithm in a base class and letting subclasses fill in steps: abstract steps and optional hooks, the Hollywood principle, a data-processing pipeline and a game turn, NVI in C++, and Template Method versus Strategy.
+summary: Fix the steps of a job in a base class, and let child classes fill in the details. See a data pipeline and a game turn, the "don't call us, we'll call you" idea, a C++ idiom called NVI, and how it differs from Strategy.
 ---
 
-:::def Template Method
-Define the **skeleton of an algorithm** in an operation, deferring some steps to subclasses. Template Method lets subclasses **redefine certain steps** without changing the algorithm's structure.
+## What is the Template Method pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "The **steps** of the job are always the same and in the same order. Only a few steps are done differently by different children."
+
+:::analogy Think of a recipe for a hot drink
+The steps are fixed: boil water, **brew**, pour into a cup, **add extras**. For tea, "brew" means putting in a tea bag. For coffee, it means filtering the grounds. The outline is common. Only specific steps differ.
 :::
 
-:::analogy Think of it like this
-A recipe template for "make a hot drink": boil water, **brew** it, pour into a cup, **add extras**. The steps and their order are fixed. For tea, *brew* means steep a tea bag; for coffee, filter the grounds. The outline is common; only specific steps differ.
+:::def Template Method
+The base class writes the **outline of a job** (the steps and their order). Child classes **fill in some of the steps**, but they cannot change the outline.
 :::
 
 ## The idea
 
-The base class has a **non-virtual** method (the *template method*) that calls a sequence of steps. Some steps are **abstract** (subclasses must provide them), some have **default** implementations, and some are optional empty **hooks**.
+The base class has one **non-virtual** function (the "template") that calls the steps in order. Some steps are **abstract** (children must write them). Some have a **default** version. Some are optional empty **hooks**.
 
 ```viz algo=uml title="Template Method"
 abstract class DataMiner
@@ -76,13 +82,18 @@ int main() {
 }
 ```
 
-The **order** `open → extract → parse → analyse → report → done` is fixed in one place. Subclasses cannot reorder or skip steps (the template method is not virtual). Duplicate logic is gone from the subclasses.
+The order `open → extract → parse → analyse → report → done` is written in **one place**. Children cannot change the order or skip a step, because the template function is not virtual. The repeated code is gone from the children.
 
-## The Hollywood Principle
+## "Don't call us, we'll call you"
 
-"Don't call us, we'll call you." In normal code, your subclass calls library helpers. In Template Method, the **base class calls the subclass**. The framework controls the flow, and you plug in details. This inversion of control is the heart of frameworks: unit-test runners (`setUp`, `test`, `tearDown`), servlet lifecycles, game loops (`update`, `draw`).
+This is called the **Hollywood principle**.
 
-## A game turn
+- In normal code, **you** call the library's helper functions.
+- In Template Method, **the base class calls your code**.
+
+The framework controls the flow. You only plug in the details. You have seen this in test frameworks (`setUp`, `test`, `tearDown`), web frameworks and game loops (`update`, `draw`).
+
+## Example: a game turn
 
 ```cpp run title="A board-game turn: the base fixes the rhythm"
 #include <iostream>
@@ -125,9 +136,9 @@ int main() {
 }
 ```
 
-## NVI: the C++ idiom behind it
+## The C++ way: NVI
 
-C++ programmers often combine Template Method with the **Non-Virtual Interface** idiom (you met it in the abstract classes lesson): the public function is non-virtual and calls **private virtual** steps. That also lets the base add pre- and post-conditions, logging or locking around every customised step.
+C++ programmers often use Template Method with the **Non-Virtual Interface** idea: the public function is **non-virtual** and calls **private virtual** steps. This lets the base class add checks, logging or locking around every step that a child writes.
 
 ```cpp run title="NVI wrapper adds locking and timing around any subclass step"
 #include <iostream>
@@ -157,49 +168,51 @@ class BackupTask : public Task {
 int main() { BackupTask().run(); }
 ```
 
-## Hooks and "don't override the template"
+## Tips
 
-- Make the template method **non-virtual** (or `final`) so subclasses cannot change the skeleton.
-- Name optional extension points as **hooks** (`onDone`, `beforeSave`), with empty or default bodies.
-- Mark required steps **pure virtual**. Give sensible defaults to the rest.
-- Keep the number of steps small. If subclasses must override most of them, the skeleton is not really shared.
+- Make the template function **non-virtual** (or `final`), so children cannot change the outline.
+- Name optional extension points **hooks** (`onDone`, `beforeSave`) with empty or default bodies.
+- Make required steps **pure virtual**. Give the others a sensible default.
+- Keep the number of steps small. If children must change almost every step, the outline is not really shared.
 
 ## Template Method vs Strategy
 
 | | Template Method | Strategy |
 |---|---|---|
-| Mechanism | **inheritance** | **composition** |
-| What varies | **steps** within a fixed algorithm | the **whole algorithm** |
-| When chosen | at compile time (which subclass) | at run time (which strategy object) |
-| Control flow | base calls subclass (Hollywood) | context calls strategy |
-| Flexibility | less: one skeleton per hierarchy | more: swap, combine, reuse |
-| Risk | fragile base class; subclass relies on base internals | more objects |
+| How | **inheritance** | **composition** |
+| What changes | some **steps** of a fixed job | the **whole job** |
+| When it is chosen | when compiling (which subclass) | while running (which strategy object) |
+| Who calls whom | base calls child (Hollywood) | context calls strategy |
+| Flexibility | less | more: swap and reuse |
+| Risk | the child depends on the base's insides | more small objects |
 
-A rule of thumb: if the *outline* is stable and several variants differ in a few steps, use Template Method. If the algorithm itself must be swappable at run time, or you want to avoid inheritance, use Strategy. Often Template Method can be **refactored into Strategy** by moving the steps into an interface.
+Rule of thumb: if the **outline is stable** and variants differ in a few steps, use Template Method. If you need to **swap** the whole job at run time, or want to avoid inheritance, use Strategy.
 
-:::interview Template Method: key properties and an example
-"A base class defines the algorithm skeleton in a non-virtual method that calls abstract steps and optional hooks; subclasses implement the varying steps but cannot change the order. It is the Hollywood principle: the base class calls the subclass. Examples: a data mining pipeline that opens, extracts, parses, analyses and reports; a test framework with setUp and tearDown; a game turn. In C++ it is closely related to the Non-Virtual Interface idiom. Compared with Strategy, it uses inheritance and varies steps, while Strategy uses composition and varies the whole algorithm."
+## Short answer to say in an interview
+
+:::interview What is Template Method? Give an example.
+"A base class defines the steps of a job in a non-virtual function. Some steps are abstract, and children write them. Children cannot change the order of the steps. It follows the Hollywood principle: the base class calls the child. For example, a data pipeline that opens a file, extracts, parses, analyses and reports. The base class fixes that order, and each file type writes its own parse step. Compared with Strategy, it uses inheritance and changes steps, while Strategy uses composition and swaps the whole job."
 :::
 
 ```quiz
-? Why is the template method itself usually non-virtual?
+? Why is the template function usually non-virtual?
 - It would be slower
-+ So subclasses cannot change the order of the steps
-- Virtual functions cannot call others
-> The skeleton is the invariant part; only the steps are meant to vary.
++ So children cannot change the order of the steps
+- Virtual functions cannot call other functions
+> The outline stays fixed. Only the steps are meant to change.
 ? What is a hook?
 - A pure virtual step
-+ An optional step with an empty or default body that subclasses may override
++ An optional step with an empty or default body that a child may override
 - A static function
-> Hooks give extension points without forcing every subclass to implement them.
-? How does Template Method differ from Strategy?
-- It does not
-+ Template Method varies steps via inheritance; Strategy swaps whole algorithms via composition
-> Strategy can be changed at run time; Template Method is fixed by the subclass chosen.
+> Hooks give extension points without forcing every child to write them.
+? How is Template Method different from Strategy?
+- It is not different
++ Template Method changes steps using inheritance. Strategy swaps the whole job using composition
+> Strategy can change at run time. Template Method is fixed by the child you pick.
 ```
 
 :::keypoints
-- Template Method: a non-virtual method fixes the algorithm's order; abstract steps and optional hooks vary in subclasses.
-- Hollywood principle: the base class calls the derived class. It removes duplication and enforces the outline.
-- In C++ this is the NVI idiom. Prefer Strategy when the algorithm must be swapped at run time.
+- Template Method: a non-virtual function fixes the order. Abstract steps and optional hooks change in the children.
+- Hollywood principle: the base calls the child. It removes repeated code and keeps the outline safe.
+- In C++ it is the NVI idea. Choose Strategy if the job must be swapped at run time.
 :::

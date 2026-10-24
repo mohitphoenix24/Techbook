@@ -2,32 +2,32 @@
 title: Design an Online Auction System
 level: intermediate
 time: 60
-summary: Items listed with a reserve price and end time, bidders placing bids under rules (minimum increment, no self-outbidding), an auction lifecycle with an injected clock, outbid notifications, auction types as strategies (English, sealed-bid), and race-free bid handling.
+summary: Items for sale with a reserve price and an end time, bidders placing bids by the rules, an auction life cycle driven by a clock, outbid messages, different auction types as strategies, and handling bids safely when many arrive together.
 ---
 
 :::problem Design an Online Auction System (eBay-like) {level=medium tags="State,Strategy,Observer,concurrency,time,marketplace"}
-Design an online auction. A seller lists an item with a starting price, a reserve (minimum acceptable price) and an end time. Bidders place bids; each new bid must beat the current highest by a minimum increment. When the auction ends, the highest bidder wins if the reserve is met. Outbid bidders are notified. Different auction types (English ascending, sealed-bid) should be easy to support.
+Design an online auction. A seller lists an item with a starting price, a reserve (the lowest price they accept) and an end time. Bidders place bids. Each new bid must beat the current highest by a minimum step. When the auction ends, the highest bidder wins if the reserve is met. Bidders who are outbid get a message. Different auction types (English with rising bids, sealed-bid) should be easy to support.
 :::
 
 :::hint Hint
-The critical operation is `placeBid`: read the current highest, validate, and update **atomically** (one lock per auction). The auction's **rules** (increment, how the winner is chosen) are a strategy; its **lifecycle** (Scheduled, Open, Closed) is a small state machine driven by an injected clock.
+The key action is `placeBid`: read the current highest bid, check the rules, and update it, all as **one safe step** (one lock for each auction). The auction's **rules** (the minimum step, how the winner is chosen) are a strategy. Its **life cycle** (Scheduled, Open, Closed) is a small state machine driven by a clock that you pass in.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | User (seller or bidder), Item, Auction, Bid |
-| Listing? | title, starting price, reserve price, start and end time |
-| Bidding rules? | bid ≥ current highest + increment (or ≥ starting price for the first); a seller cannot bid; a bidder cannot outbid themselves |
-| Lifecycle? | Scheduled → Open (at start) → Closed (at end); Cancelled by the seller if there are no bids |
-| Winner? | highest bid at the end, provided it meets the reserve; else "reserve not met" |
-| Anti-sniping? | optional: a bid in the last 2 minutes extends the end by 2 minutes (a rule) |
-| Notifications? | outbid, won, lost, ended |
-| Concurrency? | many simultaneous bids; the highest bid is always consistent |
-| Out of scope | payments, shipping, fraud |
+| Main things? | User (seller or bidder), Item, Auction, Bid |
+| Listing? | title, starting price, reserve price, start time and end time |
+| Bidding rules? | a bid must be at least the current highest plus the step (or at least the starting price for the first bid). A seller cannot bid. A bidder cannot outbid themselves |
+| Life cycle? | Scheduled, then Open (at the start), then Closed (at the end). The seller can Cancel if there are no bids |
+| The winner? | the highest bid at the end, if it meets the reserve. Otherwise "reserve not met" |
+| Last-minute bids (anti-sniping)? | optional: a bid in the last 2 minutes extends the end by 2 minutes |
+| Messages? | outbid, won, lost, ended |
+| Many users? | many bids at the same time. The highest bid must always be consistent |
+| Not needed | payments, shipping, fraud |
 
-## Step 2: lifecycle
+## Step 2: The life cycle
 
 ```viz algo=state title="Auction states"
 state Scheduled "Scheduled" [initial] @0,1
@@ -42,7 +42,7 @@ Open -> Cancelled : seller cancels (no bids)
 play: start time reached, valid bid, valid bid, end time reached
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Auction system"
 class AuctionHouse
@@ -81,17 +81,17 @@ Auction o-- BidListener
 Auction --> Clock
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **One mutex per auction**: `placeBid` validates and appends under it, so two simultaneous bids are serialised and the second sees the first. Different auctions do not interfere.
-- **`AuctionRules` Strategy**: `EnglishRules` (open ascending: min increment, highest wins) and `SealedBidRules` (bids hidden, one bid per user, highest wins at the end; the winner pays the highest or second-highest price, "Vickrey"). Rules decide `minNextBid`, whether a bid is acceptable, and the winner.
-- **Clock injection and `tick()`**: the house calls `tick()`; each auction compares `now` against start/end. No timer threads in the core.
-- **Observer** for notifications. Listeners are called **after** releasing the lock to avoid calling out under a lock.
-- **Anti-sniping** is part of `EnglishRules::accept` (it may extend `endTime`).
-- **Immutable `Bid` records**; the auction keeps the full history for audit.
-- **Money** as integer rupees/paise.
+- **One mutex for each auction.** `placeBid` checks and adds the bid while holding it. Two bids at the same time are put in a line, and the second sees the first. Different auctions do not affect each other.
+- **`AuctionRules` is a Strategy.** `EnglishRules` (open and rising: a minimum step, the highest wins) and `SealedBidRules` (bids are hidden, one bid for each user, the highest wins at the end, and the winner pays the highest or the second-highest price, called "Vickrey"). The rules decide `minNextBid`, whether a bid is allowed, and who wins.
+- **A clock passed in and `tick()`.** The house calls `tick()`. Each auction compares `now` with its start and end. There are no timer threads in the core.
+- **Observer** for messages. Listeners are called **after** the lock is released, so we do not call outside code while holding a lock.
+- **Anti-sniping** is part of `EnglishRules::accept` (it may move `endTime`).
+- **A `Bid` never changes after it is made.** The auction keeps the whole history for audits.
+- **Money** is an integer (rupees or paise).
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Auction with rules, outbid notifications and a bid race"
 #include <algorithm>
@@ -257,45 +257,51 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Bid at exactly the end time | `now >= end` means closed: refused |
-| Two equal bids at the same instant | the lock serialises them; the second fails the "higher than current" rule |
-| Bidding after close | refused; the state check is inside the lock |
-| Reserve not met | outcome "reserve not met", no winner |
-| Seller cancels with bids | not allowed (or compensates bidders) |
-| Clock skew between servers | one authoritative time source per auction |
-| Auto-bidding (proxy bids) | extension: a user sets a max; the system bids the minimum needed |
-| Bid retraction | rules decide (often disallowed in the last hours) |
+| A bid at exactly the end time | `now >= end` means closed, so it is refused |
+| Two equal bids at the same moment | the lock puts them in a line. The second fails the "higher than current" rule |
+| Bidding after the close | refused. The state check is inside the lock |
+| The reserve is not met | the result is "reserve not met", and there is no winner |
+| The seller cancels when there are bids | not allowed (or the bidders are compensated) |
+| Clocks on different servers differ | one main source of time for each auction |
+| Automatic bidding (proxy bids) | an extension: a user sets a maximum, and the system bids the smallest amount needed |
+| Taking back a bid | the rules decide (often not allowed in the last hours) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Dutch auction (price falls until someone accepts)" | a `DutchRules` with a time-dependent `minNextBid` and first-accept-wins |
-| "Buy-it-now" | an option on the auction that closes it immediately at a fixed price |
-| "Proxy/auto bidding" | `AutoBidder` listener that places counter-bids up to a limit (Observer) |
-| "Many concurrent auctions" | per-auction locks scale; a scheduler (previous lesson) triggers `tick` at exact times |
-| "Fraud detection" | a filter chain on bids (shill bidding patterns) |
-| "Payment and escrow" | on close, emit `AuctionWon`; a payment service holds funds |
-| "Persistence/audit" | append-only bid log; the state is derived |
-| "Scale and fairness" | strict ordering of bids by an arrival sequence from a single owner of each auction (actor per auction) |
+| "Dutch auction (the price falls until someone accepts)" | a `DutchRules` with a `minNextBid` that depends on time, and the first one to accept wins |
+| "Buy it now" | an option on the auction that closes it at once at a fixed price |
+| "Automatic bidding" | an `AutoBidder` listener that places counter-bids up to a limit (Observer) |
+| "Many auctions at once" | a lock for each auction scales. A scheduler (the earlier lesson) calls `tick` at exact times |
+| "Fraud detection" | a chain of filters on bids (patterns of fake bidding) |
+| "Payment and holding the money" | when it closes, announce `AuctionWon`. A payment service holds the funds |
+| "Saving and audit" | an append-only bid log. The state is worked out from it |
+| "Scale and fairness" | strict order of bids using a sequence from one owner for each auction (an actor for each auction) |
+
+## Short answer to say in an interview
+
+:::interview How do you handle two bids that arrive at the same time?
+"Each auction has its own mutex. placeBid takes it, checks that the auction is open, that the bid is high enough and that the bidder is allowed, and then adds the bid. If two bids arrive together, one waits, and then sees the other as the current highest. So only a valid bid wins. The rules, like minimum step and sealed bid, are a strategy. Listeners for outbid messages are called after unlocking."
+:::
 
 ```quiz
 ? Why must placeBid check and update under one lock?
 - To make it slower
 + Otherwise two bidders could both pass the "higher than current" check and both be accepted
 - C++ requires it
-> Check-then-act on shared state must be atomic.
+> Check and act on shared data must be one safe step.
 ? What does the Vickrey (second-price) sealed-bid rule change?
 - The winner is the lowest bidder
-+ The highest bidder wins but pays the second-highest bid, encouraging honest bids
++ The highest bidder wins but pays the second-highest bid, which encourages honest bids
 - Nothing
-> It is implemented by a different `AuctionRules` strategy.
+> It is done with a different `AuctionRules` strategy.
 ```
 
 :::keypoints
-- Auction = lifecycle (clock-driven) + rules strategy + bids under one lock; listeners notified after unlocking.
-- English vs sealed-bid are strategies; anti-sniping is a rule that extends the end time.
-- Atomic bid handling, reserve checking at close, injected clock, immutable bid log.
+- An auction = a life cycle driven by a clock, plus a rules strategy, plus bids under one lock. Listeners are told after unlocking.
+- English and sealed-bid are strategies. Anti-sniping is a rule that moves the end time.
+- Safe bid handling, a reserve check at the close, a clock passed in, and a bid log that never changes.
 :::

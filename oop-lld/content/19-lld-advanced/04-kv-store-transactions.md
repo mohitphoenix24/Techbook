@@ -2,30 +2,30 @@
 title: Design an In-Memory Key-Value Store with TTL and Transactions
 level: advanced
 time: 75
-summary: A key-value store with expiring keys, nested transactions (begin, commit, rollback) implemented with an undo log, a write-ahead log for durability and recovery, thread-safety with a readers-writer lock, snapshots, and the design trade-offs with real databases.
+summary: A small Redis-like store. Learn keys that expire (TTL), transactions that can be nested and rolled back, a log file for recovery after a crash, safe use from many threads, and how it compares with real databases.
 ---
 
 :::problem Design an In-Memory Key-Value Store (Redis-like) {level=hard tags="storage,transactions,TTL,undo log,WAL,concurrency,Command"}
-Design an in-memory key-value store. It supports `get`, `set`, `delete`, keys with a time to live (TTL), **nested transactions** (`begin`, `commit`, `rollback`) where changes inside a transaction are invisible to others until commit and can be rolled back, and optional durability through a write-ahead log that can rebuild the store after a crash. It must be safe for concurrent clients.
+Design an in-memory key-value store. It supports `get`, `set`, `delete`, keys with a time to live (TTL), and **nested transactions** (`begin`, `commit`, `rollback`). Changes made inside a transaction are not visible to others until commit, and can be rolled back. Optionally, it keeps a write-ahead log (a log of changes written first) that can rebuild the store after a crash. It must be safe for many clients at the same time.
 :::
 
 :::hint Hint
-Implement a transaction as an **overlay** of pending changes on top of the base map (or as an **undo log** that records inverse operations). Nested transactions are a **stack** of overlays. Durability = append every committed change to a log before applying it, and replay the log on start-up. TTL needs a clock and either lazy expiry or a min-heap of expiry times.
+Make a transaction an **overlay** (a layer of pending changes on top of the main map). Or use an **undo log** that records the opposite of each change. Nested transactions are a **stack** of overlays. For durability, write every committed change to a log first, and replay the log at start-up. TTL needs a clock, and either lazy expiry or a min-heap of expiry times.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Operations? | `get`, `set(key, value, ttl?)`, `del`, `exists`, `ttl(key)` |
-| TTL? | seconds from an injected clock; expired keys behave as absent; removed lazily and by a sweep |
-| Transactions? | `begin()` may be nested; `commit()` merges the innermost into its parent (or the store); `rollback()` discards it |
-| Isolation? | a transaction sees its own writes; other clients see only committed data |
-| Durability? | optional WAL: committed operations are appended as text lines; recovery replays them |
-| Concurrency? | readers-writer lock for plain operations; each client has its own transaction context |
-| Out of scope | networking, data types beyond strings, replication |
+| Actions? | `get`, `set(key, value, ttl?)`, `del`, `exists`, `ttl(key)` |
+| TTL? | seconds from a clock that we pass in. Expired keys act as if they are not there. They are removed when touched and by a sweep |
+| Transactions? | `begin()` can be nested. `commit()` joins the innermost one into its parent (or into the store). `rollback()` throws it away |
+| Isolation? | a transaction sees its own writes. Other clients see only committed data |
+| Durability? | optional WAL: committed actions are added as lines of text. Recovery replays them |
+| Many threads? | a reader-writer lock for plain actions. Each client has its own transaction state |
+| Not needed | networking, data types other than strings, copies on other machines |
 
-## Step 2: how nested transactions work
+## Step 2: How nested transactions work
 
 ```text
 base store (committed):         a=1  b=2
@@ -37,9 +37,9 @@ tx2 commit  → merge overlay2 into overlay1:  overlay1 = {a=10, b=del}
 tx1 rollback → drop overlay1.   base unchanged: a=1 b=2
 ```
 
-Reads search the overlay stack **from the top down**, then the base. A **tombstone** marks a deletion inside an overlay.
+Reads look through the stack of overlays **from the top to the bottom**, and then in the main map. A **tombstone** (a marker that says "deleted") hides a key that was removed inside an overlay.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Key-value store"
 class KvStore
@@ -77,17 +77,17 @@ Overlay *-- Change
 KvStore ..> Session
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Session per client** holds a stack of `Overlay`s. Outside a transaction, operations apply directly to the base under the write lock (autocommit). Inside, they go to the top overlay and touch no shared state, so **no locking is needed for transaction-local work**.
-- **Reads** consult overlays top-down (tombstones hide keys), then the base under a **shared** lock.
-- **Commit of the outermost transaction** takes the **write lock once**, appends all changes to the WAL (one batch), then applies them to the base: atomic with respect to other readers/writers. Committing an inner transaction just merges into its parent overlay (cheap, no lock).
-- **Isolation level**: reads see the committed state at read time plus own writes (read committed). Snapshot isolation would copy-on-write the base or use versions (MVCC): an extension.
-- **TTL**: each entry has `expiresAt` (0 = none). `get` treats expired as absent (lazy deletion); a periodic `sweep()` removes expired keys. Overlays carry the TTL with the change.
-- **WAL**: before applying a committed batch, append lines like `SET key value expiresAt` / `DEL key` and flush. Recovery replays the lines into an empty base. (A real system also checkpoints and truncates the log.)
-- **Clock injection** for deterministic TTL tests.
+- **A session for each client** holds a stack of `Overlay`s. Outside a transaction, actions apply directly to the main map under the write lock (autocommit). Inside one, they go to the top overlay and touch nothing shared, so **work inside a transaction needs no locking**.
+- **Reads** look at the overlays from the top, where tombstones hide keys, then at the main map under a **shared** lock.
+- **Committing the outermost transaction** takes the **write lock once**, adds all the changes to the WAL (as one batch), then applies them to the main map. To other readers and writers it is one atomic step. Committing an inner transaction just joins it into its parent overlay (cheap, no lock).
+- **Isolation level:** reads see the committed state at the time of the read, plus the transaction's own writes ("read committed"). Snapshot isolation would need copy-on-write or versions (MVCC). That is an extension.
+- **TTL:** each entry has `expiresAt` (0 means never). `get` treats an expired key as missing (lazy deletion). A regular `sweep()` removes expired keys. Overlays carry the TTL with the change.
+- **WAL:** before applying a committed batch, add lines like `SET key value expiresAt` or `DEL key` and flush. Recovery replays the lines into an empty map. (A real system also takes checkpoints and cuts the log.)
+- **A clock passed in** for predictable TTL tests.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Overlay transactions, TTL, WAL recovery, concurrent clients"
 #include <atomic>
@@ -247,58 +247,64 @@ int main() {
 }
 ```
 
-## Design trade-offs to state
+## Trade-offs to say out loud
 
-| Choice | Pros | Cons |
+| Choice | Good | Not so good |
 |---|---|---|
-| **Overlay stack** (this design) | cheap begin/rollback (just drop a map), no lock while working | reads search several maps; large transactions use memory |
-| **Undo log** (apply to base immediately, record inverse) | reads are single lookups | others would see uncommitted data unless the base is locked for the whole transaction |
-| **MVCC (versions per key)** | readers never block writers; snapshot isolation | garbage collection of old versions, complexity |
-| Lazy TTL only | O(1) | expired keys occupy memory until touched: add sweep |
-| TTL min-heap | exact, timely eviction | extra structure to maintain on every set |
-| WAL | durable and recoverable | write amplification; needs checkpoints to bound recovery time |
+| **Overlay stack** (this design) | begin and rollback are cheap (just drop a map). No lock while working | reads look in several maps. Big transactions use memory |
+| **Undo log** (apply to the main map at once, record the opposite) | reads are one lookup | others would see uncommitted data, unless the map is locked for the whole transaction |
+| **MVCC (versions for each key)** | readers never block writers. Snapshot isolation | cleaning up old versions, and more complexity |
+| Lazy TTL only | O(1) | expired keys use memory until touched. Add a sweep |
+| A min-heap for TTL | exact, on-time removal | one more structure to keep updated on every set |
+| WAL | safe and recoverable | extra writes. Needs checkpoints to keep recovery time short |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| `commit` or `rollback` with no transaction | returns false |
-| Deleting a key that exists only in the base | writes a tombstone to the overlay; applied at commit |
-| TTL changes inside a transaction | the change carries the absolute expiry time |
-| Overwriting a key with a shorter TTL | the new entry replaces the old |
-| Two committers touching the same key | the write lock serialises commits; last writer wins (no conflict detection). Optimistic checks or key locks give serialisability |
-| Crash between WAL append and apply | recovery replays the log; the apply is idempotent |
-| WAL growth | periodic checkpoint: write a snapshot of the map, truncate the log |
+| `commit` or `rollback` without a transaction | returns false |
+| Deleting a key that is only in the main map | a tombstone is written in the overlay, and applied at commit |
+| TTL changes inside a transaction | the change carries the exact expiry time |
+| Overwriting a key with a shorter TTL | the new entry replaces the old one |
+| Two commits touching the same key | the write lock puts them in a line. The last writer wins (no conflict check). Optimistic checks or key locks give full safety |
+| A crash between the WAL write and the apply | recovery replays the log. Applying twice is safe (idempotent) |
+| The WAL keeps growing | checkpoint now and then: write a snapshot of the map and cut the log |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Snapshot isolation / repeatable reads" | MVCC: each commit gets a version; a transaction reads as of its start version |
-| "Conflict detection (optimistic concurrency)" | record read versions; at commit fail if any key changed (like Redis WATCH) |
-| "More data types (lists, sets, hashes)" | `Value` as a variant; commands per type behind a `Command` registry |
-| "Pub/sub on key changes" | events after commit (Observer) |
-| "Persistence formats" | binary snapshots + WAL; fsync policy (always / every second / never) |
-| "Replication" | ship the WAL to followers (leader/follower); HLD |
-| "Memory limit and eviction" | LRU/LFU eviction policy (see the cache lesson) |
-| "Range queries and ordered keys" | `std::map` plus lower_bound scans; secondary indexes |
-| "Expiry accuracy at scale" | a hierarchical timer wheel or heap with batch removal |
+| "Snapshot isolation, repeatable reads" | MVCC: each commit gets a version. A transaction reads as of its start version |
+| "Conflict detection (optimistic)" | record the versions that were read. At commit, fail if any key changed (like Redis WATCH) |
+| "More data types (lists, sets, hashes)" | `Value` as a variant. Commands for each type in a `Command` registry |
+| "Messages when keys change" | events after commit (Observer) |
+| "File formats" | binary snapshots plus WAL. An fsync policy (always, every second, never) |
+| "Copies on other machines" | send the WAL to followers (leader and follower), HLD |
+| "A memory limit and removing keys" | an LRU or LFU policy (see the cache lesson) |
+| "Range queries and ordered keys" | `std::map` with `lower_bound` scans, and extra indexes |
+| "Exact expiry at a big scale" | a hierarchical timer wheel, or a heap that removes in batches |
+
+## Short answer to say in an interview
+
+:::interview How do you implement nested transactions in a key-value store?
+"Each client session has a stack of overlays, which are maps of pending changes, and a deletion is a tombstone. A read checks the overlays from the top, then the main map. Rollback just drops the top overlay. Committing an inner transaction merges it into its parent. Committing the outermost one takes the write lock once, writes all the changes to the write-ahead log, and applies them to the main map, so other clients see them all at once. TTL uses lazy expiry plus a sweep, with a clock passed in."
+:::
 
 ```quiz
 ? Why does the outermost commit take the write lock only once?
-- Locks are expensive to create
-+ The whole transaction's changes must appear to other clients atomically
-- Because maps need it
-> A single critical section applies the whole batch (after logging it).
+- Locks are costly to create
++ All the transaction's changes must show up to other clients as one atomic step
+- Maps need it
+> One locked step applies the whole batch (after logging it).
 ? What does a tombstone in an overlay do?
 - Marks a key as expiring
-+ Hides a key that exists in a lower layer, representing a deletion made inside the transaction
++ It hides a key that exists in a lower layer, showing a deletion made inside the transaction
 - Stores a value
-> Without it, reads would fall through to the base and find the deleted key.
+> Without it, a read would fall through to the main map and find the deleted key.
 ```
 
 :::keypoints
-- Overlay stack per session: reads go top-down then to the base; inner commit merges up; outer commit logs to the WAL and applies under one write lock.
-- TTL by lazy expiry plus a sweep; injectable clock. Recovery by replaying the WAL (idempotent applies).
-- Concurrency with a readers-writer lock; MVCC or optimistic checks for stronger isolation; checkpoints bound log size.
+- A stack of overlays for each session. Reads go from the top down to the main map. An inner commit merges up. The outer commit writes the WAL and applies under one write lock.
+- TTL with lazy expiry plus a sweep, and a clock passed in. Recovery replays the WAL (applying twice is safe).
+- A reader-writer lock for threads. MVCC or optimistic checks for stronger isolation. Checkpoints keep the log small.
 :::

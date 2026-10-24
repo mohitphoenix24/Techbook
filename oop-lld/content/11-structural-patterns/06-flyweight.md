@@ -1,24 +1,35 @@
 ---
 title: Flyweight
-level: advanced
+level: intermediate
 time: 30
-summary: Saving memory by sharing the common, unchanging part of many similar objects: intrinsic versus extrinsic state, a factory that caches flyweights, a forest of trees and a text editor, measuring the savings, and the thread-safety and immutability rules.
+summary: Save memory when you have a huge number of similar objects, by sharing the part that never changes. See shared and unshared data, a forest of trees, a text editor, and the rules for doing it safely.
 ---
 
+## What problem does Flyweight solve?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "I have 100,000 trees in a game. Most of them are the same kind of tree. Why should I store the same big picture 100,000 times? Let me store it **once** and share it."
+
 :::def Flyweight
-Use **sharing** to support a large number of **fine-grained objects** efficiently. Separate the object's state into **intrinsic** (shared, immutable) and **extrinsic** (supplied by the client at use time).
+Share the common, **unchanging** part of many similar objects, so you store it only once. The part that is **different** for each object is kept separately.
 :::
 
 ## The problem: millions of similar objects
 
-A game draws 100,000 trees. Each tree has a **species** (name, a big mesh and texture, 2 MB) and a **position** and **size** (a few bytes). If every tree object carries its own copy of the mesh and texture, memory explodes: 100,000 × 2 MB = 200 GB.
+A game draws 100,000 trees. Each tree has:
 
-But most trees of one species have **identical** mesh and texture. Only their position differs. So split the state:
+- a **species** (name, a big 3D model and texture, about 2 MB), and
+- a **position** and **size** (just a few bytes).
 
-| State | Description | Where it lives |
+If every tree keeps its own copy of the model and texture, memory explodes: 100,000 × 2 MB = 200 GB!
+
+But trees of one species have the **same** model and texture. Only the position is different. So we split the data into two kinds:
+
+| Kind | In simple words | Where we keep it |
 |---|---|---|
-| **Intrinsic** | does not depend on context; identical for many objects; **immutable** (species name, mesh, texture) | **shared** flyweight object (one per species) |
-| **Extrinsic** | depends on context; differs per use (x, y, scale) | stored by the **client** (or passed in each call) |
+| **Intrinsic** (shared) | does not change, same for many objects (species name, model, texture) | in **one shared object** per species |
+| **Extrinsic** (not shared) | different for each use (x, y, size) | **outside**, kept by the user or passed in when needed |
 
 ```viz algo=uml title="Flyweight"
 class TreeType
@@ -41,7 +52,7 @@ Forest *-- Tree
 Forest --> TreeTypeFactory
 ```
 
-## Code
+## The code
 
 ```cpp run title="A forest of 100,000 trees sharing three tree types"
 #include <iostream>
@@ -97,11 +108,11 @@ int main() {
 }
 ```
 
-Three flyweights serve 100,000 trees: about 6 MB instead of 200,000 MB. The per-tree cost is just position and a pointer.
+Three shared objects serve 100,000 trees. That is about 6 MB instead of 200,000 MB. Each tree costs only its position and one pointer.
 
-## A text editor: characters as flyweights
+## Another example: letters in a text editor
 
-Another classic: a document with a million characters. A `Glyph` object per character would be heavy. Share **one glyph object per distinct (character, font)**, and keep positions outside.
+A document with a million letters. If every letter was a full object with font details, it would be huge. Instead, share **one glyph object per (letter, font)**, and keep the positions outside.
 
 ```cpp run title="Glyph flyweights in a document"
 #include <iostream>
@@ -147,55 +158,57 @@ int main() {
 }
 ```
 
-## Rules for a correct Flyweight
+## Rules for doing it right
 
-1. **Flyweights are immutable.** They are shared, so any mutation would affect every user (and cause data races across threads). Make methods `const` and hold them as `shared_ptr<const T>`.
-2. **Separate intrinsic and extrinsic state carefully.** If you put something context-dependent in the flyweight, sharing breaks.
-3. **Create flyweights through the factory only**, so duplicates never appear.
-4. **The factory must be thread-safe** if used concurrently (mutex around the cache).
-5. **Identity does not matter**: two clients using the "oak" flyweight must not care that they share one object.
+1. **Shared objects must never change** (immutable). If one user changes it, everyone sees the change. Use `const` methods and `shared_ptr<const T>`.
+2. **Split the data carefully.** If you put something that differs per use inside the shared object, sharing breaks.
+3. **Always create shared objects through a factory**, so you never get duplicates.
+4. **Make the factory thread-safe** if many threads use it (a mutex around the cache).
+5. Users must not care whether they share the object or not.
 
 ## Trade-offs
 
-| Benefit | Cost |
+| Good | Not so good |
 |---|---|
-| Large memory savings when there are many similar objects | more complex code: state split into two places |
-| Fewer allocations | extrinsic state must be computed or stored per use (CPU for memory trade) |
-| Better cache locality when the flyweights are few | flyweights live as long as the factory (or until reference counts drop) |
+| Big memory savings with many similar objects | code is more complex: data is in two places |
+| Fewer allocations | the per-use data must be stored or calculated |
+| Better speed because few shared objects fit in cache | shared objects live as long as the factory |
 
-Use it only when profiling shows **memory pressure from very many similar objects**. It is an optimisation pattern. Do not apply it to a dozen objects.
+Use it only when you **measure** that memory is a problem because of very many similar objects. It is an optimisation. Do not use it for a dozen objects.
 
-## Real examples
+## Where you see it
 
-- `std::string` interning and the **string pool** in managed languages.
-- Fonts and glyph caches; sprite and texture atlases in games; tile maps; particle systems.
-- Icons in a UI toolkit; database connection descriptors (when immutable).
-- The "same value" integer cache in Java (`Integer.valueOf`).
+- String pools (the same text stored once).
+- Fonts and glyph caches, game sprite sheets, tile maps, particle systems.
+- Icons in UI toolkits.
+- Java's small-number cache (`Integer.valueOf`).
 
-:::interview Explain intrinsic vs extrinsic state in Flyweight
-"Intrinsic state is the context-independent, immutable data that many objects have in common, like a tree species' mesh and texture; it is stored in a shared flyweight created by a factory. Extrinsic state depends on the use, like a tree's position, and is stored by the client or passed to the flyweight's methods. This saves memory when you have very many similar objects."
+## Short answer to say in an interview
+
+:::interview What are intrinsic and extrinsic state in Flyweight?
+"Intrinsic state is the data that never changes and is the same for many objects, like a tree species' model and texture. We keep it in a shared object made by a factory. Extrinsic state is the data that differs for each use, like a tree's position. The user keeps it or passes it in. This saves a lot of memory when there are very many similar objects."
 :::
 
 ```quiz
 ? What does a Flyweight share?
-- Mutable state between threads
-+ Immutable intrinsic state among many objects
-- The whole object including position
-> Per-use data (extrinsic state) stays with the client.
-? Why must flyweights be immutable?
+- Changing data between threads
++ Unchanging (immutable) data among many objects
+- The whole object including its position
+> Data that differs per use stays with the user.
+? Why must shared flyweights be immutable?
 - To make them faster
-+ They are shared, so a change would affect every user of the same object
-- Because they use `const` members
-> Mutation of shared state causes surprising bugs and data races.
++ They are shared, so a change would affect everyone using them
+- Because they use const members
+> Changing shared data causes surprising bugs and data races.
 ? When is Flyweight worth using?
 - For ten objects
-+ When profiling shows very many similar objects causing memory pressure
++ When you measure that very many similar objects cause a memory problem
 - Always
-> It is an optimisation with a complexity cost.
+> It is an optimisation that adds complexity.
 ```
 
 :::keypoints
-- Flyweight shares immutable intrinsic state among many objects; extrinsic state is supplied by the client.
-- A factory caches flyweights (one per distinct intrinsic state). Make flyweights `const` and the factory thread-safe.
-- Use only when many similar objects cause memory pressure (trees, glyphs, particles, tiles).
+- Flyweight shares unchanging data among many objects. The changing data is kept by the user.
+- A factory keeps one shared object per distinct shared state. Make shared objects `const` and the factory thread-safe.
+- Use it only when many similar objects cause a memory problem (trees, letters, particles, tiles).
 :::

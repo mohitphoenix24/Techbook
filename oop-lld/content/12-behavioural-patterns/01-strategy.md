@@ -2,14 +2,24 @@
 title: Strategy
 level: intermediate
 time: 35
-summary: Defining a family of interchangeable algorithms and choosing one at run time or compile time, replacing if-else chains, with class-based strategies, lambdas, template policies, a route planner and a validation example, and how Strategy differs from State and Bridge.
+summary: Keep different ways of doing one job in separate classes, and pick one when needed. This removes long if-else chains. See class strategies, lambdas, compile-time policies, and how Strategy differs from State and Template Method.
 ---
 
-:::def Strategy
-Define a **family of algorithms**, **encapsulate each one**, and make them **interchangeable**. Strategy lets the algorithm vary independently from the clients that use it.
+## What is the Strategy pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "There is **one job**, but there are **many ways** to do it. I keep each way in its own box, and I choose a box when I need it."
+
+:::analogy Think of going to the office
+The job is "reach the office". The ways are: walk, take a bus, drive, take the metro. You choose a way depending on the day. The destination is the same. Only the **way** changes.
 :::
 
-The most useful pattern in LLD. Almost every problem has a place where "the rule may change": pricing, matching, eviction, routing, scheduling, validation, sorting.
+:::def Strategy
+Put each **way of doing a job** (an algorithm) into its own class behind one common interface, so that you can **swap** them easily.
+:::
+
+This is the most useful pattern in LLD. Almost every problem has a place where "the rule may change": pricing, matching, eviction, routing, scheduling, validation, sorting.
 
 ## The problem
 
@@ -29,9 +39,11 @@ double routeCost(const string& mode, double km) {
 int main() { cout << routeCost("car", 10) << " " << routeCost("bike", 10) << "\n"; }
 ```
 
+Look at the `if / else if` chain. Each time we add a new algorithm, we must edit this function. The code keeps growing and becomes risky to change.
+
 ## The pattern
 
-Put each algorithm in its own class behind one interface. The **context** holds a strategy and delegates to it.
+Put each algorithm in its **own class** with the same interface. The class that needs the job done (called the **context**) holds one strategy and asks it to do the work.
 
 ```viz algo=uml title="Strategy"
 class Navigator
@@ -96,11 +108,11 @@ int main() {
 }
 ```
 
-`Navigator` never changes when a new route type is added. Strategies are small, independently testable, and reusable by other contexts.
+`Navigator` does not change when we add a new route type. Each strategy is small, easy to test on its own, and can be reused.
 
-## Strategy with `std::function` (lightweight)
+## Strategy with `std::function` (the light way)
 
-When the interface is **one function**, you do not need classes. Lambdas are strategies.
+When the interface is **just one function**, you do not need classes. A lambda can be a strategy.
 
 ```cpp run title="Strategies as lambdas"
 #include <algorithm>
@@ -129,9 +141,9 @@ int main() {
 }
 ```
 
-## Strategy as a compile-time policy
+## Strategy as a compile-time choice (policy)
 
-If the choice is known at compile time and speed matters, pass the strategy as a **template parameter**: no virtual call, inlinable.
+If you know the choice while compiling and speed matters, pass the strategy as a **template parameter**. There is no virtual call, so the compiler can optimise it.
 
 ```cpp run title="Policy-based strategy"
 #include <iostream>
@@ -154,15 +166,15 @@ int main() {
 }
 ```
 
-| Form | Choice made | Cost | Use when |
+| Style | When is the choice made? | Cost | Use when |
 |---|---|---|---|
-| Interface + classes | run time | virtual call | strategies have state, or you want to swap at run time |
-| `std::function` / lambda | run time | indirect call | a single function, ad hoc |
-| Template policy | compile time | zero | performance-critical, known statically |
+| Interface + classes | while running | a virtual call | strategies keep data, or you swap at run time |
+| `std::function` / lambda | while running | an indirect call | one small function |
+| Template policy | while compiling | none | speed matters and the choice is fixed |
 
-## A validation example: many strategies at once
+## Example: many strategies together
 
-Sometimes the context applies **several** strategies (rules) in turn.
+Sometimes the context uses **several** strategies (rules) one after another.
 
 ```cpp run title="Password rules as strategies"
 #include <cctype>
@@ -219,40 +231,42 @@ int main() {
 
 | | Strategy | State | Bridge | Template Method |
 |---|---|---|---|---|
-| Who picks the variant? | the **client** (from outside) | the object **itself** (transitions) | the designer, up front | the subclass |
-| Variants know each other? | no | **yes** (they trigger transitions) | no | n/a |
-| Mechanism | composition | composition | composition | **inheritance** |
-| Intent | swap an algorithm | change behaviour as state changes | separate two hierarchies | fix the skeleton, vary steps |
+| Who picks the variant? | the **user** from outside | the object **itself**, as it changes | the designer, at the start | the subclass |
+| Do variants know each other? | no | **yes** (they start the next state) | no | not applicable |
+| How | composition | composition | composition | **inheritance** |
+| Purpose | swap an algorithm | change behaviour as the state changes | keep two families apart | fixed steps, changing details |
 
-## Pitfalls
+## Mistakes to avoid
 
-- A strategy with **one implementation and no prospect of another** is just indirection.
-- **Clients must know the strategies** to choose one (use a factory or a config map to hide that).
-- Too many tiny strategy classes: group simple ones as lambdas.
-- Strategies sharing a lot of code: factor it into a base class or helper.
+- A strategy with **only one version** and no plan for more is just extra work.
+- The user must know the strategy names to choose one. Hide this with a factory or a config map.
+- Too many tiny classes: use lambdas for very simple ones.
+- If strategies share a lot of code, move it into a helper.
 
-:::interview Strategy vs State? And Strategy vs Template Method?
-"Both hold an interface and delegate. In Strategy the *client* chooses the algorithm and strategies are independent; in State the *object itself* changes its state object as it runs, and the states usually know the transitions. Template Method also varies an algorithm but through inheritance: the base class fixes the skeleton and subclasses override steps, whereas Strategy replaces the whole algorithm using composition, which is more flexible and swappable at run time."
+## Short answer to say in an interview
+
+:::interview What is the difference between Strategy and State? And between Strategy and Template Method?
+"Both Strategy and State hold an interface and pass the work to it. In Strategy, the user chooses the algorithm from outside, and the strategies do not know each other. In State, the object changes its own state as it runs, and the states usually know the next state. Template Method also varies an algorithm, but through inheritance: the base class fixes the steps and subclasses change some of them. Strategy swaps the whole algorithm using composition, which is more flexible."
 :::
 
 ```quiz
 ? What does Strategy replace?
 - Singletons
-+ Conditional logic that selects between algorithms
++ If-else chains that choose between algorithms
 - Constructors
 > Each branch becomes its own class (or lambda) behind a common interface.
-? Who normally selects the strategy?
+? Who usually chooses the strategy?
 - The strategy itself
-+ The client or configuration, from outside the context
-> Contrast with State, where the object transitions itself.
-? When would you prefer a template policy to a virtual strategy?
-- When the choice must change at run time
-+ When the choice is known at compile time and performance matters
-> Policies are resolved by the compiler and can be inlined.
++ The user or the configuration, from outside
+> In State, the object moves between states by itself.
+? When would you choose a template policy instead of a virtual strategy?
+- When the choice must change while running
++ When the choice is known at compile time and speed matters
+> The compiler can inline a policy.
 ```
 
 :::keypoints
-- Strategy = interchangeable algorithms behind one interface, held by a context; swap by composition.
-- Use classes for stateful or run-time-swapped strategies, lambdas for single functions, templates for compile-time speed.
-- It removes `if/else` chains (OCP) and makes algorithms testable alone. Differs from State (self-transition) and Template Method (inheritance).
+- Strategy = many ways to do one job, each in its own class, swapped by composition.
+- Use classes for strategies with data or run-time swapping, lambdas for single functions, templates for compile-time speed.
+- It removes if-else chains (OCP) and makes each algorithm easy to test. Different from State (the object moves itself) and Template Method (inheritance).
 :::

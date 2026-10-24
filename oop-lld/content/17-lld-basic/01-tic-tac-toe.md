@@ -2,35 +2,35 @@
 title: Design Tic-Tac-Toe
 level: easy
 time: 40
-summary: A two-player board game with O(1) win detection, pluggable move sources (human and bot), result codes instead of exceptions, and extensions to NxN, K-in-a-row, undo and spectators.
+summary: A two-player board game. Learn how to check for a winner very quickly, how to let a human or a computer play through the same interface, and how to extend the game later.
 ---
 
 :::problem Design Tic-Tac-Toe {level=easy tags="games,2D board,strategy,beginner"}
-Design a Tic-Tac-Toe game for two players on an N×N board. Players take turns placing their mark. The first to fill a full row, column or diagonal wins; if the board fills with no winner it is a draw. Make it easy to plug in different kinds of players (human, simple bot).
+Design a Tic-Tac-Toe game for two players on an N×N board. Players take turns to place their mark. The first player to fill a full row, column or diagonal wins. If the board is full and nobody has won, it is a draw. Make it easy to plug in different kinds of players (a human, a simple computer player).
 
 :::hint Hint
-Do not rescan the whole board after every move. Keep one counter per row, per column and per diagonal for each player: a win is a counter reaching N. Make "where does the next move come from" an interface.
+Do not check the whole board after every move. Instead, keep one counter for each row, each column and each diagonal, for each player. A player wins when one of their counters reaches N. Also, make "where does the next move come from?" an interface.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Board size? | N×N, default 3 (configurable) |
-| Players? | exactly two, marks `X` and `O`, X moves first |
-| Input? | a move is (row, column); invalid or occupied cells are rejected and the player tries again |
-| End conditions? | N marks in a row/column/diagonal wins; full board is a draw |
-| Player kinds? | human (scripted here) and a simple bot, behind one interface |
-| Out of scope | GUI, network play, smart AI (mention minimax) |
+| Board size? | N×N, default 3, can be changed |
+| Players? | exactly two, marks `X` and `O`, X goes first |
+| How does a player move? | by giving a row and a column. If the cell is invalid or taken, the player tries again |
+| When does the game end? | N marks in a row, column or diagonal wins. A full board is a draw |
+| Kinds of players? | a human (we will use a fixed list of moves for the demo) and a simple computer player, behind one interface |
+| Not needed | screen, network play, smart AI (we will only mention minimax) |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 - **Mark** (enum): `X`, `O`, `Empty`.
-- **Board**: owns the grid and the counters; knows if a cell is free, places a mark, reports a win.
-- **Player**: name, mark, and a **MoveSource** (the strategy that produces the next move).
-- **MoveSource** (interface): `Move next(const Board&)`. Implementations: `ScriptedMoves` (stands in for a human), `FirstFreeBot`.
-- **Game**: runs turns, switches players, asks the board for the outcome, returns a `GameStatus`.
+- **Board**: holds the grid and the counters. It can say whether a cell is free, place a mark, and tell if someone won.
+- **Player**: has a name, a mark, and a **MoveSource**.
+- **MoveSource** (interface): "give me the next move". Two versions: `ScriptedMoves` (acts like a human) and `FirstFreeBot` (picks the first empty cell).
+- **Game**: runs the turns, switches players, asks the board for the result, and reports the game status.
 
 ```viz algo=uml title="Tic-Tac-Toe: class diagram"
 class Game
@@ -65,7 +65,7 @@ FirstFreeBot ..|> MoveSource
 Board ..> Mark
 ```
 
-## Step 3: the flow
+## Step 3: How one turn flows
 
 ```viz algo=seq title="One turn"
 participant g Game [box]
@@ -83,14 +83,16 @@ b --> g : false
 g -> g : switch to the other player
 ```
 
-## Step 4: design decisions
+In words: the game asks the current player for a move. The player asks its move source. The game gives the move to the board. The board says "ok", "taken" or "win". The game then decides what to do next.
 
-- **O(1) win check**: for each mark keep `rows[r]`, `cols[c]`, `diag`, `anti`. Placing at `(r,c)` increments them; if any equals N, that player wins. No board scans.
-- **MoveSource is a Strategy**: the game never knows whether a human or a bot is playing, so adding a smarter AI is a new class.
-- **Results, not exceptions**: illegal moves are normal in a game. `place` returns `bool`; `applyMove` returns a `MoveResult` enum.
-- **Game owns the turn loop**; the board knows only rules of placement and winning (SRP).
+## Step 4: Design decisions
 
-## Step 5: the code
+- **Fast win check.** For each mark we keep `rows[r]`, `cols[c]`, `diag` and `anti`. When a mark is placed at `(r, c)`, we add 1 to these counters. If any counter becomes N, that player wins. We never scan the board.
+- **MoveSource is a Strategy.** The game does not know if a human or a computer is playing. A smarter computer player is just a new class.
+- **Results, not exceptions.** A wrong move is a normal thing in a game, so `place` returns `bool` and the game returns a small result value. We do not throw errors for it.
+- **The game controls the turns.** The board only knows the rules of placing and winning. Each class has one job.
+
+## Step 5: The code
 
 ```cpp run title="Tic-Tac-Toe: complete"
 #include <iostream>
@@ -201,42 +203,48 @@ int main() {
 }
 ```
 
-## Edge cases the design handles
+## Edge cases
 
-| Case | Behaviour |
+| Case | What happens |
 |---|---|
-| Move off the board or onto an occupied cell | `place` returns false, the game reports it and the **same** player moves again |
-| Winning move that also fills the board | win is checked **before** draw |
-| Board size other than 3 | counters are sized by N; nothing else changes |
-| Both diagonals | `r == c` and `r + c == N-1` counters |
+| A move outside the board, or on a taken cell | `place` returns false. The game says so and the **same** player moves again |
+| A winning move that also fills the board | the win is checked **before** the draw |
+| A board size other than 3 | the counters use N, so nothing else changes |
+| Both diagonals | counters for `r == c` and for `r + c == N-1` |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | How the design absorbs it |
+| Follow-up | How our design handles it |
 |---|---|
-| "K in a row on a larger board" (Gomoku) | replace the counter check by a local scan of the 4 lines through the last move: only `Board` changes |
-| "Undo" | a **Command** per move (`PlaceCommand` with `undo` decrementing counters) and a stack in `Game` |
-| "Smarter AI" | new `MoveSource` (minimax with alpha-beta; for 3x3 the whole tree is small) |
-| "More than two players" | marks become an id; counters become `[player][line]`; `Game` rotates through a list |
-| "Spectators and replay" | **Observer**: `Game` publishes `MoveMade`/`GameEnded`; keep a move list for replay |
-| "Network play" | a `RemoteMoveSource` reads moves from a socket; nothing else changes |
-| "Thread-safety" | one mutex in `Game::applyMove` (a game is a single serial state machine) |
+| "K in a row on a bigger board" (Gomoku) | replace the counter check with a small scan of the 4 lines through the last move. Only `Board` changes |
+| "Undo" | make each move a **Command** with an `undo`, and keep a stack in `Game` |
+| "A smarter computer player" | write a new `MoveSource` (minimax for example) |
+| "More than two players" | use a player id for the mark, counters become `[player][line]`, and `Game` goes through a list of players |
+| "Watchers and replay" | **Observer**: `Game` announces `MoveMade` and `GameEnded`. Keep a list of moves for the replay |
+| "Play over the network" | a `RemoteMoveSource` that reads moves from a socket. Nothing else changes |
+| "Thread-safety" | one mutex in `Game::applyMove`, because a game is one step-by-step process |
+
+## Short answer to say in an interview
+
+:::interview How do you check for a winner quickly in Tic-Tac-Toe?
+"I keep a counter for every row, every column and both diagonals, for each player. A move adds one to the counters it touches, and the player wins when a counter reaches N. This makes each check O(1) and I never scan the board. I make the move source an interface, so a human, a computer or a network player all work the same way."
+:::
 
 ```quiz
-? Why keep per-row, per-column and diagonal counters?
+? Why keep counters for rows, columns and diagonals?
 - To print the board
-+ A move can be checked for a win in O(1) instead of rescanning the board
++ We can check for a win in O(1) and never rescan the board
 - To support undo
-> Incrementing four counters per move replaces an O(N) or O(N²) scan.
+> Four small additions per move replace a full scan.
 ? Why is the move source an interface?
 - C++ requires it
-+ Human, bot and network players become interchangeable strategies
++ Human, computer and network players become interchangeable
 - To make the board generic
-> Adding a smarter AI means a new class, with no change to Game.
+> A smarter player is a new class, and Game does not change.
 ```
 
 :::keypoints
-- Board (placement, win counters), Player + MoveSource (strategy), Game (turn loop, results): three clear responsibilities.
-- O(1) win check with row, column and diagonal counters. Illegal moves return a result instead of throwing.
-- Easy extensions: AI via a new MoveSource, undo via Command, spectators via Observer, K-in-a-row by changing only Board.
+- Three clear jobs: Board (placing and win counters), Player with MoveSource (the strategy), Game (the turn loop and results).
+- Fast win check using row, column and diagonal counters. Wrong moves return a result, they do not throw errors.
+- Easy to extend: AI with a new MoveSource, undo with Command, watchers with Observer, K-in-a-row by changing only Board.
 :::

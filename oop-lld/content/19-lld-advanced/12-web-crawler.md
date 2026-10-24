@@ -2,32 +2,32 @@
 title: Design a Web Crawler
 level: advanced
 time: 75
-summary: A concurrent crawler with a URL frontier, normalisation and de-duplication, politeness per host with rate limiting, robots rules, depth limits, pluggable fetch and parse stages, a thread-safe termination protocol, and how the design scales into a distributed crawler.
+summary: A program that visits web pages and follows links. Learn the queue of URLs to visit, cleaning URLs and skipping repeats, being polite to each website, robots rules, depth limits, swappable parts, how to know when the crawl is finished, and how it grows into a crawler on many machines.
 ---
 
 :::problem Design a Web Crawler {level=hard tags="concurrency,BFS,rate limiting,pipeline,Strategy,distributed"}
-Design a crawler that starts from seed URLs, downloads pages, extracts links and follows them, up to a depth limit. It must not fetch the same page twice, must be polite (limit the request rate per host and obey robots rules), must use many threads for speed, must terminate cleanly when no work remains, and must be easy to extend (different page processors, storage, URL filters).
+Design a crawler that starts from some seed URLs, downloads pages, takes out the links and follows them, down to a depth limit. It must not fetch the same page twice, must be polite (limit the request rate for each website and follow robots rules), must use many threads for speed, must stop cleanly when no work is left, and must be easy to extend (different page handlers, storage, URL filters).
 :::
 
 :::hint Hint
-Crawling is **BFS over a graph** (pages = nodes, links = edges), but the graph is discovered on the fly. The **frontier** (queue of URLs to visit) is the heart. Add: canonical URLs, a visited set, per-host politeness, and a rule for when the crawl is *finished*: the queue is empty **and** no worker is still processing a page (which could add more URLs).
+Crawling is **BFS over a graph** (pages are nodes, links are edges), but you find the graph while walking it. The **frontier** (the queue of URLs to visit) is the heart. Add: clean URLs, a set of visited URLs, politeness for each host, and a rule for when the crawl is *finished*: the queue is empty **and** no worker is still busy with a page (which could add more URLs).
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Input/output? | seed URLs in; a set of crawled pages with their links and titles out (via a storage interface) |
-| Scope? | follow only same-domain links (a URL filter); depth limit D |
-| Duplicates? | never fetch the same canonical URL twice |
-| Politeness? | at most one request per host per `delay` (simulated clock) and obey a robots rule (disallowed path prefixes) |
-| Concurrency? | N worker threads sharing a frontier |
-| Failures? | fetch errors are recorded and optionally retried a limited number of times |
-| Termination? | stop when the frontier is empty and no page is in flight; or on a page budget |
-| Pluggable parts? | `Fetcher`, `LinkExtractor`, `UrlFilter`, `PageStore`, `RobotsPolicy` |
-| Out of scope | real HTTP, JavaScript rendering, content deduplication by simhash (mention) |
+| Input and output? | seed URLs go in. A set of crawled pages with their links and titles comes out (through a storage interface) |
+| Which links? | follow only links on the same website (a URL filter). A depth limit D |
+| Repeats? | never fetch the same clean URL twice |
+| Politeness? | at most one request to a host for each `delay` (a pretend clock), and follow a robots rule (path prefixes that are not allowed) |
+| Many threads? | N worker threads share one frontier |
+| Failures? | fetch errors are recorded, and can be retried a few times |
+| When to stop? | when the frontier is empty and no page is being worked on. Or when a page limit is reached |
+| Swappable parts? | `Fetcher`, `LinkExtractor`, `UrlFilter`, `PageStore`, `RobotsPolicy` |
+| Not needed | real HTTP, JavaScript pages, finding near-duplicate content (we mention it) |
 
-## Step 2: the pipeline
+## Step 2: The pipeline
 
 ```viz algo=seq title="What one worker does for one URL"
 participant w Worker [worker]
@@ -48,7 +48,7 @@ w -> s : save(url, title, links)
 w -> f : add(new URLs, depth d+1) | Filter, de-duplicate with the visited set, respect the depth limit.
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Web crawler"
 class Crawler
@@ -84,17 +84,17 @@ Crawler --> PageStore
 Frontier ..> UrlNormaliser
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Frontier = thread-safe BFS queue + visited set.** `push` normalises the URL and inserts it into `visited` **atomically with the enqueue** (one lock), so two workers discovering the same link cannot both enqueue it.
-- **Termination detection**: keep a counter `pending` = URLs queued + URLs being processed. A worker increments it when it enqueues a URL and decrements it after finishing a URL (after it has enqueued that page's links). When `pending` reaches 0 the crawl is complete; waiting workers are woken (`notify_all`) and exit. Checking only "queue empty" would end the crawl while another worker is about to add links.
-- **Politeness**: per-host "next allowed time" in a map under a mutex. A worker computes its slot (`max(now, next[host])`), reserves it by advancing `next[host] += delay`, then sleeps outside the lock. (Here a simulated clock records the reserved times, so the demo shows spacing without real sleeping.)
-- **URL normalisation**: lowercase the scheme and host, drop the fragment (`#...`), resolve relative paths, remove default ports and trailing slashes consistently, sort or drop tracking parameters (policy).
-- **Strategy interfaces** for fetcher (real HTTP vs a fake web in tests), extractor, filter, robots, store.
-- **Depth** travels with each task: BFS gives the shortest link distance, so depth-limited crawling is natural.
-- **Back-pressure**: a bounded frontier size or per-host queues prevent unbounded memory.
+- **The frontier = a thread-safe BFS queue + a set of visited URLs.** `push` cleans the URL and adds it to `visited` **in the same step as adding to the queue** (one lock). So two workers who find the same link cannot both add it.
+- **Knowing when to stop:** keep a counter `pending` = URLs in the queue + URLs being worked on. A worker adds 1 when it puts a URL in the queue, and subtracts 1 after it finishes a URL (after it has put that page's links in the queue). When `pending` becomes 0, the crawl is done. The waiting workers are woken (`notify_all`) and leave. If we only checked "queue is empty", the crawl could stop while another worker is about to add links.
+- **Politeness:** a map of "next allowed time" for each host, under a mutex. A worker finds its slot (`max(now, next[host])`), reserves it by moving `next[host] += delay`, and then waits outside the lock. (Here, a pretend clock records the reserved times, so the demo shows the spacing without real waiting.)
+- **Cleaning URLs:** lowercase the scheme and host, drop the fragment (`#...`), resolve relative paths, remove default ports and trailing slashes in one way, and drop or sort tracking parameters (a policy).
+- **Strategy interfaces** for the fetcher (real HTTP, or a fake web in tests), extractor, filter, robots and store.
+- **Depth** travels with each task. BFS gives the shortest link distance, so a depth limit is natural.
+- **Back-pressure:** a limited frontier size, or a queue for each host, stops memory from growing without limit.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Concurrent crawler over a fake web, with dedup, depth, robots and politeness"
 #include <atomic>
@@ -251,7 +251,7 @@ int main() {
 }
 ```
 
-## Why the termination rule is subtle
+## Why the stop rule is tricky
 
 ```text
 Worker A: pops the LAST URL in the queue → queue is now empty
@@ -263,46 +263,52 @@ Correct: B keeps waiting while pending > 0, where `pending` counts queued + in-f
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Cycles in the link graph | the visited set stops repetition |
-| Same page under several URLs (`/a`, `/a/`, `/a#x`, `?utm=...`) | normalise before the visited check; canonical `<link rel=canonical>` support |
-| Redirect loops | follow at most N redirects; record the final URL |
-| Spider traps (calendars with infinite pages) | depth limit, per-host page budget, URL length/pattern limits |
-| Slow hosts | per-host queues so one slow host does not block the rest |
-| Fetch failures | retry limit with backoff; record the error |
-| Large pages | size limit, content-type filter |
-| robots.txt | fetch once per host, cache with an expiry, honour `Crawl-delay` |
-| Duplicate content | content fingerprint (hash or simhash) to skip near-duplicates |
+| Loops in the links | the visited set stops the repeats |
+| One page under many URLs (`/a`, `/a/`, `/a#x`, `?utm=...`) | clean the URL before the visited check. Support the canonical `<link rel=canonical>` |
+| Redirect loops | follow at most N redirects. Record the final URL |
+| Spider traps (a calendar with endless pages) | a depth limit, a page limit for each host, limits on URL length and patterns |
+| Slow websites | a queue for each host, so one slow host does not block the others |
+| Fetch failures | a retry limit with waiting time. Record the error |
+| Huge pages | a size limit and a content-type filter |
+| robots.txt | fetch it once for each host, keep it for a while, and follow `Crawl-delay` |
+| The same content on different pages | a fingerprint of the content (hash or simhash) to skip near-duplicates |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Prioritise important pages" | a priority frontier (page rank estimate, freshness, depth) instead of FIFO |
-| "Recrawl for freshness" | schedule revisits by change frequency (the cron/scheduler lessons) |
-| "Store at scale" | a `PageStore` writing to an object store and a link graph database |
-| "Memory for billions of URLs" | a Bloom filter for the visited set (rare false positives skip a few pages), persisted frontier on disk |
-| "Distributed crawler" | partition URLs by **host hash** across machines so politeness stays local; workers exchange discovered URLs through a message queue; coordination via a shared frontier service |
-| "Respect `nofollow`, sitemaps" | extractor and seed sources as strategies |
-| "JavaScript-heavy sites" | a headless-browser fetcher behind the same `Fetcher` interface |
-| "Monitoring" | counters: pages/second, queue depth, errors by host |
+| "Visit the important pages first" | a priority frontier (a page-rank estimate, freshness, depth) instead of first-in-first-out |
+| "Visit again to stay fresh" | schedule revisits by how often a page changes (the cron and scheduler lessons) |
+| "Store at a big scale" | a `PageStore` that writes to an object store and a link graph database |
+| "Memory for billions of URLs" | a Bloom filter for the visited set (a rare false yes skips a few pages), and a frontier saved on disk |
+| "A crawler on many machines" | split URLs by a **hash of the host** over the machines, so politeness stays in one place. Workers pass new URLs through a message queue. A shared frontier service coordinates |
+| "Follow `nofollow`, sitemaps" | the extractor and the seed sources are strategies |
+| "Pages that need JavaScript" | a headless-browser fetcher behind the same `Fetcher` interface |
+| "Watching it" | counters: pages per second, queue size, errors for each host |
+
+## Short answer to say in an interview
+
+:::interview How does a web crawler know when it is finished?
+"The queue being empty is not enough, because a worker that is still working on a page may be about to add new links. So I keep a pending counter that counts URLs in the queue plus URLs being processed. A worker adds one when it queues a URL, and subtracts one after it finishes a URL, and only after it has queued that page's links. When pending reaches zero, the crawl is finished, and the waiting workers are woken up to leave. The visited set is updated in the same locked step as adding to the queue, so no page is queued twice."
+:::
 
 ```quiz
 ? Why is "queue empty" not enough to end the crawl?
 - Queues are never empty
-+ A worker still processing a page may be about to enqueue new links; the crawl ends only when queued + in-flight work is zero
++ A worker still working on a page may be about to add new links. The crawl ends only when queued plus in-progress work is zero
 - It is enough
-> The pending counter covers both queued and in-flight URLs.
-? Why partition a distributed crawler by host?
+> The pending counter covers both queued and in-progress URLs.
+? Why split a crawler on many machines by host?
 - Hosts are random
-+ All requests to one host then come from one machine, which keeps politeness and robots handling simple
++ All requests to one host then come from one machine, so politeness and robots rules stay simple
 - To balance by URL length
-> Host-level rate limits must be enforced in one place.
+> Rate limits for a host must be kept in one place.
 ```
 
 :::keypoints
-- Frontier (BFS queue + atomic visited set), normalisation, depth limit, robots and politeness gates, pluggable fetch/extract/store.
-- Termination = queued + in-flight == 0; push links before marking a URL done.
-- Scale by partitioning hosts across crawlers, priority frontiers, Bloom filters and content fingerprints.
+- A frontier (a BFS queue and an atomic visited set), URL cleaning, a depth limit, robots and politeness gates, and swappable fetch, extract and store parts.
+- Stop when queued plus in-progress equals 0. Add a page's links before marking its URL done.
+- To scale: split hosts over crawlers, use priority frontiers, Bloom filters and content fingerprints.
 :::

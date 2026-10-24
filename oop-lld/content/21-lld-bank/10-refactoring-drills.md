@@ -2,13 +2,18 @@
 title: "LLD interview: refactoring drills"
 level: hard
 time: 40
-summary: Six hands-on refactorings with before and after code that give the same output (switch to polymorphism, constructor telescoping to builder, hard-coded dependency to injection, nested ifs to strategy, state flags to State, long method to small functions), and the smells interviewers ask you to spot.
+summary: Six hands-on refactorings with before and after code that give the same output (switch to classes, long constructor to builder, creating a helper inside to passing it in, if-chains to Strategy, flags to State, long method to small functions), and the smells interviewers ask you to spot.
 ---
 
-A common interview variant: "here is some code, improve the design". Each drill shows the smell, the target design and runnable code proving the behaviour is unchanged.
+A common interview question: "here is some code, how would you improve the design?". Each drill shows the **smell** (the sign of a problem), the **fix**, and running code that proves the behaviour did not change.
+
+Refactoring means changing the structure of code **without changing what it does**.
 
 :::qa Drill 1: replace a type-code `switch` with polymorphism {level=medium}
-**Smell:** every new shape edits the `switch` (violates OCP).
+**Smell:** every new shape means editing the `switch` (this breaks the Open/Closed rule).
+
+**Fix:** give each shape its own class with its own `area()`.
+
 ```cpp run title="Before and after"
 #include <iostream>
 #include <memory>
@@ -43,7 +48,10 @@ int main() {
 :::
 
 :::qa Drill 2: replace a telescoping constructor with a builder {level=medium}
-**Smell:** `Pizza(size, cheese, pepperoni, mushrooms, olives, ...)` with many booleans in a fixed order.
+**Smell:** `Pizza(size, cheese, pepperoni, mushrooms, olives, ...)` with many booleans in a fixed order. Nobody can read the call.
+
+**Fix:** a builder with named steps.
+
 ```cpp run title="Builder"
 #include <iostream>
 #include <string>
@@ -78,11 +86,14 @@ int main() {
     try { Pizza::Builder b; for (int i = 0; i < 6; ++i) b.topping("t"); b.build(); } catch (const exception& e) { cout << "error: " << e.what() << "\n"; }
 }
 ```
-**Result:** named, order-free arguments, sensible defaults and validation before the object exists.
+**Result:** named arguments in any order, good defaults, and a check before the object exists.
 :::
 
 :::qa Drill 3: replace a hard-coded dependency with injection {level=medium}
 **Smell:** `OrderService` creates a `SmtpMailer` itself, so tests send real emails.
+
+**Fix:** pass a `Mailer` interface in through the constructor.
+
 ```cpp run title="Dependency injection"
 #include <iostream>
 #include <memory>
@@ -107,11 +118,14 @@ int main() {
     cout << "test captured " << fake.sent.size() << " message: " << fake.sent[0] << "\n";
 }
 ```
-**Result:** production uses SMTP; tests inject a fake and assert on what was sent.
+**Result:** production uses SMTP. Tests pass a fake and check what was sent.
 :::
 
 :::qa Drill 4: replace nested `if` rules with a Strategy {level=medium}
 **Smell:** a pricing function with nested ifs for each customer type and season.
+
+**Fix:** keep each rule as a small function or class in a map.
+
 ```cpp run title="Strategy replaces if-chains"
 #include <functional>
 #include <iostream>
@@ -144,11 +158,14 @@ int main() {
         cout << t << ": before=" << priceBefore(t, 1000) << " after=" << p.price(t, 1000) << "\n";
 }
 ```
-**Result:** student and senior match; `festival` exists only in the new design.
+**Result:** student and senior give the same answers. `festival` exists only in the new design, and it was added without editing old code.
 :::
 
 :::qa Drill 5: replace state flags with the State pattern {level=hard}
-**Smell:** booleans like `isPaid`, `isShipped`, `isCancelled` checked in every method; impossible combinations are possible.
+**Smell:** booleans like `isPaid`, `isShipped`, `isCancelled` checked in every method. Impossible combinations can happen.
+
+**Fix:** one class for each state. The state itself decides what each action does.
+
 ```cpp run title="State instead of flags"
 #include <iostream>
 #include <memory>
@@ -196,11 +213,14 @@ int main() {
     o.cancel();                    // illegal: already shipped
 }
 ```
-**Result:** illegal transitions are rejected by the state itself, and no flag combination can be inconsistent.
+**Result:** wrong actions are refused by the state itself, and no mixed-up flag combination can exist.
 :::
 
 :::qa Drill 6: split a long method (Extract Method) {level=easy}
-**Smell:** one 80-line `process()` mixing validation, calculation and printing.
+**Smell:** one 80-line `process()` mixing checking, calculating and printing.
+
+**Fix:** small functions, each with a name that says what it does.
+
 ```cpp run title="Long method to small functions"
 #include <iostream>
 #include <string>
@@ -228,46 +248,54 @@ int main() {
     cout << "total = " << total << "\n";
 }
 ```
-**Result:** each function is testable on its own and `checkout` reads like the requirement.
+**Result:** each function can be tested alone, and `checkout` reads like the requirement.
 :::
 
 :::qa Which code smells should you spot in a review, and what is the usual fix? {level=medium}
+**Say this:** "I name the smell and the fix: long method, extract method. God class, split by job. Switch on type, use classes. Long parameter list, use an object."
+
 | Smell | Fix |
 |---|---|
 | Long method | Extract Method |
-| Large class (God class) | Extract Class; split by responsibility |
-| Switch on type | Polymorphism / Strategy |
-| Long parameter list | Parameter object / Builder |
-| Duplicated code | Extract function or class (only for real shared knowledge) |
-| Feature envy | Move Method to the class whose data it uses |
-| Data clumps (always together) | Introduce a value object (`Address`, `DateRange`) |
-| Primitive obsession | Strong types (`Money`, `UserId`) |
-| Shotgun surgery | Group the changing code into one module |
-| Global mutable state | Pass dependencies in; make state local |
+| Large class (God class) | split it into classes, one for each job |
+| Switch on type | polymorphism or Strategy |
+| Long list of parameters | a parameter object or Builder |
+| Duplicate code | extract a function or class (only if it is the same idea) |
+| Feature envy (uses another class's data too much) | move the method to that class |
+| Data that always travels together | make it a small class (`Address`, `DateRange`) |
+| Strings and ints instead of real types | small types (`Money`, `UserId`) |
+| One change touches many classes | group the code that changes together |
+| Global changing state | pass dependencies in |
 :::
 
 :::qa How do you refactor safely? {level=medium}
-Have tests first (characterisation tests if none), change in **small steps** that keep the program working, run the tests after each step, commit often, and do not mix refactoring with adding features in one change.
+**Say this:** "Have tests first, make small steps, run the tests after each step, and never mix refactoring with new features."
+
+**In simple words:** If there are no tests, write a few that show what the code does now. Commit often so you can go back.
 :::
 
 :::qa What is "Replace inheritance with delegation"? {level=hard}
-When a subclass uses only part of its base or breaks the contract, make the base a **member** and forward only the needed calls. `Stack` should hold a `vector`, not inherit from it (inheriting exposes `insert` in the middle).
+**Say this:** "Instead of inheriting from a class, hold it as a member and pass on only the calls I want."
+
+**In simple words:** A `Stack` should hold a `vector`, not inherit from it. If it inherits, outsiders can also call `insert` in the middle, which a stack should not allow.
 :::
 
 :::qa What is the difference between refactoring and rewriting? {level=easy}
-Refactoring changes structure without changing behaviour, in small verified steps. A rewrite replaces the code wholesale and often loses hidden behaviour. Prefer refactoring unless the design is unsalvageable.
+**Say this:** "Refactoring changes the structure in small safe steps and keeps the behaviour. A rewrite replaces everything and may lose hidden behaviour."
+
+**In simple words:** Prefer refactoring, unless the design is beyond saving.
 :::
 
 ```quiz
-? Which refactoring removes a `switch (type)` that grows with every new type?
+? Which refactoring removes a switch (type) that grows with every new type?
 - Extract Method
-+ Replace conditional with polymorphism
++ Replace the condition with polymorphism
 - Inline Variable
-> Each type implements the behaviour in its own class.
+> Each type puts its behaviour in its own class.
 ```
 
 :::keypoints
-- Name the smell, name the refactoring, prove behaviour is unchanged.
-- Switch→polymorphism, telescoping→builder, new→injection, if-chain→strategy, flags→State, long method→extract.
+- Name the smell, name the fix, and show the behaviour did not change.
+- Switch to classes, long constructor to builder, creating inside to injection, if-chain to strategy, flags to State, long method to small functions.
 - Small steps with tests.
 :::

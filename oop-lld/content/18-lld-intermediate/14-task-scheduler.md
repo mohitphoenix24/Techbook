@@ -2,31 +2,31 @@
 title: Design a Task Scheduler
 level: intermediate
 time: 60
-summary: Scheduling tasks to run immediately, after a delay, at a time, or repeatedly, with priorities, cancellation and a worker pool; a timer priority queue driven by a clock, a tick-based deterministic simulation, and the Command pattern at the core.
+summary: Run tasks now, after a delay, at a set time, or again and again. Learn priorities, cancelling, a pool of workers, a priority queue of timers driven by a clock, a step-by-step simulation for tests, and the Command pattern at the centre.
 ---
 
 :::problem Design a Task Scheduler {level=medium tags="Command,priority queue,timers,concurrency,scheduling,cron-like"}
-Design an in-process task scheduler like `ScheduledExecutorService` or a tiny cron. Clients submit tasks to run **once at a time**, **after a delay**, or **repeatedly at a fixed rate**. Tasks have priorities and can be cancelled. A pool of workers executes due tasks. The design must not busy-wait and must be testable without real time.
+Design an in-program task scheduler like `ScheduledExecutorService` or a tiny cron. Clients submit tasks to run **once at a time**, **after a delay**, or **again and again at a fixed rate**. Tasks have priorities and can be cancelled. A pool of workers runs the tasks that are due. The design must not busy-wait, and it must be testable without real time.
 :::
 
 :::hint Hint
-A scheduled task is a **Command** with a due time. Keep tasks in a **priority queue ordered by due time** (then priority). One scheduler loop waits until the earliest task is due; due tasks are handed to a worker pool. Inject the **clock** and let tests advance time manually.
+A scheduled task is a **Command** with a due time. Keep tasks in a **priority queue ordered by due time** (then by priority). One scheduler loop waits until the earliest task is due, and gives the due tasks to a worker pool. Pass in the **clock**, and let tests move time forward by hand.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Task kinds? | one-shot at time T, one-shot after delay D, recurring every P (fixed rate) |
-| Priority? | when several tasks are due at the same time, higher priority runs first |
-| Cancel? | `cancel(id)` stops a task (and its future repeats) |
-| Execution? | a worker pool; a slow task must not block the timer |
-| Failures? | an exception in a task is caught and logged; recurring tasks continue |
-| Time? | injectable clock; production uses a real sleep until the next due time |
-| Concurrency? | submit/cancel from any thread |
-| Out of scope | persistence, cron expressions (extension), distributed scheduling |
+| Kinds of task? | once at time T, once after a delay D, or again every P (fixed rate) |
+| Priority? | when several tasks are due at the same time, the higher priority runs first |
+| Cancel? | `cancel(id)` stops a task (and its later repeats) |
+| Running? | a pool of workers. A slow task must not block the timer |
+| Failures? | an error in a task is caught and logged. Repeating tasks go on |
+| Time? | a clock that we pass in. Real use sleeps until the next due time |
+| Many threads? | submit and cancel from any thread |
+| Not needed | saving to disk, cron expressions (an extension), scheduling across machines |
 
-## Step 2: how time is handled
+## Step 2: How time is handled
 
 ```viz algo=seq title="The scheduler loop"
 participant c Client [user]
@@ -41,7 +41,7 @@ s ->> p : submit(task) | Workers run tasks outside the scheduler lock.
 s -> q : if recurring: push(Entry{due += period})
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Task scheduler"
 class Scheduler
@@ -74,17 +74,17 @@ Entry --> Task
 FunctionTask ..|> Task
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Task = Command** (`run()`), wrapped in an **Entry** with due time, priority, period and a cancelled flag.
-- **`priority_queue` ordered by `(due asc, priority desc, id asc)`**. The id makes ordering total and FIFO among equals.
-- **Cancellation by a shared flag** (`shared_ptr<atomic<bool>>`) rather than removing from the heap (heaps do not support arbitrary removal): cancelled entries are skipped when popped (lazy deletion).
-- **Fixed rate** reschedules `due += period` (not `now + period`) so drift does not accumulate; if the scheduler fell far behind it skips missed runs (policy).
-- **Separate the timer from execution**: the scheduler thread only moves entries to the pool; tasks run on workers.
-- **The testable core is `runDue(now)`**: it takes the time and returns which tasks ran. The real scheduler thread is a thin loop calling it after waiting. In the demo we drive `runDue` with a manual clock, so the output is deterministic.
-- **Wake-up**: scheduling a task earlier than the current earliest must wake the loop (condition variable notify).
+- **A task is a Command** (`run()`), wrapped in an **Entry** with a due time, priority, period and a cancelled flag.
+- **A `priority_queue` ordered by `(due time first, priority high first, id small first)`.** The id makes the order exact, and first-come-first-served among equals.
+- **Cancel with a shared flag** (`shared_ptr<atomic<bool>>`), not by removing from the heap (a heap cannot remove from the middle). Cancelled entries are skipped when they reach the top (lazy deletion).
+- **Fixed rate** sets the next time as `due += period` (not `now + period`), so small delays do not build up. If the scheduler falls far behind, it skips the missed runs (a policy).
+- **The timer and the running are separate.** The scheduler thread only hands entries to the pool. The tasks run on workers.
+- **The part we test is `runDue(now)`.** It takes the time and returns which tasks ran. The real scheduler thread is a thin loop that waits and then calls it. In the demo, we drive `runDue` with a hand-moved clock, so the output is the same every time.
+- **Waking up:** if a task is scheduled earlier than the current earliest, the loop must wake up (a condition variable notify).
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Timer queue, priorities, recurring tasks, cancellation"
 #include <atomic>
@@ -202,7 +202,7 @@ int main() {
 }
 ```
 
-## The real-time loop (production shape)
+## The real-time loop (how it looks in real use)
 
 ```text
 loop:
@@ -213,48 +213,54 @@ loop:
     else:                                 pop due entries, schedule recurrences, unlock, submit to the pool
 ```
 
-`wait_until` with the earliest due time is the key: **no polling**, and `schedule*` calls `cv.notify_one()` so an earlier task wakes the loop to re-evaluate its sleep.
+`wait_until` with the earliest due time is the key. There is **no polling**. And `schedule*` calls `cv.notify_one()`, so a task that is due earlier wakes the loop so it can sleep for a shorter time.
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Two tasks at the same time | priority, then submission order (the id) |
-| Task takes longer than its period | with fixed rate, runs may overlap (a policy: skip, queue, or serialise per task) |
-| Scheduler falls far behind | skip missed runs or catch up (policy); do not run 1,000 times at once |
-| Cancel a task that is running | cancels future runs; the current run finishes (cooperative cancellation via a `stop_token` for long tasks) |
-| Exception in a task | caught and logged; recurring tasks stay scheduled |
-| Clock jumps (NTP) | use a monotonic clock for delays; wall clock only for "at 9:00" tasks |
-| Shutdown | stop the loop, finish running tasks, optionally run or discard pending ones |
+| Two tasks at the same time | by priority, then by the order they were submitted (the id) |
+| A task takes longer than its period | with a fixed rate, runs may overlap (a policy: skip, queue, or one at a time for each task) |
+| The scheduler falls far behind | skip the missed runs, or catch up (a policy). Do not run 1,000 times at once |
+| Cancelling a task that is running | future runs stop. The current run finishes (for long tasks, use a `stop_token` to ask politely) |
+| An error in a task | caught and logged. Repeating tasks stay scheduled |
+| The clock jumps (NTP) | use a steady clock for delays. Use the wall clock only for "at 9:00" tasks |
+| Shutdown | stop the loop, let running tasks finish, and run or drop the waiting ones |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Cron expressions (`0 9 * * MON`)" | a `Schedule` interface with `nextAfter(time)`; a `CronSchedule` and `FixedRate` implement it (Strategy) |
-| "Dependencies between tasks (B after A)" | a DAG executor on top (see the workflow engine problem) |
-| "Retries with backoff" | a decorator task that reschedules itself on failure |
-| "Persistence across restarts" | store schedules durably; reload at start |
-| "Distributed scheduling, exactly one runner" | a leader election or a lock service; jobs claimed with leases |
-| "Fairness and quotas per tenant" | per-tenant queues with weighted dequeuing |
-| "Observability" | metrics for lateness (start time minus due time), queue depth |
+| "Cron expressions (`0 9 * * MON`)" | a `Schedule` interface with `nextAfter(time)`. `CronSchedule` and `FixedRate` follow it (Strategy) |
+| "Tasks that depend on each other (B after A)" | a DAG runner on top (see the workflow engine problem) |
+| "Retry with waiting time" | a decorator task that schedules itself again on failure |
+| "Keep schedules after a restart" | save them safely and load at start |
+| "Many machines, exactly one runs it" | pick a leader, or use a lock service. Jobs are claimed with a lease |
+| "Fairness and quotas for each customer" | a queue for each customer, taken in turns with weights |
+| "Watching it" | measure lateness (start time minus due time) and queue size |
 | "Use C++ time types" | `std::chrono::steady_clock::time_point` for due times |
 
+## Short answer to say in an interview
+
+:::interview How do you design a task scheduler without busy-waiting?
+"Each task is a Command with a due time, kept in a priority queue ordered by due time, then priority, then id. One scheduler thread waits on a condition variable until the earliest due time, using wait_until, so it does not poll. When tasks are due, it hands them to a worker pool. Scheduling an earlier task notifies the condition variable to wake the loop. Repeating tasks are rescheduled at due plus period. Cancel is a shared flag that is checked when the entry reaches the top. I pass the clock in, so tests move time by hand."
+:::
+
 ```quiz
-? Why store tasks in a priority queue ordered by due time?
+? Why keep tasks in a priority queue ordered by due time?
 - To sort alphabetically
 + The earliest task is always on top, so the scheduler knows exactly how long to sleep
 - Heaps are thread-safe
-> It avoids scanning all tasks and avoids busy waiting.
-? How can you cancel a task in a heap that does not support removal?
+> It avoids scanning every task and avoids busy waiting.
+? How can you cancel a task in a heap that cannot remove from the middle?
 - Rebuild the heap
 + Mark it cancelled and skip it when it reaches the top (lazy deletion)
 - You cannot
-> A shared flag is checked at pop time.
+> A shared flag is checked when the entry is taken out.
 ```
 
 :::keypoints
-- Task = Command; Entry = task + due time + priority + period + cancel flag; a heap ordered by due time.
-- A loop waits until the earliest due time (condition variable with a deadline), runs due tasks on workers, reschedules recurrences at `due + period`.
-- Lazy cancellation, an injectable clock and a testable `runDue(now)` core. Cron expressions are a `Schedule` strategy.
+- A task is a Command. An Entry = task + due time + priority + period + cancel flag. A heap ordered by due time.
+- A loop waits until the earliest due time (a condition variable with a deadline), runs due tasks on workers, and sets repeats at `due + period`.
+- Lazy cancel, a clock passed in, and a testable `runDue(now)`. Cron expressions are a `Schedule` strategy.
 :::

@@ -2,12 +2,12 @@
 title: Mutexes, lock types and deadlock
 level: intermediate
 time: 40
-summary: lock_guard, unique_lock and scoped_lock, protecting a class's invariant, the deadlock in a two-account transfer and how scoped_lock and lock ordering fix it, readers-writer locks, recursive and timed mutexes, and how big a critical section should be.
+summary: How to make a class thread-safe with a mutex, the different lock types and when to use each, what a deadlock is with the two-account transfer example, how to prevent it, reader-writer locks, and how big a locked section should be.
 ---
 
-## Make a class thread-safe with an internal mutex
+## Make a class thread-safe with its own mutex
 
-The standard approach: the class owns a `mutex` and locks it in every public method that touches shared state.
+The usual way: the class **owns a mutex** and **locks it** in every public method that touches shared data.
 
 ```cpp run title="A thread-safe bank account"
 #include <iostream>
@@ -40,20 +40,24 @@ int main() {
 }
 ```
 
-:::warn Check-then-act must be one critical section
-`if (acc.balance() >= x) acc.withdraw(x);` with two separate locked calls is **still a race**: the balance can change between them (TOCTOU: time of check to time of use). Make the whole decision one method (`withdraw` above) so the check and the action share one lock.
+:::warn Check and act must be one locked step
+Look at this: `if (acc.balance() >= x) acc.withdraw(x);` If each call locks separately, it is **still a race**. The balance can change **between** the check and the withdrawal. This bug has a name: TOCTOU (time of check, time of use).
+
+The fix: make the whole decision **one method** (like `withdraw` above), so the check and the action happen under **one lock**.
 :::
 
 ## The lock types
 
-| Type | Use |
+You do not need to remember them all at once. Start with the first row.
+
+| Type | When to use it |
 |---|---|
-| `lock_guard<mutex>` | simplest RAII lock for a whole scope |
-| `unique_lock<mutex>` | flexible: unlock early, relock, try-lock, deferred lock, needed by condition variables |
-| `scoped_lock(m1, m2, ...)` (C++17) | locks **several** mutexes at once, deadlock-free |
-| `shared_lock<shared_mutex>` | many readers at once |
-| `recursive_mutex` | the same thread may lock it again (a smell: avoid) |
-| `timed_mutex` | `try_lock_for(100ms)` |
+| `lock_guard<mutex>` | the simplest one. It locks for the whole block |
+| `unique_lock<mutex>` | more flexible: unlock early, lock again, try to lock. Needed for condition variables |
+| `scoped_lock(m1, m2, ...)` (C++17) | locks **several** mutexes together, safely avoiding deadlock |
+| `shared_lock<shared_mutex>` | many readers at the same time |
+| `recursive_mutex` | the same thread may lock it again (usually a warning sign, avoid) |
+| `timed_mutex` | give up after some time: `try_lock_for(100ms)` |
 
 ```cpp run title="unique_lock: unlock early, relock later"
 #include <iostream>
@@ -83,11 +87,17 @@ int main() {
 
 ## Deadlock
 
+Don't memorise the definition yet. Think of it like this:
+
+> "Two people stand face to face in a narrow corridor. Each waits for the other to move. Nobody moves. They wait forever."
+
 :::def Deadlock
-Two or more threads each hold a lock the other needs, and **wait forever**. The four conditions: mutual exclusion, hold and wait, no pre-emption, **circular wait**. Break any one to prevent deadlock.
+Two or more threads each **hold a lock that the other needs**, and they **wait forever**.
 :::
 
-The textbook case: transferring money between two accounts, each with its own mutex.
+For a deadlock to happen, four things must be true together: only one thread can hold the lock, threads hold one lock while waiting for another, locks cannot be taken away, and there is a **circle of waiting**. If you break any one of these, deadlock cannot happen.
+
+The classic example: moving money between two accounts, where each account has its own mutex.
 
 ```cpp title="Display only: this can deadlock"
 void transfer(Account& from, Account& to, long x) {
@@ -103,9 +113,11 @@ Thread 1: holds A ──wants──► B
 Thread 2: holds B ──wants──► A        a cycle: nobody can proceed
 ```
 
-### Fix 1: std::scoped_lock (lock all at once)
+Thread 1 holds A and wants B. Thread 2 holds B and wants A. Both wait forever.
 
-`scoped_lock` acquires several mutexes using a deadlock-avoidance algorithm.
+### Fix 1: `std::scoped_lock` (take both locks together)
+
+`scoped_lock` takes several mutexes at once, using a method that avoids deadlock.
 
 ```cpp run title="transfer() with scoped_lock: safe in both directions"
 #include <iostream>
@@ -141,9 +153,9 @@ int main() {
 }
 ```
 
-### Fix 2: a global lock order
+### Fix 2: always lock in the same order
 
-If you must lock one at a time, always lock in the **same global order**, for example by account id or by address:
+If you must lock one at a time, **always lock in the same order**, for example by account id.
 
 ```cpp run title="Lock ordering by id"
 #include <iostream>
@@ -168,17 +180,17 @@ int main() {
 }
 ```
 
-### Other deadlock rules
+### Other rules to avoid deadlock
 
-- **Never call unknown code while holding a lock** (callbacks, virtual functions, observers). It may try to take another lock.
-- **Hold locks for as short a time as possible.**
-- Prefer **one mutex per data structure**, not a tangle of locks.
-- Use **`try_lock` or timeouts** to detect and recover.
-- Do not lock the **same non-recursive mutex twice** in one thread (undefined behaviour or deadlock).
+- **Never call unknown code while holding a lock** (callbacks, virtual functions, observers). That code might take another lock.
+- **Hold locks for a short time.**
+- Prefer **one mutex per data structure**, not many tangled locks.
+- Use **`try_lock` or a time limit** to detect problems and recover.
+- Do not lock the **same ordinary mutex twice** in one thread. It deadlocks or is undefined.
 
-## Readers-writer locks
+## Reader-writer locks
 
-If data is read often and written rarely, allow **many readers at once** and **one exclusive writer**.
+If data is **read often and changed rarely**, let **many readers** in together, and let **one writer** in alone.
 
 ```cpp run title="shared_mutex: concurrent reads, exclusive writes"
 #include <iostream>
@@ -216,15 +228,15 @@ int main() {
 }
 ```
 
-## Granularity: how big should a critical section be?
+## How big should the locked part be?
 
-| Style | Pros | Cons |
+| Style | Good | Not so good |
 |---|---|---|
-| **Coarse** (one lock for the whole structure) | simple, hard to get wrong | threads queue up; low parallelism |
-| **Fine** (a lock per bucket/node) | more parallelism | complex; deadlock risk; more overhead |
-| **Lock-free** (atomics) | no blocking | very hard to get right |
+| **Coarse** (one lock for the whole structure) | simple, hard to get wrong | threads queue up, less parallel work |
+| **Fine** (a lock for each bucket or node) | more parallel work | complex, risk of deadlock, more overhead |
+| **Lock-free** (atomics only) | no waiting | very hard to get right |
 
-Start coarse. Make it finer only when you measure contention. A concurrent hash map with **one lock per bucket** (striping) is a common compromise.
+Start with **coarse**. Make it finer only when you **measure** that threads are waiting too much. A common middle path is a hash map with **one lock per bucket** (called lock striping).
 
 ```cpp run title="Lock striping: 8 buckets, 8 locks"
 #include <functional>
@@ -261,30 +273,32 @@ int main() {
 }
 ```
 
-:::interview How do you avoid deadlock in a transfer between two accounts?
-"Deadlock needs a circular wait. I break it by acquiring both locks atomically with `std::scoped_lock(a.m, b.m)`, which uses a deadlock-avoidance algorithm, or by always locking in a fixed global order such as by account id. I also handle the self-transfer case, keep critical sections short, and never call unknown code while holding a lock."
+## Short answer to say in an interview
+
+:::interview How do you avoid deadlock when transferring money between two accounts?
+"A deadlock needs a circle of waiting. I break it by taking both locks together with std::scoped_lock on both mutexes, which avoids deadlock, or by always locking in a fixed order such as by account id. I also handle a transfer to the same account, keep the locked part short, and never call unknown code while holding a lock."
 :::
 
 ```quiz
 ? What is TOCTOU?
-- A kind of mutex
-+ A race where a condition checked earlier is no longer true when acted upon
+- A type of mutex
++ A bug where something checked earlier is no longer true when you act on it
 - A deadlock
-> Make the check and the action one atomic step under a single lock.
-? Which lock type acquires multiple mutexes without deadlock?
+> Make the check and the action one step under one lock.
+? Which lock type takes several mutexes without deadlock?
 - lock_guard
 + scoped_lock
 - recursive_mutex
-> It uses a deadlock-avoidance algorithm for all the mutexes given.
+> It uses a method that avoids deadlock for all the mutexes you give it.
 ? When is shared_mutex useful?
-- Writes dominate
-+ Reads dominate and writes are rare
-- Single thread
-> Many readers can proceed together; a writer is exclusive.
+- When there are mostly writes
++ When there are many reads and few writes
+- With a single thread
+> Many readers can go together. A writer goes alone.
 ```
 
 :::keypoints
-- Protect invariants with an internal mutex taken via RAII (`lock_guard`, `scoped_lock`). Make check-then-act one critical section.
-- Deadlock = circular wait. Prevent with `scoped_lock`, a fixed lock order, short critical sections, and no callbacks under a lock.
-- `shared_mutex` for read-mostly data; lock striping for scalable maps. Start coarse, refine only when measured.
+- Protect a class's rules with its own mutex, taken with RAII (`lock_guard`, `scoped_lock`). Make check and act one locked step.
+- Deadlock is a circle of waiting. Prevent it with `scoped_lock`, a fixed lock order, short locked parts, and no callbacks under a lock.
+- Use `shared_mutex` for read-heavy data, and lock striping for big maps. Start coarse and refine only when measured.
 :::

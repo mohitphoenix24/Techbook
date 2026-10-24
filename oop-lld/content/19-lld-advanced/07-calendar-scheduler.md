@@ -2,38 +2,38 @@
 title: Design a Calendar and Meeting Scheduler
 level: advanced
 time: 70
-summary: Events with time ranges, conflict detection with an ordered structure, recurring events expanded lazily, attendees and rooms, finding common free slots across several calendars by merging busy intervals, reminders, and the interval algorithms behind it all.
+summary: Events with time ranges, finding clashes quickly, events that repeat, attendees and rooms, finding free time that suits several people by merging busy times, reminders, and the simple interval ideas behind it all.
 ---
 
 :::problem Design a Calendar and Meeting Scheduler {level=hard tags="intervals,algorithms,recurrence,Strategy,Observer,booking"}
-Design a calendar like Google Calendar. Users create events (one-off or recurring), invite attendees, and book meeting rooms. The system must detect conflicts, show a user's events in a date range (expanding recurring events), suggest **free time slots** that work for several people, and send reminders. Keep it extensible: new recurrence rules, working hours, room constraints.
+Design a calendar like Google Calendar. Users create events (one time or repeating), invite people, and book meeting rooms. The system must find clashes, show a user's events in a date range (including repeating ones), suggest **free time slots** that work for several people, and send reminders. Keep it easy to extend: new repeat rules, working hours, room rules.
 :::
 
 :::hint Hint
-Almost everything is **interval arithmetic**. Use half-open ranges `[start, end)`, keep each calendar's events **sorted by start**, find overlaps with a binary search, and find common free time by **merging busy intervals** then scanning the gaps. Recurrence is a **rule that generates occurrences on demand**; never store thousands of copies.
+Almost everything here is **work with time ranges**. Use ranges that include the start but not the end, `[start, end)`. Keep each calendar's events **sorted by start**. Find clashes with a binary search. Find common free time by **merging busy ranges** and then looking at the gaps. A repeating event is a **rule that makes occurrences when asked**. Never store thousands of copies.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Time? | minutes since a reference midnight (integers); timezones are a presentation layer (store UTC) |
-| Events? | title, time range, organiser, attendees, optional room, optional recurrence |
-| Conflicts? | a user cannot accept two overlapping events (warn or refuse, by policy); a room cannot host two overlapping events |
-| Recurrence? | daily, weekly (on weekdays), with an end date or a count; exceptions (cancel one occurrence) |
-| Queries? | `eventsBetween(user, from, to)` including expanded occurrences |
-| Find a slot? | given attendees, a duration and a window, return the earliest common free slot(s) within working hours |
-| Reminders? | N minutes before start (Observer) |
-| Concurrency? | per-calendar locks; booking a room is check-and-insert atomically |
-| Out of scope | time zones, RSVP workflows, external calendars (iCal), notifications delivery |
+| Time? | minutes from a fixed midnight (integers). Time zones are only for showing times (store UTC) |
+| Events? | title, time range, organiser, attendees, an optional room, an optional repeat rule |
+| Clashes? | a user cannot accept two events that overlap (warn or refuse, by policy). A room cannot have two overlapping events |
+| Repeating? | daily, weekly (on chosen weekdays), with an end date or a count. Exceptions (cancel one occurrence) |
+| Questions to answer? | `eventsBetween(user, from, to)` including the repeats |
+| Find a slot? | for some attendees, a length of time and a window, give the earliest free slot (or slots) that suits all of them, inside working hours |
+| Reminders? | N minutes before the start (Observer) |
+| Many threads? | a lock for each calendar. Booking a room checks and saves in one step |
+| Not needed | time zones, RSVP steps, outside calendars (iCal), how messages are sent |
 
-## Step 2: the key interval algorithms
+## Step 2: The key ideas about time ranges
 
-**Overlap**: `a.start < b.end && b.start < a.end`.
+**Overlap test**: `a.start < b.end && b.start < a.end`.
 
-**Conflict check in a sorted list**: with events sorted by start and non-overlapping, find the first event with `start >= new.end` (binary search); only its **predecessor** can overlap the new event. O(log n).
+**Finding a clash in a sorted list.** If events are sorted by start and do not overlap, find the first event whose `start >= new.end` using a binary search. Only the event **just before it** can overlap the new event. This is O(log n).
 
-**Common free slots** for several people:
+**Finding common free time** for several people:
 
 ```text
 person A busy: [9,11) [13,14)
@@ -43,7 +43,7 @@ person B busy: [10,12) [15,16)
 3) keep gaps with length >= desired duration
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Calendar"
 class CalendarService
@@ -85,17 +85,17 @@ WeeklyRule ..|> RecurrenceRule
 CalendarService o-- ReminderListener
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **`TimeRange`** value type (half-open) with `overlaps`, as in the toolkit.
-- **Per-user calendar** keeps events in a `std::map<start, Event>` (ordered): neighbour lookups are O(log n). Recurring events are stored once, with their rule.
-- **Recurrence as a Strategy** (`RecurrenceRule::occurrences(first, window)`): returns the occurrence ranges that intersect a query window. `DailyRule(every N days, until)`, `WeeklyRule(weekdays, until)`. New rules (monthly, "second Tuesday") are new classes. **Exceptions** are a set of cancelled occurrence starts on the event.
-- **Conflict checking for a recurring event** expands its occurrences within a horizon (say 1 year) and checks each against the calendar. Cheaper alternatives: store recurring events separately and test rule-vs-rule.
-- **Atomic booking with multiple calendars**: lock all attendee calendars and the room in a **fixed order** (by id) with `scoped_lock`, check every calendar for conflicts, then insert everywhere; otherwise insert nowhere.
-- **Free-slot search**: collect each attendee's busy intervals in the window (expanding recurrences), merge, take the gaps inside **working hours**, filter by duration.
-- **Reminders**: a scheduler (see the task scheduler lesson) triggers `onReminder` at `start - N`.
+- **`TimeRange`** is a small value (it includes the start, not the end) with `overlaps`, like in the toolkit.
+- **Each user's calendar** keeps events in a `std::map<start, Event>` (ordered), so finding neighbours is O(log n). A repeating event is stored once, with its rule.
+- **Repeating is a Strategy** (`RecurrenceRule::occurrences(first, window)`): it returns the occurrence ranges that touch a query window. `DailyRule(every N days, until)` and `WeeklyRule(weekdays, until)`. New rules (monthly, "second Tuesday") are new classes. **Exceptions** are a set of cancelled occurrence start times on the event.
+- **Clash check for a repeating event:** list its occurrences within a horizon (say 1 year) and check each against the calendar. A cheaper way is to keep repeating events apart and compare rule against rule.
+- **Safe booking across many calendars:** lock all attendee calendars and the room **in a fixed order** (by id) with `scoped_lock`, check every calendar for clashes, then save everywhere. If any check fails, save nowhere.
+- **Free slot search:** collect each attendee's busy ranges in the window (expanding repeats), merge them, take the gaps inside **working hours**, and keep those that are long enough.
+- **Reminders:** a scheduler (see the task scheduler lesson) calls `onReminder` at `start - N`.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Conflict detection, recurrence, and common free slots"
 #include <algorithm>
@@ -264,46 +264,52 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Back-to-back events | half-open ranges: no conflict |
-| Recurring event with an exception | `cancelled` set holds skipped occurrence starts |
-| "Infinite" recurrence | store the rule; always query with a window; conflict checks use a horizon |
-| Event spanning midnight or multiple days | ranges are absolute times; the day grid is only for display |
-| Daylight saving and time zones | store UTC; expand recurrence in the **organiser's local time**, then convert |
-| Overlapping busy intervals when merging | use `b.start <= last.end` and extend the end |
-| Booking race on the same room | locks acquired in a fixed order; all checks before any insert |
-| Editing a single occurrence or "this and following" | split the series: add an exception and create a new event with its own rule |
+| Events one after the other | the end is not included, so there is no clash |
+| A repeating event with an exception | the `cancelled` set holds the start times of skipped occurrences |
+| A repeat with no end | store the rule. Always ask with a window. Clash checks use a horizon |
+| An event that crosses midnight or lasts many days | ranges are absolute times. The day grid is only for showing |
+| Daylight saving and time zones | store UTC. Expand repeats in the **organiser's local time**, then convert |
+| Busy ranges that overlap when merging | use `b.start <= last.end` and extend the end |
+| A race to book the same room | locks are taken in a fixed order. All checks come before any save |
+| Changing one occurrence, or "this and the following" | split the series: add an exception and make a new event with its own rule |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Suggest the best slot, not just any" | rank slots with a `SlotScorer` (prefer mornings, minimise gaps, avoid lunch) |
-| "Find a room with capacity and equipment" | a `RoomFinder` with constraints (Specification) |
-| "Working hours and time zones per user" | `Availability` per user; intersect |
-| "RSVP states and delegation" | `Attendance` per attendee (Accepted/Declined/Tentative); a declined event does not block |
-| "Reminders and notifications" | scheduler + `ReminderListener` (Observer) |
-| "iCal import/export, external calendars" | adapters (Adapter pattern) |
-| "Scale to millions of users" | calendars sharded by user; busy-time index; free/busy as a cached aggregate |
-| "Fast conflict check" | an interval tree or sorted vector with binary search instead of scanning |
-| "Overbooking policies" | a `ConflictPolicy` (refuse / warn / allow) |
+| "Suggest the best slot, not just any" | rank slots with a `SlotScorer` (prefer mornings, fewer gaps, avoid lunch) |
+| "Find a room with the right size and equipment" | a `RoomFinder` with conditions (Specification) |
+| "Working hours and time zones for each user" | an `Availability` for each user. Take the common part |
+| "RSVP states and delegates" | an `Attendance` for each attendee (Accepted, Declined, Tentative). A declined event does not block |
+| "Reminders and messages" | a scheduler and a `ReminderListener` (Observer) |
+| "iCal import and export, outside calendars" | adapters (Adapter pattern) |
+| "Millions of users" | split calendars by user, keep an index of busy time, cache free and busy summaries |
+| "Fast clash check" | an interval tree, or a sorted vector with binary search, instead of scanning |
+| "Double-booking rules" | a `ConflictPolicy` (refuse, warn, allow) |
+
+## Short answer to say in an interview
+
+:::interview How do you find a free slot for several people?
+"I take each person's busy ranges in the window, expanding repeating events, and merge them into one busy list: sort by start and join the ones that overlap. Then I look at the gaps between the merged ranges, limited to working hours, and keep the gaps that are long enough for the meeting. Ranges include the start and not the end, so back-to-back meetings do not clash. For booking, I lock all the calendars in a fixed order, check each for a clash, and then save in all of them or in none."
+:::
 
 ```quiz
 ? How do you find common free time for several people?
 - Compare calendars day by day by hand
-+ Merge everyone's busy intervals, then take the gaps (inside working hours) that are long enough
-- Sort events alphabetically
-> Merging intervals turns many calendars into one busy list.
-? Why store a recurring event as a rule instead of many copies?
++ Merge everyone's busy ranges, then take the gaps (inside working hours) that are long enough
+- Sort events by name
+> Merging ranges turns many calendars into one busy list.
+? Why store a repeating event as a rule and not as many copies?
 - It is easier to print
-+ The series can be unbounded, and one edit to the rule or an exception changes all occurrences
++ The series can go on for ever, and one change to the rule or one exception changes all occurrences
 - Copies are not allowed
-> Occurrences are generated on demand for a window.
+> Occurrences are made when asked, for a window.
 ```
 
 :::keypoints
-- Half-open `TimeRange`, sorted per-user storage, overlap test; recurrence as a rule strategy with exceptions.
-- Atomic multi-calendar booking: lock in a fixed order, check all, then insert all.
-- Free slots = merge busy intervals + scan gaps inside working hours; extend with scoring, room constraints and sharding.
+- A `TimeRange` that includes the start but not the end. Sorted storage for each user. The overlap test. Repeats as a rule strategy with exceptions.
+- Safe booking over many calendars: lock in a fixed order, check all, then save all.
+- Free slots = merge the busy ranges and look at the gaps in working hours. Extend with scoring, room rules and splitting by user.
 :::

@@ -2,31 +2,31 @@
 title: Design a Text Editor with Undo/Redo
 level: advanced
 time: 70
-summary: A document model with insert, delete and replace, edits as Command objects with undo and redo stacks, coalescing consecutive typing into one undo step, macros and find/replace-all as composite commands, snapshots with Memento, and change notifications.
+summary: A text editor where every edit is an object that can be undone and redone. Learn the document model, undo and redo stacks, joining typed letters into one undo step, macros and replace-all, snapshots, and change notifications.
 ---
 
 :::problem Design a Text Editor with Undo/Redo {level=hard tags="Command,Memento,undo,Composite,document model,Observer"}
-Design the core of a text editor. It supports inserting and deleting text at the cursor, cursor movement, selection, copy/cut/paste, find and replace-all, and unlimited undo and redo. Typing a word should undo as **one** step, not letter by letter. Operations such as replace-all must undo as one step too. The editor notifies listeners (views) after every change.
+Design the core of a text editor. It supports inserting and deleting text at the cursor, moving the cursor, selecting, copy, cut and paste, find and replace-all, and unlimited undo and redo. Typing a word should undo as **one** step, not letter by letter. Actions like replace-all must also undo as one step. The editor tells listeners (views) after every change.
 :::
 
 :::hint Hint
-Every edit is a **Command** with `execute` and `undo` (and enough saved data to reverse itself). A history object keeps two stacks. For typing, **merge** a new character into the previous command when it continues it. A replace-all is a **composite command** of many small replacements.
+Every edit is a **Command** with `execute` and `undo` (and it saves enough data to reverse itself). A history object keeps two stacks. For typing, **merge** a new letter into the previous command when it continues it. A replace-all is a **composite command** made of many small replacements.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Document? | a single text buffer (UTF-8 bytes treated as characters for simplicity) |
-| Operations? | insert(text), erase(count), moveCursor, select, copy/cut/paste, replaceAll(find, with) |
-| Undo/redo? | unlimited stacks; a new edit clears redo |
-| Merging? | consecutive single-character inserts at adjacent positions merge into one undo step |
-| Cursor restore? | undo/redo restores the cursor to where it was |
-| Notifications? | listeners are told after each change (and on undo/redo) |
-| Performance? | O(n) string edits are acceptable here; mention a gap buffer or rope for big files |
-| Out of scope | rich text, multiple documents, files |
+| The document? | one text buffer (UTF-8 bytes treated as characters, to keep it simple) |
+| Actions? | insert(text), erase(count), moveCursor, select, copy, cut, paste, replaceAll(find, with) |
+| Undo and redo? | unlimited stacks. A new edit clears the redo stack |
+| Merging? | letters typed one after another at nearby positions join into one undo step |
+| The cursor? | undo and redo put the cursor back where it was |
+| Messages? | listeners are told after each change (and after undo and redo) |
+| Speed? | O(n) string edits are fine here. For big files we mention a gap buffer or a rope |
+| Not needed | rich text, many documents, files |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Text editor"
 class Editor
@@ -69,17 +69,17 @@ MacroCommand o-- Command
 Document o-- DocumentListener
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Document** exposes only **primitive, reversible operations**: `insert(pos, s)` and `erase(pos, n)` returning the erased text. Everything else is built from them.
-- **Commands save what they need to reverse**: `Insert` knows pos and text (undo = erase). `Erase` stores the removed text (undo = insert). `Replace` = erase + insert as a small composite. Each also stores the **cursor before and after** so undo restores the cursor.
-- **`mergeWith(next)`** (coalescing): `InsertCommand` merges when `next` is an insert starting exactly at the end of its text and both are "typing" (not after a pause or a cursor jump). Whitespace/word boundary could end a merge group (policy).
-- **MacroCommand** (Composite) groups commands; its `undo` reverses them **in reverse order**. `replaceAll` builds one macro (replace from the **last** match to the first so positions stay valid), runs it as a single history entry.
-- **History** has `undoStack` and `redoStack`. `run` executes, tries to merge with the top of the undo stack, otherwise pushes; clears redo.
-- **Memento for big operations**: instead of many small commands, a `SnapshotCommand` could store the whole text before/after. Use commands for fine edits, snapshots for rare bulk changes or crash recovery.
-- **Observer**: `Document` notifies listeners after any change (including undo/redo) so views refresh.
+- **`Document` shows only simple, reversible actions:** `insert(pos, s)` and `erase(pos, n)` (which returns the erased text). Everything else is built from these two.
+- **Commands save what they need to undo.** `Insert` knows the position and text (undo = erase). `Erase` keeps the removed text (undo = insert). `Replace` = erase + insert as a small group. Each also keeps the **cursor before and after**, so undo puts the cursor back.
+- **`mergeWith(next)` (joining typed letters):** `InsertCommand` joins `next` when `next` is an insert that starts exactly at the end of its text, and both are "typing" (not after a pause or a cursor jump). A space or word end could finish a group (a policy).
+- **MacroCommand** (a Composite) groups commands. Its `undo` undoes them **in reverse order**. `replaceAll` builds one macro (replacing from the **last** match to the first, so positions stay correct) and runs it as one history entry.
+- **History** has `undoStack` and `redoStack`. `run` executes the command, tries to merge it with the top of the undo stack, otherwise pushes it, and clears the redo stack.
+- **Memento for big changes:** instead of many small commands, a `SnapshotCommand` can keep the whole text before and after. Use commands for fine edits, and snapshots for rare big changes or crash recovery.
+- **Observer:** `Document` tells listeners after any change (including undo and redo), so views refresh.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Commands, merging, macros, undo/redo"
 #include <algorithm>
@@ -241,45 +241,51 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Undo with an empty stack | returns false; nothing happens |
+| Undo with an empty stack | returns false and nothing happens |
 | Backspace at position 0 | ignored |
-| Merge across a cursor move | `lastWasTyping_` resets on cursor movement, so the next character starts a new group |
-| `replaceAll` overlapping matches | non-overlapping scan from left; edits applied right to left |
-| Replace text that contains the search text (`a` → `aa`) | scan is done on the original text once, so no infinite expansion |
-| Huge history | cap the stack (drop the oldest) or persist to disk; snapshots every N commands to bound replay |
-| Cursor after undo | each command stores the cursor before it ran |
-| Observers during a macro | notify once at the end (batch) to avoid flicker |
+| Joining across a cursor move | `lastWasTyping_` is reset when the cursor moves, so the next letter starts a new group |
+| `replaceAll` with overlapping matches | scan from the left without overlaps. Apply edits from right to left |
+| Replacement text that contains the search text (`a` to `aa`) | the scan runs once on the original text, so it does not grow forever |
+| Very long history | limit the stack (drop the oldest), or save to disk. Take snapshots every N commands to limit replay |
+| The cursor after undo | each command saves the cursor from before it ran |
+| Observers during a macro | tell them once at the end (batching), to avoid flicker |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Large files (millions of characters)" | replace `string` by a **gap buffer** (O(1) edits near the cursor) or a **rope**/piece table (efficient for large edits and cheap undo) |
-| "Multiple cursors / selections" | commands hold a list of ranges; a macro of per-cursor commands |
-| "Collaborative editing" | operational transformation or CRDTs: commands are transformed against concurrent ones |
-| "Syntax highlighting" | a `Highlighter` observer working on changed ranges only |
-| "Auto-save and crash recovery" | write the command log (a WAL) and replay; periodic Memento snapshots |
-| "Search with regex, incremental find" | a `Matcher` Strategy |
-| "Macros recorded by the user" | record executed commands into a `MacroCommand` and replay |
-| "Line-based model" | store lines in a vector for fast navigation; commands use (line, column) positions |
+| "Large files (millions of characters)" | replace `string` with a **gap buffer** (O(1) edits near the cursor) or a **rope** or piece table (good for big edits and cheap undo) |
+| "Many cursors or selections" | commands hold a list of ranges. A macro of one command for each cursor |
+| "Editing together with others" | operational transformation or CRDTs: commands are changed to fit other users' commands |
+| "Colouring code" | a `Highlighter` observer that works only on the changed ranges |
+| "Auto-save and crash recovery" | write the command log (a WAL) and replay it. Take Memento snapshots now and then |
+| "Regex search, search as you type" | a `Matcher` Strategy |
+| "Macros recorded by the user" | record executed commands into a `MacroCommand` and replay them |
+| "A model based on lines" | keep lines in a vector for fast movement. Commands use (line, column) positions |
+
+## Short answer to say in an interview
+
+:::interview How do you implement undo and redo in a text editor?
+"Each edit is a Command with execute and undo, and it saves what it needs to reverse itself: an insert knows its position and text, and an erase keeps the removed text. A history keeps an undo stack and a redo stack. Running a new command pushes it and clears redo. Typed letters merge into the previous command, so a word undoes in one step. A macro, like replace-all, is a composite command that undoes in reverse order. The document tells listeners after every change, including undo."
+:::
 
 ```quiz
 ? Why does MacroCommand undo in reverse order?
 - It is faster
-+ The last change must be reversed first so earlier positions and contents are valid again
-- By convention
-> Undoing in the original order would apply changes to a different state.
-? What does merging typing commands achieve?
++ The last change must be undone first, so the earlier positions and contents are correct again
+- By habit
+> Undoing in the same order would apply changes to the wrong state.
+? What does joining typing commands give us?
 - Faster typing
 + A whole word undoes as one step instead of letter by letter
-- Smaller memory only
-> Coalescing groups consecutive edits that a user perceives as one action.
+- Only less memory
+> Joining groups edits that the user feels as one action.
 ```
 
 :::keypoints
-- Document offers primitive reversible operations; every edit is a Command with saved data to undo; History keeps undo/redo stacks.
-- Coalesce typing with `mergeWith`; composite MacroCommand for replace-all (apply right-to-left, undo in reverse).
-- Mementos for snapshots, observers for views; gap buffer, rope or piece table for scale; OT/CRDT for collaboration.
+- `Document` offers simple, reversible actions. Every edit is a Command that saves what it needs to undo. History keeps undo and redo stacks.
+- Join typed letters with `mergeWith`. Use a composite MacroCommand for replace-all (apply right to left, undo in reverse).
+- Mementos for snapshots, observers for views. A gap buffer, rope or piece table for scale. OT or CRDT for working together.
 :::

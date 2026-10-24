@@ -2,32 +2,32 @@
 title: Design a Ride-Sharing Service
 level: intermediate
 time: 60
-summary: Riders request rides, nearby drivers are matched by a strategy, the trip goes through a lifecycle, fares combine distance, time and surge pricing, ratings update after the trip, and events notify rider and driver; with the concurrency rule that one driver takes one ride.
+summary: A rider asks for a ride, a nearby driver is chosen by a strategy, the trip goes through its life cycle, the fare uses distance, time and demand (surge), ratings are updated, and a driver can never be given two rides at once.
 ---
 
 :::problem Design a Ride-Sharing Service (Uber/Ola) {level=medium tags="State,Strategy,matching,pricing,geo,Observer"}
-Design the core of a ride-sharing service. A rider requests a ride from a pickup to a drop location. The system finds an available driver nearby, the driver accepts, drives to the rider, the trip runs, and the rider pays a fare based on distance, time and demand. Both can rate each other afterwards.
+Design the core of a ride-sharing service. A rider asks for a ride from a pickup place to a drop place. The system finds a free driver nearby. The driver accepts, drives to the rider, the trip happens, and the rider pays a fare based on distance, time and demand. Both can rate each other afterwards.
 
 :::hint Hint
-Three independent variation points: **matching** (which driver), **pricing** (how much), and the **trip lifecycle**. Keep drivers' availability changes atomic so one driver cannot be assigned to two riders at once.
+Three separate things can change: **matching** (which driver), **pricing** (how much), and the **trip life cycle**. Changes to a driver's availability must be done safely, so one driver cannot be given to two riders at once.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | Rider, Driver (vehicle type, location, availability, rating), Trip |
-| Vehicle types? | Mini, Sedan, SUV with different base rates |
-| Matching? | nearest available driver of the requested type within 5 km; offer to one driver at a time; decline moves to the next |
-| Lifecycle? | Requested → DriverAssigned → EnRoute (to pickup) → InProgress → Completed; Cancelled |
-| Fare? | base + per-km + per-minute, times a surge multiplier by demand/supply ratio |
-| Ratings? | 1 to 5 each way, running average |
-| Cancel? | rider free before the driver arrives; a fee after |
-| Concurrency? | many requests; a driver is assigned to at most one trip |
-| Out of scope | real maps/ETAs (use straight-line distance), payments |
+| Main things? | Rider, Driver (vehicle type, location, availability, rating), Trip |
+| Vehicle types? | Mini, Sedan, SUV, each with its own base rate |
+| Matching? | the nearest free driver of the asked type within 5 km. Offer to one driver at a time. If a driver says no, try the next |
+| Life cycle? | Requested, DriverAssigned, EnRoute (to the pickup), InProgress, Completed. Or Cancelled |
+| Fare? | base + per km + per minute, times a surge number based on demand and supply |
+| Ratings? | 1 to 5 each way, with a running average |
+| Cancel? | free for the rider before the driver arrives, with a fee after that |
+| Many users? | many requests. A driver gets at most one trip |
+| Not needed | real maps and travel times (we use straight-line distance), payments |
 
-## Step 2: trip lifecycle
+## Step 2: The life cycle of a trip
 
 ```viz algo=state title="Trip states"
 state Requested "Requested" [initial] @0,1
@@ -46,7 +46,7 @@ InProgress -> Completed : arrived at the drop
 play: driver accepts, driver starts driving to pickup, rider picked up, arrived at the drop
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Ride sharing"
 class RideService
@@ -94,16 +94,16 @@ StandardFare ..|> FareStrategy
 Trip --> Driver
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **MatchingStrategy returns a ranked list**; the service offers the trip to each driver in order until one accepts (the accept decision is a callback so the demo can script it). Replace with "highest rated first" or "least idle time" without changing the service.
-- **Driver availability is claimed atomically** (`available = false` under the driver registry lock when assigned) and restored on completion or cancellation.
-- **Surge** is computed from `requests / availableDrivers` in the pickup area and **frozen on the trip at request time** so the rider sees the same multiplier at the end.
-- **FareStrategy** isolates the formula; a promo or a flat airport fare is a new class.
-- **Rating** is a tiny value type (sum, count), thread-safe with a mutex or atomics.
-- **Trip events** go to listeners (rider app, driver app).
+- **`MatchingStrategy` gives a ranked list.** The service offers the trip to each driver in order until one accepts. (The accept decision is a callback, so the demo can script it.) We can replace it with "highest rated first" or "waiting longest" without changing the service.
+- **A driver is claimed safely.** `available = false` is set under the driver registry's lock when assigned, and set back when the trip is completed or cancelled.
+- **Surge** comes from `requests / availableDrivers` in the pickup area, and is **frozen on the trip when the ride is requested**. So the rider sees the same number at the end.
+- **`FareStrategy`** holds the formula. A promo or a fixed airport fare is a new class.
+- **Rating** is a tiny value (sum and count), safe with a mutex or atomics.
+- **Trip events** go to listeners (the rider app and the driver app).
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Matching, trip lifecycle, fare with surge, ratings"
 #include <algorithm>
@@ -257,44 +257,50 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| All candidates decline or none nearby | the request fails with a message; the rider may retry with a bigger radius |
-| Two riders compete for one driver | the claim (`available = false`) happens under the service lock |
-| Driver goes offline mid-offer | the offer times out and the next candidate is tried |
-| Cancel at different stages | table of fees by state (free, small fee after arrival, none after pickup) |
-| Surge changes between request and ride | the multiplier is frozen on the trip when requested |
-| Rating by an uninvolved person | only the trip's rider/driver may rate, once |
-| Location updates arriving constantly | a separate `LocationService` with a spatial index; matching reads it |
+| All drivers say no, or none is nearby | the request fails with a message. The rider can try again with a bigger distance |
+| Two riders want the same driver | the claim (`available = false`) happens under the service lock |
+| The driver goes offline during an offer | the offer times out and the next driver is tried |
+| Cancel at different stages | a table of fees by state (free, a small fee after arrival, none after pickup) |
+| Surge changes between the request and the ride | the number is frozen on the trip when requested |
+| A rating from someone not on the trip | only the trip's rider and driver can rate, once |
+| Locations arrive all the time | a separate `LocationService` with a spatial index. Matching reads from it |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Ride pooling / shared rides" | `Trip` becomes a multi-stop route; a matching strategy that merges compatible requests |
-| "Scheduled rides" | a scheduler (Command) that creates the request at a time |
-| "Driver incentives and cancellations penalties" | events consumed by an `IncentiveService` (Observer) |
-| "Efficient nearest-driver search" | a geohash/grid index: only search the rider's cell and neighbours |
-| "ETA and routing" | a `RouteProvider` interface; replace straight-line distance |
-| "Payments and wallets" | a `PaymentService` interface; the fare is charged on completion |
-| "Dispatch at scale" | partition by city/cell; the matching service stays stateless |
-| "Fraud and safety" | rule chain on requests; SOS events |
+| "Shared rides (pooling)" | `Trip` becomes a route with many stops. A matching strategy joins requests that fit |
+| "Scheduled rides" | a scheduler (Command) that creates the request at the time |
+| "Driver bonuses and cancel penalties" | events used by an `IncentiveService` (Observer) |
+| "Find the nearest driver quickly" | a geohash or grid index. Search only the rider's cell and its neighbours |
+| "Travel time and routes" | a `RouteProvider` interface in place of straight-line distance |
+| "Payments and wallets" | a `PaymentService` interface. The fare is charged when the trip completes |
+| "Dispatch at a big scale" | split by city or cell. The matching service holds no state |
+| "Fraud and safety" | a chain of rules on requests. SOS events |
+
+## Short answer to say in an interview
+
+:::interview How do you design the matching and pricing in a ride-sharing app?
+"I keep matching, pricing and the trip life cycle as three separate parts. A matching strategy returns a ranked list of nearby free drivers, and the service offers the ride to each until one accepts. The driver is claimed under a lock, so nobody gets two rides. A fare strategy works out base plus distance plus time, times a surge number. I freeze the surge on the trip when it is requested so the rider pays the price they saw. The trip is a state machine with checked transitions."
+:::
 
 ```quiz
-? Why is the surge multiplier stored on the trip?
+? Why is the surge number stored on the trip?
 - To save memory
-+ The rider must pay the price they saw when requesting, even if demand changes
-- Because multipliers are integers
-> Freezing it at request time keeps the price stable and fair.
-? How is a driver prevented from being assigned twice?
++ The rider must pay the price they saw when they asked, even if demand changes later
+- Multipliers are integers
+> Freezing it when requested keeps the price stable and fair.
+? How is a driver stopped from getting two rides?
 - By luck
-+ The availability flag is claimed under a lock at assignment and restored on completion or cancel
++ The availability flag is claimed under a lock at assignment, and restored on complete or cancel
 - Drivers cannot accept twice
-> Atomic claim of a shared resource.
+> A shared thing is claimed in one safe step.
 ```
 
 :::keypoints
-- Matching, fare and lifecycle are the three variation points: strategy, strategy, state machine.
-- Claim drivers atomically, free them on completion/cancel, freeze surge on the trip, validate transitions.
-- Scale with a spatial index and per-city partitions; the classes stay the same.
+- Matching, fare and life cycle are the three parts that can change: a strategy, a strategy, and a state machine.
+- Claim drivers safely, free them on complete or cancel, freeze surge on the trip, and check transitions.
+- To scale: a spatial index and a split by city. The classes stay the same.
 :::

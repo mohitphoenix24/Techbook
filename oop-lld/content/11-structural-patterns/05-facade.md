@@ -2,20 +2,28 @@
 title: Facade
 level: easy
 time: 25
-summary: One simple entry point over a complicated subsystem, a home-cinema and an order-fulfilment example, how Facade reduces coupling without hiding the subsystem, and how it differs from Adapter and Mediator.
+summary: One simple front door for a complicated group of classes. A home theatre example, an order example, and how Facade differs from Adapter and Mediator.
 ---
 
-:::def Facade
-Provide a **unified, simpler interface** to a set of interfaces in a subsystem. Facade defines a higher-level interface that makes the subsystem easier to use.
+## What is the Facade pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Starting a movie needs 6 steps on 6 different devices. Instead, I want **one button** that says 'Watch movie'."
+
+That one button is the Facade.
+
+:::analogy Think of a hotel concierge
+To get a dinner table, a taxi and theatre tickets, you could call the restaurant, the cab company and the box office yourself. Or you can tell the concierge, "arrange my evening". You talk to **one person**, and the hard work happens behind the desk.
 :::
 
-:::analogy Think of it like this
-A hotel concierge. To get a dinner table, a taxi and theatre tickets you could call the restaurant, the cab company and the box office yourself. Or you say "arrange my evening" to the concierge, who calls them all. You deal with **one person**; the complexity is behind the desk.
+:::def Facade
+One **simple interface** placed in front of a **group of complex classes**, so that using them becomes easy.
 :::
 
 ## The problem
 
-To start a movie you must dim the lights, lower the screen, switch on the projector, set its input, switch on the amplifier, choose the surround mode, and finally play. Every client that wants to "watch a movie" repeats this sequence and knows all six classes.
+To start a movie you must: dim the lights, lower the screen, switch on the projector, set its input, switch on the amplifier, choose the sound mode, and finally press play. Every user who wants to "watch a movie" must repeat these steps and know all six classes.
 
 ```cpp run title="Without a facade: clients juggle the whole subsystem"
 #include <iostream>
@@ -95,11 +103,11 @@ HomeTheaterFacade --> Amplifier
 HomeTheaterFacade --> Player
 ```
 
-The client now knows **one** class and two methods. If you replace the projector with a TV, only the facade changes.
+Now the user knows **one class** and **two methods**. If you replace the projector with a TV one day, only the facade changes. The users stay the same.
 
-## A realistic example: order fulfilment
+## A real example: placing an order
 
-In an e-commerce system, "place an order" involves inventory, payment, shipping and notifications. A facade presents it as one operation, and handles the order and the failure cases.
+In a shopping app, "place an order" touches inventory, payment, shipping and notifications. A facade makes it one operation. It also takes care of the order of steps and what to do when something fails.
 
 ```cpp run title="OrderFacade: one call, four subsystems, with rollback"
 #include <iostream>
@@ -147,54 +155,55 @@ int main() {
 }
 ```
 
-## Properties of a good Facade
+## What makes a good facade?
 
 | Property | Meaning |
 |---|---|
-| **Simplifies** | exposes only the common use cases |
-| **Does not hide** | the subsystem classes remain accessible for advanced users who need them |
-| **Adds no new business logic** (ideally) | it orchestrates; the real work stays in the subsystem classes |
-| **Stateless where possible** | easier to reason about and test |
-| **Can be layered** | a big system may have facades per area |
+| **Simple** | it shows only the common use cases |
+| **Not a wall** | the inner classes are still available for people who need them |
+| **No new business rules** (ideally) | it only coordinates. The real work stays in the inner classes |
+| **No stored state** if possible | easier to understand and test |
+| **Can be layered** | a big system may have one facade per area |
 
 ## Facade vs Adapter vs Mediator
 
 | | Facade | Adapter | Mediator |
 |---|---|---|---|
-| Purpose | **simplify** a subsystem | **convert** one interface to another | **coordinate** peers that talk to each other |
-| Knows about | several subsystem classes | one adaptee | several colleague classes |
-| Do the subsystem classes know it? | **no**: the subsystem is unaware | no | **yes**: colleagues talk through the mediator |
-| Interface | new, simpler | the one the client expects | n/a |
+| Purpose | **make simpler** | **convert** an interface | **coordinate** peers who talk to each other |
+| Works with | several classes | one class | several classes |
+| Do the inner classes know about it? | **no** | no | **yes**, they talk through it |
 
-## Pitfalls
+## Mistakes to avoid
 
-- A facade that grows to **hundreds of methods** becomes a **god class**. Split it by area.
-- If all clients still reach around the facade into the subsystem, it adds nothing.
-- Do not put **business rules** in it. Keep it a thin coordinator.
-- Facade is **not** an excuse to leave the subsystem a mess. It simplifies use; clean the subsystem separately.
+- A facade with hundreds of methods turns into a **god class**. Split it by area.
+- If everyone still bypasses the facade, it is useless.
+- Do not put **business rules** in it. Keep it thin.
+- A facade does not clean up a messy subsystem. It only makes it easier to use.
 
-:::interview Facade vs Adapter?
-"A facade gives a *simpler* interface to a whole subsystem of several classes; the subsystem does not know about it and remains usable directly. An adapter makes *one existing class* match an interface a client already expects, usually for a third-party class. Facade is about simplification, Adapter is about compatibility."
+## Short answer to say in an interview
+
+:::interview What is the difference between Facade and Adapter?
+"A facade gives a simpler interface to a whole group of classes. The group does not know about the facade, and can still be used directly. An adapter makes one existing class match an interface that the user already expects, usually for a third-party class. Facade is about making things simple. Adapter is about making things fit."
 :::
 
 ```quiz
 ? What is the main goal of Facade?
-- Converting an incompatible interface
-+ Providing a simple, unified interface to a complex subsystem
-- Adding behaviour dynamically
-> Clients call one method instead of orchestrating many classes.
+- To convert an incompatible interface
++ To give a simple, single interface to a complex group of classes
+- To add behaviour at run time
+> Users call one method instead of coordinating many classes.
 ? Does the subsystem need to know about the facade?
 - Yes
-+ No: the facade depends on the subsystem, not the other way round
-> That is what distinguishes it from a Mediator.
-? What is a common failure mode of a facade?
-- It is too small
-+ It grows into a god class holding too many operations and logic
-> Keep it thin, and split by area when it grows.
++ No. The facade uses the subsystem, not the other way round
+> That is what makes it different from a Mediator.
+? What is a common problem with facades?
+- They are too small
++ They grow into a god class with too many operations and rules
+> Keep them thin and split by area.
 ```
 
 :::keypoints
-- Facade: one simple entry point over several subsystem classes; the subsystem stays accessible.
-- It reduces coupling for clients and gives you one place to change orchestration.
-- Keep it thin and stateless; do not let it become a god class. Not the same as Adapter or Mediator.
+- Facade = one simple front door over several classes. The inner classes stay available.
+- It reduces coupling for users and gives one place to change the steps.
+- Keep it thin and without stored state. Do not let it become a god class. It is not the same as Adapter or Mediator.
 :::

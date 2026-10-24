@@ -2,24 +2,26 @@
 title: Cohesion, coupling and the Law of Demeter
 level: intermediate
 time: 35
-summary: The two forces behind every good design, with a runnable example of low-cohesion and high-coupling code made better, the Law of Demeter, tell-don't-ask, and the everyday principles DRY, KISS and YAGNI.
+summary: The two ideas behind almost every good design, explained with before-and-after code. Cohesion (one class, one job), coupling (depend on as little as possible), the Law of Demeter, and DRY, KISS and YAGNI.
 ---
 
-Every design principle in this course is an application of two ideas:
+Almost every design rule you will learn comes from just two ideas.
 
-- **High cohesion:** things that change together live together. Each class does **one** thing.
-- **Low coupling:** classes depend on each other as **little** as possible, and only through stable interfaces.
+- **High cohesion:** things that belong together stay together. One class does **one** job.
+- **Low coupling:** classes depend on each other as **little** as possible.
 
-:::analogy Think of it like this
-A well-run kitchen has stations: grill, salad, desserts. Each station is **cohesive** (everything for one job is at hand). Stations pass plates through a **narrow window**, not by walking into each other's area (**low coupling**). If the dessert chef has to know how the grill works, one change breaks everything.
+:::analogy Think of a kitchen
+A good kitchen has stations: grill, salad, dessert. Each station has everything for its own job (that is **cohesion**). The stations pass plates through a small window. They do not walk into each other's area (that is **low coupling**). If the dessert chef needs to know how the grill works, then one small change breaks everything.
 :::
 
-## Cohesion
+## Cohesion: "does this class have one job?"
 
-| Cohesion | Symptom | Example |
+| | What you see | Example |
 |---|---|---|
-| **High** (good) | every method uses the class's data; the class has one reason to change | `Money`: add, subtract, compare |
-| **Low** (bad) | unrelated methods bundled together; some methods use only some fields | `Utils`, `Manager`, `Helper`, `Common` |
+| **High cohesion** (good) | all methods work on the same data and serve one purpose | `Money`: add, subtract, compare |
+| **Low cohesion** (bad) | unrelated things are mixed together | `Utils`, `Manager`, `Helper`, `Common` |
+
+Here is a class with low cohesion:
 
 ```cpp run title="Low cohesion: a class that does everything"
 #include <iostream>
@@ -47,7 +49,9 @@ int main() {
 }
 ```
 
-This class has **five reasons to change** (validation rules, tax, invoice format, storage, email). That is low cohesion.
+This one class has **five reasons to change**: the rules, the tax, the invoice format, the storage, and the email. If anyone touches any one of them, the whole class is at risk.
+
+Now the same code, split by job:
 
 ```cpp run title="High cohesion: each class has one job"
 #include <iostream>
@@ -86,25 +90,32 @@ int main() {
 }
 ```
 
-Now a change to the tax rule touches only `TaxCalculator`. Swapping email for SMS touches only the sender. Each class can be tested alone.
+Now a tax change touches only `TaxCalculator`. Switching from email to SMS touches only the sender. And you can test each class alone.
 
-## Coupling
+## Coupling: "how much does this class need to know about others?"
 
-Coupling is how much one class **knows about** or **depends on** another. From worst to best:
+Coupling means how much one class **depends on** another. Here is the list from worst to best:
 
-| Coupling level | What it looks like |
+| Kind | What it looks like |
 |---|---|
-| **Content** (worst) | one class reaches into another's private data (via public fields, friends, casts) |
-| **Global** | classes share global/static state (a Singleton used everywhere) |
-| **Concrete class** | `Order` holds an `EmailSender` object directly and calls it |
-| **Interface** (good) | `Order` holds an `ISender&` and does not know the implementation |
-| **Data only** (best) | classes exchange plain values (a message struct) |
+| **Worst**: reaching inside | one class reads another's private data (through public fields, `friend`, or casts) |
+| **Bad**: shared global | many classes use the same global or singleton |
+| **Okay**: concrete class | `Order` holds an `EmailSender` directly |
+| **Good**: interface | `Order` holds an `ISender&` and does not know who is behind it |
+| **Best**: only plain data | classes just pass simple values (a message struct) |
 
-The goal is **not zero coupling** (objects must collaborate) but **loose, explicit, via interfaces**.
+The goal is **not zero coupling**, because classes must work together. The goal is **loose coupling**: they talk through small, clear interfaces.
 
-## The Law of Demeter ("talk only to your friends")
+## The Law of Demeter: "talk only to your close friends"
 
-A method should call only: its own members, its parameters, objects it creates, and its direct members. Not "a friend of a friend". The smell is a **train wreck**: `a.getB().getC().doIt()`.
+A method should call only:
+
+- its own methods and data,
+- its parameters,
+- objects it creates itself,
+- its direct members.
+
+It should **not** reach through one object to get to another. The warning sign is a long chain: `a.getB().getC().doIt()`.
 
 ```cpp run title="Law of Demeter violation and fix"
 #include <iostream>
@@ -133,51 +144,53 @@ int main() {
 }
 ```
 
-If `Customer` later pays with a `UpiAccount` instead of a `Wallet`, every `c.wallet().pay(...)` call site breaks. With `c.pay(...)` only one class changes. **Tell, don't ask** is the same idea.
+Why is the second way better? Suppose `Customer` starts paying with a `UpiAccount` instead of a `Wallet`. With the chain, **every place** that wrote `c.wallet().pay(...)` breaks. With `c.pay(...)`, only the `Customer` class changes.
 
-## DRY, KISS, YAGNI
+This is also called **"tell, don't ask"**: tell the object what you want. Do not pull out its parts and do the work yourself.
 
-| Principle | Meaning | Trap |
+## DRY, KISS and YAGNI
+
+| Rule | In simple words | The trap |
 |---|---|---|
-| **DRY** (Don't Repeat Yourself) | each piece of knowledge has **one** home | merging code that only *looks* alike but changes for different reasons (wrong abstraction) |
-| **KISS** (Keep It Simple) | the simplest design that works | over-engineering with patterns "just in case" |
-| **YAGNI** (You Aren't Gonna Need It) | do not build features until needed | designing every extension point on day one |
+| **DRY** (Don't Repeat Yourself) | keep each piece of knowledge in one place | joining two pieces of code that only *look* the same but change for different reasons |
+| **KISS** (Keep It Simple) | choose the simplest design that works | adding patterns "just in case" |
+| **YAGNI** (You Aren't Gonna Need It) | do not build what you do not need yet | adding extension points for every imaginary future |
 
-A good LLD answer balances them: make the **likely** changes easy (variation points you identified from the requirements), and leave the rest simple. "I would add an interface here because pricing rules change often; I would **not** add one for the tax rate: a constant is enough."
+A good interview answer finds a balance: make the **likely** changes easy, and keep everything else simple. For example: "Pricing rules change often, so I add an interface there. The tax rate is a constant, so I do not."
 
-## Measuring your design
+## Quick self-check for any class
 
-Ask these quick questions about any class:
-
-1. Can I describe its job in one sentence *without "and"*? (cohesion)
+1. Can I describe its job in one sentence **without the word "and"**? (cohesion)
 2. Can I test it without building half the system? (coupling)
-3. If requirement X changes, how many classes change? (ideally one)
-4. Does it call chains like `a.b().c().d()`? (Demeter)
+3. If one requirement changes, how many classes must change? (ideally one)
+4. Does it use long chains like `a.b().c().d()`? (Demeter)
 
-:::interview Define cohesion and coupling. Which do you want?
-"Cohesion is how strongly the parts of a module belong together; coupling is how much modules depend on each other. I want **high cohesion** (one clear responsibility per class) and **low coupling** (dependencies through small interfaces, passed in from outside). Together they make a design easy to change and test."
+## Short answer to say in an interview
+
+:::interview What are cohesion and coupling? Which do you want?
+"Cohesion is how well the parts of a class belong together. Coupling is how much classes depend on each other. I want high cohesion, meaning each class has one clear job, and low coupling, meaning classes depend on small interfaces and not on each other's insides. That makes the code easy to change and easy to test."
 :::
 
 ```quiz
-? Which describes high cohesion?
+? Which one describes high cohesion?
 - A class with many unrelated helper methods
-+ A class whose members all serve a single, clear responsibility
++ A class whose members all serve one clear job
 - A class with no data
-> High cohesion = one reason to change.
-? What does `a.getB().getC().run()` violate?
+> High cohesion means one reason to change.
+? What does a.getB().getC().run() break?
 - DRY
 + The Law of Demeter
 - YAGNI
-> The caller depends on the internal structure of two other classes.
-? Which coupling is preferable?
+> The caller depends on the insides of two other classes.
+? Which kind of coupling is better?
 - Depending on a concrete class
 + Depending on an interface
 - Sharing a global variable
-> Interfaces let you change the implementation without touching callers.
+> With an interface you can change the implementation without touching the callers.
 ```
 
 :::keypoints
-- High cohesion (one job per class) and low coupling (small interfaces) drive every other principle.
-- Law of Demeter / tell-don't-ask: talk to your direct collaborators; give them commands.
-- DRY, KISS, YAGNI: remove duplication of knowledge, keep it simple, and do not build for imaginary futures.
+- High cohesion: one class, one job. Low coupling: depend on small interfaces, not on insides.
+- Law of Demeter ("tell, don't ask"): talk to your direct collaborators. Do not reach through them.
+- DRY, KISS, YAGNI: no repeated knowledge, keep it simple, and do not build for imaginary futures.
 :::

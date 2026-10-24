@@ -2,33 +2,39 @@
 title: Design an Order Matching Engine (stock exchange)
 level: advanced
 time: 75
-summary: A limit order book with price-time priority, limit, market and IOC orders, partial fills and trades, cancellation in O(1) through an order index, self-trade prevention, why matching is single-threaded per symbol, and the data-structure choices behind best bid and ask.
+summary: The heart of a stock exchange. Learn the order book, matching by best price and then by time, partial fills, cancelling an order quickly, preventing a trader from trading with themselves, and why matching runs on one thread.
 ---
 
 :::problem Design an Order Matching Engine {level=hard tags="finance,data structures,priority,order book,Strategy,low latency"}
-Design the core of a stock exchange for one symbol. Traders submit **buy** and **sell** orders: **limit** orders (with a price) and **market** orders (any price). The engine matches a buy with a sell when the buy price is at least the sell price, using **price-time priority**: the best price first, and among equal prices the earliest order first. It records trades, supports cancellation, partial fills and immediate-or-cancel orders, and publishes market data (best bid/ask).
+Design the core of a stock exchange for one symbol. Traders send **buy** and **sell** orders. A **limit** order has a price. A **market** order accepts any price. The engine matches a buy with a sell when the buy price is at least the sell price, using **price-time priority**: the best price first, and among equal prices the earliest order first. It records trades, supports cancelling, partial fills and immediate-or-cancel orders, and shares market data (best bid and ask).
 :::
 
 :::hint Hint
-Keep two sides of the book: **bids** sorted by price descending, **asks** by price ascending. Each price level holds a **FIFO queue** of orders. An incoming order walks the opposite side from the best price while prices cross, generating trades. Unfilled limit quantity rests in the book. An id → location index makes cancel fast.
+Keep two sides of the book: **bids** (buy orders) sorted from the highest price, and **asks** (sell orders) sorted from the lowest price. Each price has a **first-in-first-out queue** of orders. A new order walks along the other side from the best price while prices cross, making trades. If a limit order is not fully filled, the rest waits in the book. A map from id to location makes cancelling fast.
 :::
 
-## Step 1: requirements
+## First, a few words
 
-| Question | Assumption |
+- **Bid**: an offer to buy at some price. **Ask**: an offer to sell at some price.
+- **Best bid** = the highest buy price. **Best ask** = the lowest sell price. A trade happens when best bid ≥ best ask.
+- **Resting order**: an order that is waiting in the book. **Aggressive (incoming) order**: the new order that triggers the match.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Orders? | `side` (Buy/Sell), `type` (Limit, Market), price (limit only), quantity, trader id, time priority by arrival sequence |
-| Matching rule? | price-time priority; the trade price is the **resting** order's price |
-| Partial fills? | yes; the remainder of a limit order rests, the remainder of a market order is cancelled |
-| Time in force? | GTC (rest until cancelled) and IOC (fill what you can immediately, cancel the rest) |
-| Cancel? | by order id; O(1) lookup |
-| Self trade? | an order never trades against the same trader's resting order (skip it) |
-| Market data? | best bid, best ask, depth by price, trade feed |
-| Prices? | integer ticks (never floating point) |
-| Concurrency? | the book is **single-threaded** (a sequencer/queue in front); many clients submit via a queue |
-| Out of scope | multiple symbols, auctions, risk checks, persistence |
+| Orders? | `side` (Buy or Sell), `type` (Limit or Market), price (limit only), quantity, trader id. Time priority by arrival number |
+| Matching rule? | price-time priority. The trade price is the price of the **resting** order |
+| Partial fills? | yes. The rest of a limit order waits. The rest of a market order is cancelled |
+| Time in force? | GTC (wait until cancelled) and IOC (fill what you can now, cancel the rest) |
+| Cancel? | by order id, with a fast lookup |
+| Self trade? | an order never trades against a waiting order of the same trader (skip it) |
+| Market data? | best bid, best ask, depth by price, a feed of trades |
+| Prices? | whole ticks as integers (never floating point) |
+| Many threads? | the book is **single-threaded** (a sequencer queue in front). Many clients send requests through the queue |
+| Not needed | many symbols, auctions, risk checks, saving to disk |
 
-## Step 2: the order book
+## Step 2: The order book
 
 ```text
 BIDS (best = highest)                ASKS (best = lowest)
@@ -44,7 +50,7 @@ Incoming BUY LIMIT 103 qty 50:
   done: fully filled, nothing rests
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Matching engine"
 class MatchingEngine
@@ -86,18 +92,18 @@ OrderBook ..> Trade
 MatchingEngine ..> TimeInForce
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **`map<Price, Level>`** for each side with the right comparator, so `begin()` is the best price. Insert/erase of a level is O(log P) (P = number of price levels, small); operations at the best level are O(1).
-- **`Level` = `std::list<Order>`**: FIFO queue; a list gives **stable iterators**, so the index can store `(side, price, iterator)` and cancel removes in O(1) without searching.
-- **Order index** `unordered_map<id, Location>` for cancellation.
-- **Matching loop**: while the incoming order has quantity and the opposite best price **crosses** (buy ≥ ask or sell ≤ bid) or the order is a market order: take orders from the front of the best level; `qty = min(incoming, resting)`; emit a trade at the **resting** order's price; remove or reduce the resting order; remove empty levels.
-- **Self-trade prevention**: skip (leave untouched) a resting order of the same trader; simplest policy "cancel the incoming remainder" is also common.
-- **Time-in-force as a small strategy/flag**: after matching, a GTC limit order rests; IOC and market orders do not.
-- **Determinism and speed**: one thread owns the book; clients enqueue requests to a single sequencer. No locks in the hot path. Sequence numbers define time priority.
-- **Events**: trades go to listeners (market data, clearing, audit) after each submit.
+- **`map<Price, Level>`** for each side with the right order, so `begin()` is the best price. Adding or removing a level is O(log P) (P = number of price levels, which is small). Work at the best level is O(1).
+- **`Level` = `std::list<Order>`:** a first-in-first-out queue. A list has **stable iterators**, so the index can keep `(side, price, iterator)` and cancel removes the order in O(1) without searching.
+- **Order index** `unordered_map<id, Location>` for cancelling.
+- **The matching loop:** while the new order has quantity left, and the best price on the other side **crosses** (buy ≥ ask, or sell ≤ bid) or the order is a market order: take orders from the front of the best level. `qty = min(incoming, resting)`. Make a trade at the **resting** order's price. Remove or reduce the resting order. Remove empty levels.
+- **Self-trade prevention:** skip a waiting order of the same trader (leave it untouched). Another simple rule is "cancel the rest of the new order".
+- **Time in force** is a small flag or strategy: after matching, a GTC limit order waits. IOC and market orders do not.
+- **Predictable and fast:** one thread owns the book. Clients put requests in one sequencer queue. No locks in the busy path. Sequence numbers decide time priority.
+- **Events:** trades go to listeners (market data, clearing, audit) after each submit.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Limit order book with price-time priority"
 #include <functional>
@@ -226,56 +232,62 @@ int main() {
 
 ## Why these data structures
 
-| Need | Structure | Complexity |
+| Need | Structure | Cost |
 |---|---|---|
-| Best price on each side | `std::map` with comparator (or a heap of price levels) | O(1) at `begin()` |
-| Time priority within a price | `std::list` (FIFO queue) | O(1) push back, pop front, erase by iterator |
-| Cancel by id | `unordered_map<id, (side, price, iterator)>` | O(1) lookup + erase |
-| Depth snapshot | iterate levels | O(levels) |
-| Production latency | flat arrays indexed by price tick, intrusive lists, object pools | sub-microsecond |
+| The best price on each side | `std::map` with a comparator (or a heap of price levels) | O(1) at `begin()` |
+| Time order inside one price | `std::list` (a FIFO queue) | O(1) to add at the back, take from the front, and erase by iterator |
+| Cancel by id | `unordered_map<id, (side, price, iterator)>` | O(1) lookup and erase |
+| A depth snapshot | go through the levels | O(levels) |
+| Real exchanges (very low delay) | flat arrays indexed by price tick, intrusive lists, object pools | less than a microsecond |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Market order with an empty opposite side | no trades; nothing rests; the order is rejected/cancelled |
-| Order filled across many levels | loops through levels; each level removed when empty |
-| Cancel after fill | `index_` no longer has the id: returns false |
-| Equal prices, equal time | the `seq` makes order total; list order encodes it |
-| Price not on the tick grid, zero or negative quantity | validate before matching (reject) |
-| Self-trade policy | skip (as here), cancel newest, cancel oldest, or cancel both (configurable `SelfTradePolicy` strategy) |
-| Order modification (change price) | cancel + new order (loses time priority); quantity decrease may keep priority |
-| Large bursts | the sequencer queue provides back-pressure; the engine stays single-threaded |
+| A market order when the other side is empty | no trades. Nothing waits. The order is refused or cancelled |
+| An order filled across many levels | the loop goes through the levels. Each level is removed when empty |
+| Cancelling after it was filled | `index_` no longer has the id, so it returns false |
+| Same price, same time | the `seq` makes the order exact. The list order holds it |
+| A price not on the tick grid, zero or negative quantity | checked before matching (refused) |
+| Self-trade policy | skip (as here), cancel the newest, cancel the oldest, or cancel both (a `SelfTradePolicy` strategy) |
+| Changing an order's price | cancel and make a new order (it loses its place in time). Lowering the quantity may keep its place |
+| Big bursts of orders | the sequencer queue pushes back. The engine stays single-threaded |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Fill-or-kill, stop orders, iceberg orders" | order types as strategies on `TimeInForce`/`OrderType`; stops live in a separate trigger book |
-| "Many symbols" | one engine instance per symbol, each on its own thread, routed by symbol hash |
-| "Fees, risk checks (pre-trade)" | a chain of validators before `submit` (Chain of Responsibility) |
-| "Auctions (opening/closing)" | an `AuctionMode` collecting orders and computing a single clearing price |
-| "Persistence and recovery" | an event-sourced journal of accepted orders; replay rebuilds the book deterministically |
-| "Market data feed" | publish book updates (deltas) with sequence numbers; snapshots on request |
-| "High availability" | primary/backup engines consuming the same ordered input stream (deterministic replicas) |
-| "Fairness and latency" | the input sequence is the only source of time priority; avoid wall clocks in matching |
-| "Price improvement / pro-rata matching" | an alternative matching algorithm behind a `MatchingPolicy` interface |
+| "Fill-or-kill, stop orders, iceberg orders" | order types as strategies on `TimeInForce` and `OrderType`. Stops live in a separate trigger book |
+| "Many symbols" | one engine for each symbol, each on its own thread, chosen by a hash of the symbol |
+| "Fees and risk checks before the trade" | a chain of checks before `submit` (Chain of Responsibility) |
+| "Auctions (at open and close)" | an `AuctionMode` that collects orders and finds one price that clears |
+| "Saving and recovery" | a journal of accepted orders (event sourcing). Replaying it rebuilds the book exactly |
+| "A market data feed" | publish book updates (changes) with sequence numbers. A snapshot on request |
+| "High availability" | a main and a backup engine that read the same ordered input (the same results) |
+| "Fairness and delay" | the input sequence is the only source of time priority. Do not use wall clocks in matching |
+| "Matching by share instead of by time" | another matching algorithm behind a `MatchingPolicy` interface |
+
+## Short answer to say in an interview
+
+:::interview How does an order matching engine work?
+"I keep two maps of price levels: bids sorted from the highest price, asks from the lowest. Each level is a FIFO list of orders, which gives price-time priority. A new order walks the other side from the best price while the prices cross, makes trades at the resting order's price, and handles partial fills. A limit order that is not filled rests in the book, but market and IOC orders do not. An index from id to list iterator makes cancel O(1). The engine runs on one thread per symbol, fed by a sequencer, so it is exact and predictable."
+:::
 
 ```quiz
-? At what price does a trade happen when an aggressive order crosses a resting order?
-- The incoming order's price
-+ The resting order's price (price improvement goes to the aggressor)
+? At what price does a trade happen when a new order crosses a resting order?
+- The new order's price
++ The resting order's price (the new order may get a better price)
 - The average of the two
-> Standard exchange rule for continuous limit order books.
-? Why is the matching engine usually single-threaded per symbol?
+> This is the standard rule for continuous limit order books.
+? Why is the matching engine usually single-threaded for each symbol?
 - C++ cannot do threads
-+ Matching must be strictly ordered and deterministic; locks would add latency and complexity, so a sequencer feeds one thread
-- Because maps are not thread-safe
-> Parallelism comes from running many symbols in parallel.
++ Matching must be in strict order and exact. Locks would add delay and complexity, so a sequencer feeds one thread
+- Maps are not thread-safe
+> Speed comes from running many symbols in parallel.
 ```
 
 :::keypoints
-- Book = two price-ordered maps of FIFO levels (list), plus an id index for O(1) cancel; matching walks the best prices while they cross.
-- Trade at the resting price; partial fills; market and IOC remainders do not rest; self-trade prevention is a policy.
-- One thread per symbol fed by a sequencer; events and journals make it deterministic and recoverable.
+- The book = two price-ordered maps of FIFO levels (lists) and an id index for O(1) cancel. Matching walks the best prices while they cross.
+- The trade is at the resting price. Partial fills happen. Market and IOC remainders do not wait. Self-trade prevention is a policy.
+- One thread for each symbol, fed by a sequencer. Events and journals make it exact and recoverable.
 :::

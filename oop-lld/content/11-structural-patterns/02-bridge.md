@@ -1,17 +1,25 @@
 ---
 title: Bridge
-level: advanced
+level: intermediate
 time: 30
-summary: Splitting a class that varies in two independent ways into two hierarchies connected by composition, avoiding the class explosion of subclassing both, with a messages-and-channels example and the comparison with Adapter and Strategy.
+summary: When a class changes in two independent ways, do not make a subclass for every combination. Split it into two groups joined by a link. Includes a notification and channel example and a comparison with Adapter and Strategy.
 ---
 
+## What problem does Bridge solve?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "My class can vary in **two different ways** at the same time. If I make a subclass for every combination, I will soon have too many classes."
+
+Think of a remote control and a TV. There are many kinds of remotes (basic, smart) and many kinds of TVs (Sony, LG). You do not build a separate remote for every remote-TV pair. The remote just **connects** to any TV.
+
 :::def Bridge
-**Decouple an abstraction from its implementation** so that the two can vary independently.
+Split a class into two parts, the **abstraction** (what we do) and the **implementation** (how we do it), so that **each can change on its own**.
 :::
 
-## The problem: a class explosion
+## The problem: too many classes
 
-Suppose notifications can be of several **kinds** (alert, reminder) and sent over several **channels** (email, SMS). If you subclass for every combination:
+Suppose notifications have different **kinds** (alert, reminder) and are sent through different **channels** (email, SMS). If we make a subclass for every combination:
 
 ```text
 Notification
@@ -21,11 +29,16 @@ Notification
  └─ ... add Promo kind: PromoEmail, PromoSms, PromoPush
 ```
 
-With *k* kinds and *c* channels you write **k × c** classes. Every new kind or channel multiplies the work. Two **independent dimensions of change** are tangled in one hierarchy.
+With *k* kinds and *c* channels, we need **k × c** classes. Adding one new channel means adding a class for every kind. That grows very fast.
 
 ## The Bridge solution
 
-Make each dimension its own hierarchy. The **abstraction** (the kind of message) holds a **reference to an implementor** (the channel) and delegates the low-level work. Now you write **k + c** classes, and any pairing works.
+Make **two small families** instead of one big one:
+
+- the **kind** of message (alert, reminder),
+- the **channel** (email, SMS).
+
+The kind **holds a link** (a reference) to a channel and asks it to do the actual sending. Now we write only **k + c** classes, and any kind works with any channel.
 
 ```viz algo=uml title="Bridge: two hierarchies joined by a reference"
 abstract class Notification
@@ -111,9 +124,10 @@ int main() {
 }
 ```
 
-Adding a **new channel** (`WhatsAppSender`) is one class and works with every notification. Adding a **new kind** (`Promo`) is one class and works over every channel.
+- Add a **new channel** (like WhatsApp): write **one class**. It works with every kind.
+- Add a **new kind** (like Promo): write **one class**. It works with every channel.
 
-## A second example: a shape with a renderer
+## A second example: shape and renderer
 
 ```cpp run title="Shape (abstraction) x Renderer (implementation)"
 #include <iostream>
@@ -167,46 +181,49 @@ int main() {
 }
 ```
 
+A shape (circle, square) can be drawn by any renderer (screen, printer). The shape does not need to know how drawing works.
+
 ## Bridge vs Adapter vs Strategy
 
 | | Bridge | Adapter | Strategy |
 |---|---|---|---|
-| When it appears | **designed up front** to separate two dimensions | **retrofitted** to make incompatible things work | designed to swap one algorithm |
-| Structure | two parallel hierarchies, abstraction holds an implementor | wraps one existing class | a context holds a strategy |
-| Intent | structure: avoid a class explosion | compatibility | behaviour: choose an algorithm |
-| Number of "varying dimensions" | two (abstraction, implementation) | one adaptee | one algorithm |
+| When | **planned at the start** to keep two things apart | **added later** to make two things fit | planned to swap one algorithm |
+| Shape | two families, linked by a reference | one wrapper around one class | one class holding one strategy |
+| Goal | avoid too many classes | make things compatible | choose how to do one job |
 
-The code of Bridge and Strategy looks almost the same (an object holding an interface pointer). The difference is **intent and scale**: Strategy swaps one algorithm inside a class; Bridge splits a whole hierarchy into two so that both sides can grow.
+The code of Bridge and Strategy looks almost the same: an object holding a pointer to an interface. The difference is the **purpose**. Strategy swaps one algorithm inside a class. Bridge splits a whole class family into two, so both sides can grow.
 
 ## When to use Bridge
 
-- A class varies along **two orthogonal dimensions** (kind × channel, shape × renderer, remote × device, platform × feature).
-- You want to switch the implementation **at run time**.
-- You want to hide implementation details from clients, and avoid recompiling the abstraction when the implementation changes (PIMPL is a special bridge with one implementor).
+- A class varies in **two independent ways** (kind × channel, shape × renderer, remote × device).
+- You want to switch the implementation **while the program runs**.
+- You want to hide the details of the implementation from users.
 
-:::interview What is the Bridge pattern? When would you pick it over inheritance?
-"Bridge splits a class that varies in two independent ways into two hierarchies, an abstraction and an implementor, connected by composition. With inheritance I would need one class per combination, k times c. With a bridge I write k plus c classes and can pair them freely, even changing the implementor at run time. I use it for things like notification kind by channel, or shapes by renderer."
+## Short answer to say in an interview
+
+:::interview What is the Bridge pattern, and why use it instead of inheritance?
+"Bridge is for a class that varies in two independent ways. I split it into two small families, an abstraction and an implementation, joined by a reference. With inheritance I would need one class for every combination, k times c. With Bridge I need only k plus c, and I can mix them freely, even at run time. For example, notification kind and sending channel."
 :::
 
 ```quiz
 ? What problem does Bridge solve?
-- Converting incompatible interfaces
-+ The class explosion when something varies along two independent dimensions
-- Creating one instance
-> Two hierarchies joined by a reference replace a combinatorial subclass tree.
-? In a Bridge, what does the abstraction hold?
-- A copy of the implementor's code
-+ A reference to an implementor interface, to which it delegates
+- Making incompatible interfaces fit
++ Too many classes when something changes in two independent ways
+- Creating exactly one object
+> Two small families joined by a link replace a big tree of subclasses.
+? What does the "abstraction" hold in a Bridge?
+- A copy of the implementation's code
++ A reference to an implementation interface, to which it passes the work
 - A pointer to its parent
-> That reference is the "bridge" between the two hierarchies.
-? How does Bridge differ from Adapter?
-- They are identical
-+ Bridge is designed up front to separate dimensions; Adapter is applied later to make existing classes compatible
-> The shapes of the code are similar, the intent differs.
+> That reference is the bridge.
+? How is Bridge different from Adapter?
+- They are the same
++ Bridge is planned at the start to keep two things apart. Adapter is added later to make existing things fit.
+> The code can look similar, but the purpose is different.
 ```
 
 :::keypoints
-- Bridge = two independent hierarchies (abstraction and implementation) linked by composition.
-- It turns k × c subclasses into k + c and allows swapping the implementation at run time.
-- It is designed up front; Adapter is retrofitted. Strategy is the one-dimension cousin.
+- Bridge = two families (abstraction and implementation) joined by composition.
+- It turns k × c classes into k + c, and the implementation can change at run time.
+- It is planned from the start. Adapter is added later. Strategy is the one-dimension cousin.
 :::

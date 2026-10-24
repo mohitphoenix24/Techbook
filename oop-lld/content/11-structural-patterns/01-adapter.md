@@ -2,20 +2,26 @@
 title: Adapter
 level: intermediate
 time: 30
-summary: Making an incompatible interface fit the one your code expects, with an object adapter (composition) and a class adapter (inheritance), a payment-gateway example, adapters in the standard library, and how Adapter differs from Facade, Bridge and Proxy.
+summary: Make a class with a different interface work with your code, without changing it. Learn the object adapter, the class adapter, a payment example, adapters you already use in the standard library, and how Adapter differs from similar patterns.
 ---
 
-:::def Adapter
-Convert the interface of a class into **another interface that clients expect**. Adapter lets classes work together that could not otherwise, because of incompatible interfaces.
+## What is the Adapter pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "I have a class that does the job, but its methods look different from what my code expects. I cannot change that class. So I put a small helper in between that translates."
+
+:::analogy Think of a travel plug adapter
+Your laptop charger has a two-pin plug, but the hotel socket has three round holes. You do not rewire your laptop or the hotel wall. You just put a small adapter between them.
 :::
 
-:::analogy Think of it like this
-A travel plug adapter. Your laptop charger has a two-pin plug; the hotel socket has three round holes. You do not rewire the laptop or the wall. You put a small adapter in between.
+:::def Adapter
+A small class that **converts one interface into another** that your code expects, so two classes that do not fit can work together.
 :::
 
 ## The problem
 
-Your code is written against `PaymentGateway`. You need to use a **third-party** library whose class has different method names, units and types. You cannot (or should not) change the library.
+Your code is written for a `PaymentGateway` interface. Now you want to use a **third-party** library. Its class has different method names, different units, and different types. You cannot (or should not) edit that library.
 
 ```viz algo=uml title="Object adapter"
 interface PaymentGateway
@@ -32,7 +38,9 @@ BankAdapter ..|> PaymentGateway
 BankAdapter --> LegacyBankApi : wraps
 ```
 
-## Object adapter (composition): the usual choice
+## The object adapter (the usual way)
+
+The adapter **follows our interface** and **holds the third-party object inside**. When we call it, it translates and passes the call on.
 
 ```cpp run title="Adapting a legacy API to our interface"
 #include <iostream>
@@ -85,9 +93,9 @@ int main() {
 }
 ```
 
-The client, `CheckoutService`, is unchanged and never sees `LegacyBankApi`. A different provider gets its own small adapter. All the translation (units, names, error conventions) lives in **one** place.
+Notice that `CheckoutService` does not change at all. It never even hears about `LegacyBankApi`. All the translation (names, units, error styles) lives in **one small class**.
 
-## Two adapters, one interface
+## Many adapters, one interface
 
 ```cpp run title="Several third-party gateways behind one interface"
 #include <iostream>
@@ -131,9 +139,11 @@ int main() {
 }
 ```
 
-## Class adapter (inheritance)
+Each provider gets its own small adapter. The rest of the code stays the same.
 
-A *class* adapter inherits from the adaptee (privately) and implements the target interface. It can override adaptee behaviour, but couples tightly and cannot adapt subclasses of the adaptee.
+## The class adapter (using inheritance)
+
+Another way is to **inherit** from the third-party class. It also works, but it is tied closely to that one class, so people use it less.
 
 ```cpp run title="Class adapter with multiple inheritance"
 #include <iostream>
@@ -150,20 +160,18 @@ public:
 int main() { ClassAdapter a; cout << a.sizeInCm() << " cm\n"; }
 ```
 
-Prefer the **object adapter**: it favours composition, can wrap any subclass of the adaptee, and does not expose the adaptee.
+**Prefer the object adapter.** It uses composition, works with any child of the third-party class, and does not show the third-party methods to others.
 
-## Adapters in the standard library
+## You already use adapters
 
-You have used adapters without noticing:
-
-| Adapter | Adapts | To |
+| Adapter | What it adapts | Into |
 |---|---|---|
-| `std::stack<T, Container>` | `deque`/`vector` | a LIFO interface |
-| `std::queue`, `std::priority_queue` | `deque`, `vector` | FIFO / heap interfaces |
-| `std::back_inserter(c)` | `push_back` | an output-iterator interface |
-| `std::function` / lambdas | any callable | a uniform call signature |
-| `std::string_view` | contiguous chars | a read-only string-like view |
-| `std::reverse_iterator` | an iterator | the same sequence backwards |
+| `std::stack<T, Container>` | a `deque` or `vector` | a "last in, first out" stack |
+| `std::queue`, `std::priority_queue` | `deque`, `vector` | a queue, a heap |
+| `std::back_inserter(c)` | `push_back` | something algorithms can write into |
+| `std::function` / lambdas | any callable thing | one standard call shape |
+| `std::string_view` | a block of characters | a read-only string-like view |
+| `std::reverse_iterator` | an iterator | the same data, backwards |
 
 ```cpp run title="stack adapts a vector"
 #include <iostream>
@@ -181,45 +189,47 @@ int main() {
 
 ## Adapter vs similar patterns
 
-| Pattern | Intent | Does the interface change? |
+| Pattern | What it does | Does the interface change? |
 |---|---|---|
-| **Adapter** | make an **existing** interface match a **different one expected** | yes: that is the whole point |
-| **Facade** | a **simpler** interface over a whole subsystem | new, simpler interface |
-| **Decorator** | add behaviour, **same interface** | no |
-| **Proxy** | control access, **same interface** | no |
-| **Bridge** | vary abstraction and implementation **independently** (designed up front) | designed, not retrofitted |
+| **Adapter** | makes an **existing** interface fit a **different** one | yes, that is the point |
+| **Facade** | gives a **simpler** interface to a whole group of classes | yes, a new simpler one |
+| **Decorator** | adds behaviour | no, same interface |
+| **Proxy** | controls access | no, same interface |
+| **Bridge** | lets two things grow separately (planned from the start) | designed, not patched |
 
-Adapter is usually applied **after the fact** (integrating something that exists). Bridge is designed **up front**.
+Quick memory trick: Adapter is usually used **after** the fact (to join something that already exists). Bridge is planned **at the start**.
 
 ## When to use it
 
-- Integrating a third-party library or legacy code whose interface you cannot change.
-- Isolating your code from a vendor API so it can be swapped (an **anti-corruption layer**).
-- Making several classes with similar behaviour but different interfaces usable through one.
+- You use a third-party or old library and cannot change its interface.
+- You want your code to depend only on **your** interface, so you can swap the vendor later.
+- Several classes do similar work with different interfaces, and you want one common way to use them.
 
-:::interview Object adapter vs class adapter?
-"Both implement the target interface. A class adapter inherits the adaptee (multiple inheritance in C++), so it is tied to one concrete adaptee and can override its behaviour. An object adapter holds the adaptee as a member and delegates, which follows 'composition over inheritance': it works with the adaptee and its subclasses and hides the adaptee's interface. I prefer the object adapter."
+## Short answer to say in an interview
+
+:::interview What is the difference between an object adapter and a class adapter?
+"Both follow the interface my code expects. A class adapter inherits from the third-party class, so it is tied to that one class. An object adapter holds the third-party object as a member and passes calls to it. This is composition, so it works with child classes too and hides the original methods. I prefer the object adapter."
 :::
 
 ```quiz
 ? What does the Adapter pattern change?
 - The behaviour of an object
-+ The interface: it translates calls from the expected interface to the existing one
-- The number of instances
-> It lets incompatible interfaces work together without modifying either.
-? Which form is generally preferred in C++?
-- Class adapter via inheritance
-+ Object adapter via composition
-> Composition is more flexible and does not expose or depend on the adaptee's internals.
-? `std::stack` is an example of...
++ The interface: it translates calls from the one we expect into the one that exists
+- The number of objects
+> It lets two things that do not fit work together without editing either.
+? Which form do we prefer in C++?
+- Class adapter using inheritance
++ Object adapter using composition
+> Composition is more flexible and hides the other class's insides.
+? std::stack is an example of...
 - Factory
 + Adapter
 - Singleton
-> It adapts a sequence container to a stack interface.
+> It adapts a container into a stack interface.
 ```
 
 :::keypoints
-- Adapter translates one interface into the one clients expect. The adapter implements the target and holds (or inherits) the adaptee.
-- Prefer the object adapter. Keep all translation (units, names, errors) in the adapter.
-- Use it to wrap third-party and legacy code so the rest of your system depends only on your interface.
+- Adapter translates one interface into the one your code expects. It follows your interface and holds the other object.
+- Prefer the object adapter. Keep all translation in the adapter.
+- Use it to wrap third-party and old code, so the rest of your system depends only on your interface.
 :::

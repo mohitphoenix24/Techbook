@@ -2,33 +2,39 @@
 title: Code smells and how to fix them
 level: intermediate
 time: 40
-summary: A catalogue of the design smells interviewers expect you to name (god class, long method, switch on type, feature envy, primitive obsession, shotgun surgery and more), each with a small example, the principle it breaks, and the refactoring that cures it.
+summary: The common signs of bad design (called code smells), each with a small example and a simple cure. Learn to name the smell and say how you would fix it.
 ---
 
-A **code smell** is a surface sign that a deeper design problem may exist. Naming a smell and its cure is a strong signal in a design interview ("I would refactor this because...").
+A **code smell** is a small sign that the design may have a deeper problem. It is called a "smell" because, like a bad smell in the kitchen, it tells you to look closer. It does not always mean the code is wrong.
 
-## The catalogue
+In an interview, saying *"This is a god class, so I would split it"* shows that you really understand design.
 
-| Smell | What you see | Principle broken | Cure |
+## The list of smells
+
+| Smell | What you see | Which rule it breaks | Simple cure |
 |---|---|---|---|
-| **God class** | one class with dozens of methods and unrelated fields | SRP | split by responsibility |
-| **Long method** | 60+ lines, many comments marking "sections" | SRP | extract methods |
-| **Switch on type** | `switch (type)` repeated in many places | OCP | polymorphism / strategy |
-| **Feature envy** | a method uses another object's data more than its own | cohesion | move the method |
-| **Primitive obsession** | `string` for emails, `int` for money, `double` for coordinates | encapsulation | small value types |
-| **Long parameter list** | 6+ parameters | cohesion | parameter object, builder |
-| **Data clumps** | the same 3 fields travel together everywhere | cohesion | extract a class |
-| **Shotgun surgery** | one change edits many classes | cohesion | move together what changes together |
-| **Divergent change** | one class edited for many unrelated reasons | SRP | split |
-| **Inappropriate intimacy** | classes dig into each other's private details | coupling, Demeter | hide, extract interface |
-| **Message chains** | `a.getB().getC().getD()` | Demeter | delegate: `a.doIt()` |
-| **Duplicated code** | copy-paste blocks | DRY | extract function / class |
-| **Speculative generality** | interfaces and hooks nobody uses | YAGNI | delete them |
-| **Refused bequest** | subclass ignores or throws on inherited methods | LSP | composition / restructure |
-| **Global/static mutable state** | Singletons and `static` variables touched everywhere | coupling, testability | inject dependencies |
-| **Magic numbers/strings** | `if (status == 3)` | readability | `enum class`, named constants |
+| **God class** | one class with dozens of methods about different things | SRP | split it by job |
+| **Long method** | 60+ lines with comments like "now do part 2" | SRP | break into small methods |
+| **Switch on type** | the same `switch (type)` in many places | OCP | one class per type |
+| **Feature envy** | a method uses another class's data more than its own | cohesion | move the method there |
+| **Primitive obsession** | `string` for an email, `int` for money | encapsulation | make small types |
+| **Long parameter list** | 6 or more parameters | cohesion | put them in one object |
+| **Data clumps** | the same 3 values always travel together | cohesion | make them a class |
+| **Shotgun surgery** | one small change means editing many classes | cohesion | put what changes together in one place |
+| **Divergent change** | one class changes for many unrelated reasons | SRP | split it |
+| **Too friendly** | classes dig into each other's private parts | coupling | hide details, use an interface |
+| **Message chain** | `a.getB().getC().getD()` | Law of Demeter | give `a` one method that does it |
+| **Duplicate code** | copy and paste | DRY | extract a function or class |
+| **Speculative generality** | interfaces nobody uses "just in case" | YAGNI | delete them |
+| **Refused bequest** | a child ignores or throws on parent methods | LSP | use composition or restructure |
+| **Global mutable state** | singletons and `static` variables used everywhere | testability | pass dependencies in |
+| **Magic numbers** | `if (status == 3)` | readability | `enum class` or a named constant |
 
 ## Example 1: primitive obsession and data clumps
+
+The smell: an email is just a `string`, money is just an `int`. Nothing stops you from passing a wrong value.
+
+The cure: make small types that check themselves.
 
 ```cpp run title="Cure: small value types"
 #include <iostream>
@@ -67,7 +73,11 @@ int main() {
 }
 ```
 
-## Example 2: feature envy and a message chain
+## Example 2: feature envy and message chains
+
+The smell: a method keeps reading another object's data (`order.customer.address.city`). It is "envious" of that class.
+
+The cure: move the work to the class that owns the data.
 
 ```cpp run title="Cure: move the method to where the data lives"
 #include <iostream>
@@ -100,7 +110,11 @@ int main() {
 }
 ```
 
-## Example 3: long parameter list
+## Example 3: a long list of parameters
+
+The smell: `createUser(name, email, age, city, pin, phone, ...)`. It is easy to mix up the order.
+
+The cure: put the related values in one object (or use a builder).
 
 ```cpp run title="Cure: parameter object (or builder)"
 #include <iostream>
@@ -126,6 +140,10 @@ int main() {
 ```
 
 ## Example 4: global state (the Singleton smell)
+
+The smell: a class quietly uses a global object inside. You cannot see it from outside, and you cannot replace it in tests.
+
+The cure: pass the helper in.
 
 ```cpp run title="Cure: inject the dependency"
 #include <iostream>
@@ -153,50 +171,62 @@ int main() {
 }
 ```
 
-## A diagnosis drill
+## Practice: name the smell
 
-For each snippet, name the smell and the cure.
+Try to answer first, then read the answers.
 
 :::exercise Name the smell
 1. `if (user.getAccount().getWallet().getBalance() > price) { ... }`
 2. A class `Util` with `parseDate`, `sendEmail`, `calcTax`, `hashPassword`.
-3. Eight functions all start with `switch (shape.kind)`.
-4. A `Square` class whose `setHeight` throws "not supported".
+3. Eight functions that all start with `switch (shape.kind)`.
+4. A `Square` class where `setHeight` throws "not supported".
 5. Every time the tax law changes, you edit `Invoice`, `Cart`, `Quote`, `Report` and `Refund`.
 :::
 
 :::solution Answers
-1. **Message chain** (Law of Demeter): add `user.canAfford(price)`.
-2. **God/utility class** with low cohesion (SRP): split into parser, mailer, tax and security services.
-3. **Switch on type** (OCP): give `Shape` virtual methods (or use `variant`/visitor).
-4. **Refused bequest** (LSP): do not inherit; restructure with a shared interface or siblings.
-5. **Shotgun surgery**: extract a single `TaxPolicy` that all five use.
+1. **Message chain.** Add `user.canAfford(price)`.
+2. **God or utility class.** Split it into a parser, a mailer, a tax service and a security service.
+3. **Switch on type.** Give `Shape` its own methods, one class per kind.
+4. **Refused bequest.** Do not inherit. Use a shared interface or make them siblings.
+5. **Shotgun surgery.** Create one `TaxPolicy` that all five use.
 :::
 
-:::interview How do you decide when to refactor?
-"I refactor when a smell is costing me: when a new requirement touches many places (shotgun surgery), when tests are hard to write (hidden dependencies), or when I keep misunderstanding a class (god class, long method). I do it in small steps with tests passing between each, and I name the smell and the target design so the team understands the change."
+## When should you refactor?
+
+Not every smell must be fixed at once. Fix it when it **hurts**:
+
+- a new feature must touch many places,
+- tests are hard to write,
+- you keep getting confused reading one class.
+
+Do it in **small steps**, and run the tests after each step.
+
+## Short answer to say in an interview
+
+:::interview When do you refactor, and how?
+"I refactor when a smell is causing pain. For example, when one change touches many classes, or when I cannot write a test easily. I take small steps and keep the tests passing after each step. I also name the smell and the design I am moving to, so the team understands the change."
 :::
 
 ```quiz
-? A method uses getters of another class ten times and little of its own data. What is the smell?
+? A method uses another class's getters ten times and hardly uses its own data. What is the smell?
 - Long method
-+ Feature envy (the method belongs in the other class)
++ Feature envy. The method belongs in the other class
 - Singleton
-> Move the behaviour to where the data lives.
-? Which cure fits "switch on type repeated in many functions"?
-- Extract method
-+ Polymorphism: one subclass or strategy per case
-- A global variable
-> This is an OCP violation; polymorphism puts each case in its own class.
-? What does primitive obsession mean?
+> Move the work to where the data lives.
+? Which cure fits "the same switch on type in many functions"?
+- Extract a method
++ One class per case (polymorphism)
+- Use a global variable
+> This breaks OCP. Putting each case in its own class fixes it.
+? What is primitive obsession?
 - Using too many pointers
-+ Using raw strings/ints for domain concepts (emails, money) instead of small types
-- Using primitive containers
-> Value types carry validation and meaning, and prevent argument mix-ups.
++ Using plain strings and ints for real ideas like email or money
+- Using simple containers
+> Small types add checks and meaning, and stop mix-ups.
 ```
 
 :::keypoints
-- Learn the vocabulary: god class, long method, switch on type, feature envy, primitive obsession, long parameter list, data clumps, shotgun surgery, message chains, refused bequest, global state.
-- Each smell points to a principle (SRP, OCP, LSP, DIP, Demeter, DRY) and a standard refactoring.
-- Refactor in small steps, driven by real pain, and always protected by tests.
+- Learn the names: god class, long method, switch on type, feature envy, primitive obsession, long parameter list, data clumps, shotgun surgery, message chain, refused bequest, global state.
+- Each smell points to a rule (SRP, OCP, LSP, DIP, Demeter, DRY) and a simple fix.
+- Refactor in small steps, only where it hurts, with tests running.
 :::

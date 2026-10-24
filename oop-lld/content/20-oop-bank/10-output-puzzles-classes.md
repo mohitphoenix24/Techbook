@@ -2,10 +2,10 @@
 title: "OOP interview: output puzzles on classes"
 level: medium
 time: 35
-summary: Twelve what-does-this-print puzzles on construction order, virtual calls, slicing, hiding, default arguments, copies, moves and static members, each with a verified run and the reason.
+summary: Twelve "what does this print?" puzzles on construction order, virtual calls, slicing, name hiding, default arguments, copies, moves and static members. Each has a verified run and a simple reason.
 ---
 
-Read the code, write down the output on paper, then press **Run** to check. The reason is under each puzzle.
+**How to do these puzzles:** read the code, write the output on paper, and only then press **Run** to check. The reason is written under each puzzle in simple words.
 
 :::qa Puzzle 1: construction and destruction order {level=medium}
 ```cpp run title="Order of constructors and destructors"
@@ -20,7 +20,7 @@ struct Derived : Base {
 };
 int main() { { Derived d; } cout << "\n"; }
 ```
-**Why:** bases are built first (with their own members), then the derived members in **declaration order**, then the body of the derived constructor. Destruction runs exactly backwards: derived body, derived members in reverse, then the base.
+**Why:** think of building a house. The foundation (the base class and its parts) is built first. Then the rooms (the child's members), in the order they are written in the class. Then the finishing work (the child constructor's body). Destruction goes in exactly the opposite order: the child's body, the child's members in reverse, then the base.
 :::
 
 :::qa Puzzle 2: a virtual call inside a constructor {level=hard}
@@ -38,7 +38,7 @@ struct Dog : Animal {
 };
 int main() { Dog d; cout << "after: "; d.speak(); }
 ```
-**Why:** while `Animal`'s constructor runs, the object is only an `Animal` (the vptr points to `Animal`'s table), so `Animal::speak` is called. `Dog`'s part does not exist yet. By the time `Dog`'s own constructor runs, the dynamic type is `Dog`.
+**Why:** while the `Animal` constructor runs, the object is only an `Animal`. The `Dog` part has not been built yet, so `Animal::speak` runs. Once the `Dog` constructor runs, the object is a `Dog`.
 :::
 
 :::qa Puzzle 3: object slicing {level=medium}
@@ -58,7 +58,7 @@ int main() {
     cout << "in vector<Shape>: " << v[0].area() << "\n";
 }
 ```
-**Why:** passing or storing a `Square` as a `Shape` **value** copies only the `Shape` part and the vptr becomes `Shape`'s. References and pointers keep the real object. Store `unique_ptr<Shape>` in containers.
+**Why:** passing a `Square` as a `Shape` **by value** copies only the `Shape` part, and the rest is cut off (sliced). A reference or pointer keeps the real object. So store `unique_ptr<Shape>` in containers.
 :::
 
 :::qa Puzzle 4: default arguments and virtual functions {level=hard}
@@ -73,7 +73,7 @@ int main() {
     b.show();
 }
 ```
-**Why:** the function is picked at run time (`B::show`), but the default value is taken at compile time from the **static type** of the expression (`A&` gives 1). Never change defaults in overrides; better, do not use defaults on virtual functions.
+**Why:** the function that runs is chosen at run time (`B::show`), but the default value is chosen at compile time from the type written in the code (`A&`, so 1). Never change defaults in an override. Better: do not use default arguments on virtual functions.
 :::
 
 :::qa Puzzle 5: name hiding {level=medium}
@@ -90,7 +90,7 @@ int main() {
     x.f(1); x.f(2.5); x.f("hi");
 }
 ```
-**Why:** declaring any `f` in `Derived` hides **all** `Base::f` overloads, so `d.f(1)` would not compile (the line is commented out). `using Base::f;` brings them back.
+**Why:** writing any `f` in `Derived` hides **all** the `Base::f` functions, so `d.f(1)` would not compile (that line is commented out). `using Base::f;` brings them back.
 :::
 
 :::qa Puzzle 6: how many copies? {level=hard}
@@ -113,7 +113,7 @@ int main() {
     cout << "d: "; { T t; take(std::move(t)); } cout << "\n";
 }
 ```
-**Why:** (a) a returned prvalue is constructed directly in its final place (guaranteed since C++17): no copy or move. (b) the compiler elides the named local too (NRVO), though not required. (c) `take(t)` copies into the parameter. (d) `std::move` lets the parameter be move-constructed.
+**Why:** (a) returning a temporary builds it directly in its final place (guaranteed since C++17), so there is no copy or move. (b) the compiler also skips the copy for a named local (usually, but not required). (c) `take(t)` copies into the parameter. (d) `std::move` lets the parameter be move-constructed instead.
 :::
 
 :::qa Puzzle 7: move and the moved-from object {level=medium}
@@ -134,7 +134,7 @@ int main() {
     cout << "a: " << a << "\n";
 }
 ```
-**Why:** the standard guarantees a moved-from object is **valid but unspecified**. In practice the library types are left empty. You may assign a new value to them and destroy them safely; do not read them as if they still held the old value.
+**Why:** a moved-from object is **valid but unspecified**. In practice the standard library types are left empty. You may give them a new value or destroy them safely. But do not read them as if they still held the old value.
 :::
 
 :::qa Puzzle 8: static members and counting objects {level=medium}
@@ -163,7 +163,7 @@ int main() {
     Widget::report("end");
 }
 ```
-**Why:** a copy bumps both counters; leaving the block lowers only `alive`. `byValue(a)` makes one temporary copy. `makeOne()` constructs `w` directly into `c` (elision), so only one object is created for it.
+**Why:** a copy adds 1 to both counters. When a copy goes out of scope, only `alive` goes down. `byValue(a)` makes one temporary copy. `makeOne()` builds `w` directly inside `c`, so only one object is created for it.
 :::
 
 :::qa Puzzle 9: const and overload resolution {level=medium}
@@ -187,7 +187,7 @@ int main() {
     f(static_cast<long>(3) == 3 ? 7 : 8);
 }
 ```
-**Why:** a non-const object picks the non-const overload, a const object the const one. For `f(1.5f)` a float promotes to `double` (a promotion beats a conversion to `int`). `'a'` promotes to `int`. A string literal decays to `const char*` (better than `bool`). Comparison results are `bool`.
+**Why:** a non-const object picks the non-const function, and a const object picks the const one. For `f(1.5f)`, a float is promoted to `double`, which is better than converting to `int`. The letter `'a'` is promoted to `int`. A string literal becomes `const char*`, which is better than `bool`. A comparison gives a `bool`.
 :::
 
 :::qa Puzzle 10: Rule of Three in action {level=hard}
@@ -218,7 +218,7 @@ int main() {
     cout << a.get() << " " << b.get() << " " << c.get() << "\n";
 }
 ```
-**Why:** each object owns its own buffer, so changing `a` does not affect `b` or `c`. At the end three destructors run in reverse order of construction (`c`, `b`, `a`) and each frees its own memory. With the compiler's default copy, all three would share one buffer and be freed three times.
+**Why:** each object owns its own buffer, so changing `a` does not change `b` or `c`. At the end, three destructors run in reverse order of creation (`c`, `b`, `a`), and each frees its own memory. With the compiler's default copy, all three would share one buffer and free it three times.
 :::
 
 :::qa Puzzle 11: polymorphism with a vector of unique_ptr {level=easy}
@@ -248,7 +248,7 @@ int main() {
     for (auto& e : staff) e->print();
 }
 ```
-**Why:** `print()` is not virtual but it calls virtual functions through `this`, so each object reports its own `title()` and `pay()`. `Intern` overrides only `pay`, so its title is inherited.
+**Why:** `print()` is not virtual, but it calls virtual functions through `this`. So each object shows its own `title()` and `pay()`. `Intern` changes only `pay`, so it keeps the inherited title.
 :::
 
 :::qa Puzzle 12: the diamond {level=hard}
@@ -273,19 +273,19 @@ int main() {
     cout << "two ids: " << c.Scanner::id << " " << c.Printer::id << ", one id: " << v.id << "\n";
 }
 ```
-**Why:** without `virtual`, `Copier` contains two `Device` objects (so it holds two `id` ints, 8 bytes) (constructed twice) and `c.id` would be ambiguous. With virtual inheritance there is one shared `VDevice`, constructed once by the most derived class.
+**Why:** without `virtual`, `Copier` has two `Device` parts (so two `id` ints, 8 bytes), each built separately, and `c.id` would be unclear. With virtual inheritance there is only one shared `VDevice`, built once by the most derived class.
 :::
 
 ```quiz
 ? In Puzzle 2, why does the Animal constructor not call Dog::speak?
 - Dog::speak is private
-+ The Dog part of the object does not exist yet, so the dynamic type is still Animal
-- Virtual calls are disabled in constructors by the compiler flag
-> Same in destructors.
++ The Dog part of the object does not exist yet, so the type is still Animal at that moment
+- The compiler turns off virtual calls
+> The same is true inside destructors.
 ```
 
 :::keypoints
-- Construction: base, members (declaration order), body; destruction: the exact reverse.
-- Virtual dispatch needs pointer/reference; slicing, default-argument and hiding traps all come from static vs dynamic rules.
-- C++17 guarantees elision for prvalues; moved-from objects are valid but unspecified.
+- Building: base, members (in declaration order), then the body. Destroying goes in the exact reverse.
+- Virtual calls need a pointer or reference. Slicing, default arguments and name hiding all come from "decided at compile time" vs "decided at run time".
+- C++17 skips the copy for returned temporaries. A moved-from object is valid but unspecified.
 :::

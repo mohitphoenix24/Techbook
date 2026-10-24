@@ -2,31 +2,31 @@
 title: Design a Q&A Platform (Stack Overflow)
 level: intermediate
 time: 60
-summary: Users, questions, answers and comments, voting with reputation, accepted answers, tags and tag search, reputation changes through events, moderation (close, delete), and the rules that keep the model consistent.
+summary: Users, questions, answers and comments, voting that changes reputation, accepted answers, tags and search, and moderation. Learn to keep the rules in services that react to events, so the model stays clean.
 ---
 
 :::problem Design a Q&A Platform like Stack Overflow {level=medium tags="domain modelling,Observer,reputation,search,voting"}
-Design a question-and-answer site. Users post questions with tags, others answer, anyone can comment. Users vote questions and answers up or down. The asker can accept one answer. Votes and acceptance change the author's reputation, and reputation unlocks privileges (e.g. voting down needs 125 reputation). Support searching by tag and keyword, and moderation (close a question, delete a post).
+Design a question-and-answer site. Users post questions with tags, others answer, and anyone can comment. Users vote questions and answers up or down. The person who asked can accept one answer. Votes and acceptance change the author's reputation, and reputation unlocks privileges (for example, voting down needs 125 reputation). Support search by tag and by keyword, and moderation (close a question, delete a post).
 :::
 
 :::hint Hint
-Model the content as a small hierarchy (`Post` with `Question`, `Answer`, `Comment`) and put the **rules** (who may vote, how reputation changes) in services driven by **events**, so reputation logic is not scattered through the post classes.
+Model the content as a small family (`Post` with `Question`, `Answer`, `Comment`). Put the **rules** (who may vote, how reputation changes) in services that react to **events**, so the reputation logic is not spread across the post classes.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | User, Question (title, body, tags), Answer, Comment, Vote, Tag |
-| Voting? | up/down on questions and answers; one vote per user per post; you cannot vote on your own post; changing or retracting a vote is allowed |
-| Reputation? | question upvote +5, answer upvote +10, downvote −2 (to the author), accepted answer +15 (answer author) and +2 (asker); minimum 1 |
-| Privileges? | downvote needs reputation ≥ 125 (configurable thresholds) |
-| Accept? | only the asker, one accepted answer per question; changing it moves the bonus |
-| Search? | by tag (and combinations), by keyword in the title |
-| Moderation? | close/reopen a question (no new answers while closed); delete a post (soft delete) |
-| Out of scope | badges, bounties, edits history (mention), full-text search engine |
+| Main things? | User, Question (title, body, tags), Answer, Comment, Vote, Tag |
+| Voting? | up or down on questions and answers. One vote for each user on each post. You cannot vote on your own post. Changing or taking back a vote is allowed |
+| Reputation? | question upvote +5, answer upvote +10, downvote −2 (to the author), accepted answer +15 (to the answer's author) and +2 (to the asker). Minimum 1 |
+| Privileges? | downvoting needs reputation of at least 125 (the limits can be set) |
+| Accepting? | only the asker, one accepted answer for each question. Changing it moves the bonus |
+| Search? | by tag (and combinations), and by keyword in the title |
+| Moderation? | close or reopen a question (no new answers while closed). Delete a post (a soft delete) |
+| Not needed | badges, bounties, edit history (we mention them), a real full-text search engine |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Q&A platform"
 class Platform
@@ -72,17 +72,17 @@ ReputationService ..|> EventListener
 Platform o-- EventListener
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **`Post` base class** holds what questions, answers (and, simply, comments) share: author, body, votes, score, soft-delete flag, comments. `Question` and `Answer` add their own data. Votes are not on comments in this version (comments just have a score of 0).
-- **Votes stored per post** as `map<user id, VoteType>`, which enforces "one vote per user" and makes changing/retracting a vote easy: the score is adjusted by the **difference**.
-- **Events + Observer**: the platform publishes `Event{type, actor, post}` (`Upvoted`, `Downvoted`, `VoteRetracted`, `Accepted`, ...). The `ReputationService` subscribes and applies the rules. Badges, notifications and analytics subscribe the same way, without touching the posts.
-- **Reputation rules as data** (a table of event type → points), applied by the service, with a floor of 1.
-- **Privileges** (`canDownvote`, `canClose`) are checks against thresholds in a `Privileges` policy (a Strategy/lookup), not scattered `if`s.
-- **TagIndex** keeps `tag → questions` for fast tag search; tag intersection for multi-tag queries.
-- **Soft delete** (flag) preserves history and reputation accounting.
+- **A `Post` base class** holds what questions, answers (and simply, comments) share: the author, the text, votes, score, a deleted flag and comments. `Question` and `Answer` add their own data. In this version, comments do not get votes.
+- **Votes are stored with each post** as `map<user id, VoteType>`. This makes sure there is one vote for each user, and makes it easy to change or take back a vote. The score changes by the **difference**.
+- **Events and Observer:** the platform announces `Event{type, actor, post}` (`Upvoted`, `Downvoted`, `VoteRetracted`, `Accepted`, ...). The `ReputationService` listens and applies the rules. Badges, notifications and analytics can listen in the same way, without changing the posts.
+- **Reputation rules as data:** a table from event type to points, applied by the service, with a minimum of 1.
+- **Privileges** (`canDownvote`, `canClose`) are checks against limits in a `Privileges` policy (a Strategy or lookup), not `if`s spread around.
+- **TagIndex** keeps `tag to questions` for fast tag search, and finds the common ones for searches with many tags.
+- **Soft delete** (a flag) keeps the history and the reputation records.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Posts, votes, reputation by events, accept, tags, close"
 #include <algorithm>
@@ -254,45 +254,51 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Voting twice the same way | retracts the vote (toggle), with the matching reputation event |
-| Switching up to down | undo the old vote, apply the new one |
-| Voting on own post | refused |
-| Accepting twice / changing the accepted answer | remove the old bonus, add the new one |
-| Reputation below 1 | floored at 1 |
-| Deleting an answer that was accepted | emit `AcceptanceRemoved`; the author loses the bonus |
-| Rapid concurrent votes | a per-post lock (or atomic score + a locked vote map) |
-| Tag typos and synonyms | a `TagService` with canonical names and synonym mapping |
+| Voting the same way twice | takes back the vote (a toggle), with the matching reputation event |
+| Changing up to down | undo the old vote, apply the new one |
+| Voting on your own post | refused |
+| Accepting twice, or changing the accepted answer | remove the old bonus, add the new one |
+| Reputation would go below 1 | kept at 1 |
+| Deleting an answer that was accepted | announce `AcceptanceRemoved`. The author loses the bonus |
+| Many votes at the same time | a lock for each post (or an atomic score and a locked vote map) |
+| Tag typos and different names for one tag | a `TagService` with official names and a map of synonyms |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
 | "Badges (first answer, 100 upvotes)" | another event listener |
-| "Edit history and moderation queues" | revisions stored per post (Memento); reviewers as roles |
-| "Bounties" | a `Bounty` on a question; paid via events |
-| "Full-text search and ranking" | a `SearchService` interface with an inverted index; ranking Strategy (score, recency, relevance) |
-| "Duplicate detection" | a similarity service; closing as duplicate links to the original |
+| "Edit history and review queues" | keep revisions for each post (Memento). Reviewers are roles |
+| "Bounties" | a `Bounty` on a question, paid through events |
+| "Full-text search and ranking" | a `SearchService` interface with an inverted index. Ranking is a strategy (score, recency, relevance) |
+| "Finding duplicates" | a similarity service. Closing as a duplicate links to the original |
 | "Roles and permissions" | roles (user, moderator, admin) checked by a `PermissionPolicy` |
-| "Notifications" | listener that notifies the asker of new answers |
-| "Scale: hot questions" | cache top lists, denormalise scores, async reputation updates |
+| "Notifications" | a listener that tells the asker about new answers |
+| "Scale: very popular questions" | cache top lists, save copies of scores, update reputation in the background |
+
+## Short answer to say in an interview
+
+:::interview How do you handle votes and reputation in a Q&A site?
+"Each post stores its votes in a map from user id to vote type, so there is only one vote for each user, and changing or taking back a vote just adjusts the score by the difference. Reputation is not in the vote code. The platform announces events like Upvoted or Accepted, and a reputation service listens and applies a table of points. Badges and notifications can listen to the same events. Privileges are checks against reputation limits."
+:::
 
 ```quiz
-? Why handle reputation through events instead of inside the vote code?
+? Why handle reputation with events and not inside the vote code?
 - Events are faster
-+ The reputation rules stay in one service, and other features (badges, notifications) subscribe without changing the posts
++ The reputation rules stay in one service, and other features (badges, notifications) can listen without changing the posts
 - C++ requires it
-> Observer decouples what happened from what reacts to it.
-? How is "one vote per user per post" enforced?
-- By a unique id in the database only
-+ The post stores votes by user id; casting again updates or retracts instead of adding
+> Observer separates "what happened" from "what reacts to it".
+? How is "one vote for each user on each post" made sure?
+- Only by a unique id in the database
++ The post stores votes by user id. Voting again updates or takes back the vote, and does not add
 - By checking the author
-> The map keyed by user id makes duplicates impossible.
+> A map keyed by user id makes duplicates impossible.
 ```
 
 :::keypoints
-- Post hierarchy for shared state; votes keyed by user; score adjusted by differences.
-- Reputation, badges and notifications are event listeners; privileges are threshold checks.
-- Tag index for search; soft deletes; clear refusal reasons for invalid actions.
+- A Post family for shared data. Votes keyed by user. The score changes by differences.
+- Reputation, badges and notifications are event listeners. Privileges are limit checks.
+- A tag index for search. Soft deletes. Clear reasons when an action is refused.
 :::

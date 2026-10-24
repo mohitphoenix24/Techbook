@@ -2,30 +2,30 @@
 title: Design Blackjack
 level: easy
 time: 45
-summary: Cards, a deck behind an injectable source, hand valuation with the soft ace rule, player and dealer behaviour as strategies, a round engine with settlement and payouts, and a deterministic demo with a stacked deck.
+summary: A card game against a dealer. Learn to separate the rules from the choices players make, how to value a hand with the "soft ace" rule, how to make the deck replaceable for tests, and how to settle bets.
 ---
 
 :::problem Design Blackjack {level=easy tags="games,cards,Strategy,state,simulation"}
-Design a Blackjack game for one or more players against a dealer. Each player gets two cards and may hit or stand. A hand's value is the sum of the cards (face cards 10, ace 1 or 11 as best); over 21 is a bust. The dealer hits until reaching 17. Highest value not over 21 wins; a two-card 21 is a blackjack paying 3:2.
+Design a Blackjack game for one or more players against a dealer. Each player gets two cards and may hit (take another card) or stand (stop). A hand's value is the sum of its cards (face cards are 10, an ace is 1 or 11, whichever is better). Over 21 is a bust. The dealer keeps hitting until reaching 17. The highest value not over 21 wins. A two-card 21 is a blackjack and pays 3 to 2.
 
 :::hint Hint
-Separate **what the rules say** (hand value, bust, who wins) from **how a participant decides** (player strategy, dealer rule). The deck should be an interface so tests can stack it.
+Keep **what the rules say** (hand value, bust, who wins) apart from **how a player decides** (the player's strategy, the dealer rule). Make the deck an interface so tests can use a stacked deck.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Players? | 1 to 4 players plus the dealer; each places a bet from a bankroll |
-| Deck? | one 52-card deck, reshuffled when fewer than 15 cards remain (mention); injectable order |
+| Players? | 1 to 4 players plus the dealer. Each places a bet from their bankroll |
+| Deck? | one 52-card deck, reshuffled when fewer than 15 cards remain (we only mention it). The order can be replaced |
 | Actions? | hit, stand (double down and split are extensions) |
-| Ace? | counts 11 unless that busts, then 1 ("soft" hand while an ace counts 11) |
-| Dealer? | stands on 17 or more |
-| Payouts? | win 1:1, blackjack 3:2, push (tie) returns the bet, bust loses |
-| Out of scope | insurance, side bets, UI |
+| The ace? | counts 11 unless that would bust, then 1. A hand is "soft" while an ace counts 11 |
+| The dealer? | stands on 17 or more |
+| Payouts? | win pays 1 to 1, blackjack 3 to 2, a tie (push) returns the bet, a bust loses |
+| Not needed | insurance, side bets, screen |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Blackjack"
 class Card
@@ -65,15 +65,15 @@ DealerRule ..|> Decision
 ThresholdStrategy ..|> Decision
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **`Hand::value()`** implements the ace rule: sum with every ace as 1, then add 10 once if there is an ace and it does not bust. That rule lives in one place.
-- **`CardSource` interface**: `ShuffledDeck` (seeded `mt19937`) for play, `StackedDeck` for tests and demos.
-- **`Decision` is a Strategy**: the dealer's "hit below 17" is just one implementation; a player may be a `ThresholdStrategy(15)` or an interactive one.
-- **`Round`** runs: bets, deal, player turns, dealer turn, settlement. Settlement is a small pure function of (player hand, dealer hand) to an outcome, so it is trivially testable.
-- **Outcomes as an enum** (`Blackjack, Win, Push, Lose`) with a payout table.
+- **`Hand::value()`** holds the ace rule: add all cards with every ace as 1, then add 10 once if there is an ace and it does not bust. This rule lives in one place.
+- **`CardSource` is an interface.** `ShuffledDeck` (with a seeded `mt19937`) is for playing. `StackedDeck` is for tests and demos.
+- **`Decision` is a Strategy.** The dealer's "hit below 17" is one version. A player can use `ThresholdStrategy(15)` or an interactive one.
+- **`Round`** runs the steps: bets, deal, player turns, dealer turn, settle. Settling is a small function that only looks at (player hand, dealer hand) and gives an outcome, so it is very easy to test.
+- **Outcomes are an enum** (`Blackjack, Win, Push, Lose`) with a payout table.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Blackjack round with a stacked deck"
 #include <algorithm>
@@ -204,40 +204,46 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Two aces | the first counts 11 at most once: A+A = 12 |
-| Player and dealer both blackjack | push |
-| Player busts | loses immediately, even if the dealer later busts |
-| Deck runs out | `CardSource` reshuffles (a `ShuffledDeck` with a "cut card" policy) |
-| Dealer must not draw if all players are bust | an optimisation rule in `Round` |
-| Invalid bet (more than bankroll) | validated before dealing |
+| Two aces | at most one ace counts 11, so A + A = 12 |
+| Player and dealer both have blackjack | push (a tie) |
+| The player busts | loses at once, even if the dealer busts later |
+| The deck runs out | `CardSource` reshuffles (a `ShuffledDeck` with a "cut card" rule) |
+| All players have busted | the dealer does not need to draw (a rule inside `Round`) |
+| A bet bigger than the bankroll | checked before dealing |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Double down, split, insurance" | `Decision` returns an `Action` enum (Hit, Stand, Double, Split); `Round` handles each |
-| "Basic-strategy bot" | a `Decision` implementation using a table keyed by (hand value, dealer up card) |
-| "Multiple decks and card counting" | `ShuffledDeck(numDecks)` and an observer counting cards |
-| "Different casino rules (dealer hits soft 17)" | a `DealerRule` variant; rules as a config struct |
-| "Persistence and statistics" | Observer events per round; a `StatsCollector` |
-| "Online multiplayer" | rounds become state machines with timeouts per player |
+| "Double down, split, insurance" | `Decision` returns an `Action` enum (Hit, Stand, Double, Split) and `Round` handles each |
+| "A computer player with basic strategy" | a `Decision` using a table of (hand value, dealer's open card) |
+| "Many decks and card counting" | `ShuffledDeck(numDecks)` and an observer that counts cards |
+| "Casino rule differences (dealer hits soft 17)" | a `DealerRule` option in a config struct |
+| "Save and statistics" | Observer events for each round, and a `StatsCollector` |
+| "Online multiplayer" | rounds become state machines with a time limit for each player |
+
+## Short answer to say in an interview
+
+:::interview How do you separate the rules from player choices in Blackjack?
+"The rules live in a few small places: Hand.value() holds the soft-ace rule, and settle() is a simple function of the two hands that gives win, push, lose or blackjack. How a participant decides is a strategy, so the dealer's 'hit below 17' is just one version, and a player can use a different one. The deck is an interface, so a test can use a stacked deck and get the same game every time."
+:::
 
 ```quiz
 ? Where should the soft-ace rule live?
-- In every participant
-+ In Hand::value(), once
+- In every player
++ In Hand::value(), in one place
 - In the deck
-> One place computes a hand's value; everything else uses it.
-? Why is settle() a pure function?
+> One place works out the value, and everything else uses it.
+? Why should settle() depend only on the two hands?
 - It is faster
-+ It depends only on the two hands, so it is easy to unit test for every combination
-- Because C++ requires it
-> Rules as pure functions give simple, exhaustive tests.
++ It is easy to test for every combination
+- C++ requires it
+> A simple function of its inputs gives simple, complete tests.
 ```
 
 :::keypoints
-- Hand (value, soft, bust), CardSource (injectable), Decision (strategy), Round (engine), settle (pure rules).
-- A stacked deck gives deterministic demos and tests. Extensions mostly add actions or strategies.
+- Hand (value, soft, bust), CardSource (replaceable), Decision (strategy), Round (the steps), settle (simple rules).
+- A stacked deck makes demos and tests predictable. Extensions mostly add actions or strategies.
 :::

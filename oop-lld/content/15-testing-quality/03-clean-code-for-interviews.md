@@ -2,31 +2,31 @@
 title: Clean code for machine-coding rounds
 level: easy
 time: 30
-summary: Naming, small functions, comments that explain why, const and explicit habits, a folder layout and main driver for a 90-minute round, error handling conventions, and a self-review checklist to run before you say you are done.
+summary: The habits that make your code easy to read in a machine-coding round: good names, small functions, comments that explain why, helpful C++ habits, a clear file layout, one error-handling style, and a checklist to run before you finish.
 ---
 
-In a machine-coding round, a reviewer reads your code for 10 minutes. Clean, boring, consistent code scores better than clever code. These are the habits that matter.
+In a machine-coding round, the reviewer reads your code for about 10 minutes. **Clean, simple, consistent code scores better than clever code.** Here are the habits that matter most.
 
 ## Naming
+
+Good names make comments unnecessary.
 
 | Do | Avoid |
 |---|---|
 | Nouns for classes: `ParkingLot`, `Ticket`, `PricingStrategy` | `Manager`, `Helper`, `Util`, `Handler` for everything |
 | Verbs for methods: `park`, `unpark`, `calculateFee` | Vague verbs: `process`, `handle`, `doIt` |
-| Booleans as questions: `isFull`, `hasSpace`, `canBorrow` | `flag`, `status` for booleans |
-| Names from the **domain language** (`Spot`, `Gate`, `Ticket`) | Technical noise: `SpotObj`, `TicketData` |
+| Yes/no names as questions: `isFull`, `hasSpace`, `canBorrow` | `flag`, `status` for booleans |
+| Words from the **problem** (`Spot`, `Gate`, `Ticket`) | Technical noise: `SpotObj`, `TicketData` |
 | Full words | `cnt`, `tmp`, `mgr`, `svc` |
-| `m_`/trailing underscore for members, consistently | Mixed styles in one file |
-| Units in names when types cannot carry them: `timeoutMs` | Bare `timeout` |
-
-A good name removes the need for a comment.
+| One style for members (like a trailing underscore) | Mixed styles in one file |
+| Units in the name when the type cannot show it: `timeoutMs` | Just `timeout` |
 
 ## Small functions
 
-- A function does **one thing** at **one level of abstraction**.
-- Rule of thumb: if you can describe it only with "and", split it; if it needs scrolling, split it.
-- Keep parameter lists to 3 or 4. More: a parameter object.
-- Prefer **early returns** to deep nesting.
+- A function does **one thing**, at **one level** of detail.
+- If you can describe it only with "and", split it. If you need to scroll to read it, split it.
+- Keep parameters to 3 or 4. More than that: use a parameter object.
+- Use **early returns** instead of deep nesting.
 
 ```cpp run title="Early returns flatten the logic"
 #include <iostream>
@@ -59,7 +59,7 @@ int main() {
 }
 ```
 
-## Comments: explain why, not what
+## Comments: say **why**, not **what**
 
 ```cpp run title="Comments that earn their place"
 #include <iostream>
@@ -78,25 +78,25 @@ long fee(int minutes, long perHour) {
 int main() { cout << fee(10, 40) << " " << fee(61, 40) << "\n"; }
 ```
 
-## C++ habits reviewers notice
+## C++ habits that reviewers notice
 
 | Habit | Why |
 |---|---|
-| `const` on every getter and unchanged parameter | shows you think about mutation |
-| `explicit` on one-argument constructors | no surprising conversions |
-| `override` on every override; `virtual ~Base() = default` | catches mistakes, avoids leaks |
-| `enum class` instead of ints/strings | type safety |
-| Smart pointers, no raw `new`/`delete` | no leaks |
-| Pass big objects by `const&`; return by value | efficient and simple |
-| `[[nodiscard]]` on results that must be checked | no silently ignored errors |
-| `auto` only where the type is obvious | readability |
+| `const` on every getter and every parameter that does not change | shows you think about changes |
+| `explicit` on one-argument constructors | no surprise conversions |
+| `override` on every override, and `virtual ~Base() = default` | catches mistakes, avoids leaks |
+| `enum class` instead of ints or strings | type safety |
+| Smart pointers, no raw `new` or `delete` | no leaks |
+| Big objects by `const&`, return by value | simple and fast |
+| `[[nodiscard]]` on results that must be checked | no ignored errors |
+| `auto` only when the type is obvious | readability |
 | `nullptr`, never `NULL` or `0` | clarity |
-| Initialise everything (`{}` or default member initialisers) | no uninitialised reads |
+| Set a value for everything (`{}` or default member values) | no reading of uninitialised data |
 | No `using namespace std;` in headers | no pollution |
 
-## Layout of a machine-coding solution
+## How to lay out a machine-coding solution
 
-For a 90 to 120 minute round, one file is often accepted, but a **clear structure inside** the file (or a few files) shows maturity.
+For a 90 to 120 minute round, one file is often fine. But a **clear order inside** the file (or a few files) shows maturity.
 
 ```text
 parking_lot/
@@ -107,58 +107,58 @@ parking_lot/
   tests.cpp       a few assertions on edge cases (optional but impressive)
 ```
 
-Single-file order (top to bottom): **enums, small value types, interfaces, implementations, the coordinator, `main`**.
+Order in a single file, top to bottom: **enums, small value types, interfaces, implementations, the coordinator class, `main`**.
 
-:::tip The main() driver is part of your answer
-Interviewers run it. Print clear, readable lines for each scenario: normal flow, full lot, invalid input, concurrent access. A driver that shows "what should happen" next to "what happened" builds confidence quickly.
+:::tip Your main() is part of the answer
+The interviewer will run it. Print clear lines for each scenario: normal flow, full lot, bad input, many threads. A demo that shows "what should happen" next to "what happened" builds trust quickly.
 :::
 
-## Error handling conventions
+## Error handling: pick one style and say it
 
-Pick **one** policy and state it:
+- **Normal business results** (lot full, not enough money): return a result (`optional`, `bool`, an `enum class`, or a small `Result` type).
+- **Programmer mistakes and impossible states**: `assert`, or throw `logic_error`.
+- **Bad outside input**: check at the entrance and report clearly.
+- Never hide errors with `catch (...) {}`.
 
-- Recoverable business outcomes (lot full, insufficient funds): return a result (`optional`, `bool`, an `enum class`) or a small `Result` type.
-- Programmer errors and impossible states: `assert` or throw `logic_error`.
-- Invalid external input: validate at the boundary and report clearly.
-- Never swallow exceptions silently (`catch (...) {}`).
+## Self-check before you say "done"
 
-## Self-review checklist (say it out loud at the end)
-
-1. Does every class have **one clear responsibility** and a noun name?
-2. Are there **interfaces at the variation points**, and **no `switch` on type codes**?
-3. Are dependencies **injected**, with no hidden globals (no Singleton abuse)?
-4. Is the **invariant** of each class protected (private data, validating constructors)?
-5. Are **ownership and lifetimes** obvious (smart pointers, `const&` parameters)?
+1. Does every class have **one clear job** and a noun name?
+2. Are there **interfaces where things vary**, and **no `switch` on type codes**?
+3. Are helpers **passed in**, with no hidden globals?
+4. Is each class's **rule protected** (private data, constructors that check values)?
+5. Is **ownership** clear (smart pointers, `const&` parameters)?
 6. Did I handle **edge cases**: empty, full, duplicate, invalid, boundary values?
-7. Is it **thread-safe** where the problem needs it, and did I say how?
-8. Can I add **the next likely requirement** by writing a new class, not editing old ones?
-9. Is the **demo** clear, and does it show the key scenarios and failures?
-10. Is the code **consistent** (naming, formatting, one error-handling policy)?
+7. Is it **thread-safe** if the problem needs it, and did I say how?
+8. Can the **next likely requirement** be added by writing a new class, not editing old ones?
+9. Does the **demo** show the main scenarios and the failures?
+10. Is the code **consistent** (names, format, one error style)?
+
+## Short answer to say in an interview
 
 :::interview What do reviewers look for in machine-coding code?
-"Working code first, then readable structure: clear class responsibilities, interfaces where requirements vary, no giant conditionals, sensible naming, const-correctness and RAII, handled edge cases, and a demo that shows the flows. They also check extensibility ('add a new vehicle type: where does the change go?') and concurrency awareness. Consistency and simplicity beat cleverness."
+"First, working code. Then readable structure: classes with clear jobs, interfaces where requirements vary, no giant if-else chains, good names, const and RAII, handled edge cases, and a demo that shows the flows. They also check how easy it is to extend, like 'where does a new vehicle type go?', and whether I think about threads. Simple and consistent beats clever."
 :::
 
 ```quiz
 ? What should a comment mostly explain?
 - What each line does
-+ Why a decision was made (intent, trade-off, business rule)
++ Why a decision was made (the reason, the trade-off, the business rule)
 - The author's name
-> Good names explain the what; comments explain the why.
+> Good names show the what. Comments explain the why.
 ? What is a guard clause?
 - A mutex
-+ An early return that handles an invalid case first, so the main logic stays flat
++ An early return that handles a bad case first, so the main logic stays flat
 - A try block
-> It reduces nesting and makes the happy path obvious.
-? Why include a main() driver in a machine-coding answer?
-- Required by the compiler
-+ So reviewers can run it and see the main flows and edge cases working
+> It reduces nesting and makes the normal path clear.
+? Why include a main() demo in a machine-coding answer?
+- The compiler needs it
++ So reviewers can run it and see the main flows and edge cases work
 - To hide bugs
-> It demonstrates behaviour and builds confidence.
+> It shows behaviour and builds trust.
 ```
 
 :::keypoints
-- Name by domain nouns and verbs; keep functions small with early returns; comment the why.
+- Name things with words from the problem: nouns for classes, verbs for methods. Keep functions small with early returns. Comment the why.
 - C++ habits: const, explicit, override, enum class, smart pointers, [[nodiscard]], initialised members.
-- Structure the solution (enums → values → interfaces → implementations → coordinator → main) and finish with a demo and the self-review checklist.
+- Keep a clear order (enums, values, interfaces, implementations, coordinator, main). Finish with a demo and the self-check list.
 :::

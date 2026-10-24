@@ -1,17 +1,29 @@
 ---
-title: O: Open/Closed Principle
+title: "O: Open/Closed Principle"
 level: intermediate
 time: 30
-summary: Software entities should be open for extension but closed for modification. The classic switch-on-type violation, the polymorphic fix, other extension mechanisms in C++, and the balance between this principle and over-engineering.
+summary: Add new features by adding new code, not by editing old working code. The common "switch on type" problem, the fix with interfaces, a discount example, and when not to use it.
 ---
 
+**O** in SOLID stands for **Open/Closed Principle**.
+
+Don't memorise the definition yet. Think of it like this:
+
+> "When a new requirement comes, can I add **new code** for it, without touching the **old code that already works**?"
+
+If yes, your design follows the principle.
+
 :::def Open/Closed Principle (OCP)
-A module should be **open for extension** (you can add new behaviour) but **closed for modification** (you do not edit existing, tested code to do so).
+A class should be **open for extension** (you can add new behaviour) but **closed for modification** (you do not need to edit the old, tested code to add it).
 :::
 
-When a new requirement arrives, the cheapest and safest change is to **add new code**, not to **edit working code**. Every edit risks breaking something that already works.
+Why does this matter? Every time you edit working code, you risk breaking something that was fine. Adding a new class is much safer.
 
-## The classic violation: switch on type
+:::analogy Think of a phone charger socket
+Your wall socket does not change when you buy a new phone. You just plug in a new charger. The socket is **closed** (nobody rewires it) but **open** (any new device can plug in).
+:::
+
+## The most common mistake: switch on type
 
 ```cpp run title="Every new shape means editing AreaCalculator"
 #include <iostream>
@@ -46,11 +58,13 @@ int main() {
 }
 ```
 
-The calculator is **not closed** for modification: each new shape forces edits to existing code. This pattern (`switch`/`if-else` on a type code) is the number one OCP violation.
+What is the problem? Each time we add a new shape (say a triangle), we must **open `AreaCalculator` and edit it**. If this `switch` is repeated in five places in the project, we must edit all five. Miss one and we have a bug.
 
-## The fix: polymorphism
+A `switch` or `if / else if` chain on a "type" is the number one sign that OCP is broken.
 
-Make each shape responsible for its own area behind an interface. The calculator depends only on the interface.
+## The fix: let each shape do its own job
+
+Give every shape an `area()` method behind a common interface. The calculator then just calls `area()`. It does not care which shape it is.
 
 ```cpp run title="New shapes are new classes; nothing existing changes"
 #include <iostream>
@@ -102,6 +116,8 @@ int main() {
 }
 ```
 
+Here is the picture:
+
 ```viz algo=uml title="The calculator depends on the abstraction"
 interface Shape
   + area(): double
@@ -116,9 +132,11 @@ Triangle ..|> Shape
 AreaCalculator --> Shape
 ```
 
-## A realistic example: discounts
+Now to add a triangle, we write a new `Triangle` class. The calculator does not change at all.
 
-A shop starts with "10% off for members". Soon: Diwali sale, buy-one-get-one, coupon codes. Without OCP, `calculatePrice()` becomes a forest of `if`s.
+## A more real example: discounts
+
+A shop starts with "10% off for members". Then come a Diwali sale, buy-one-get-one, and coupon codes. If we use `if` statements, the price function becomes a big mess.
 
 ```cpp run title="Discount rules as extensions"
 #include <iostream>
@@ -176,53 +194,57 @@ int main() {
 }
 ```
 
-## Ways to achieve OCP in C++
+Each discount is a small class. New discount means a new class. The price function stays the same.
 
-| Mechanism | Example |
+## Ways to follow OCP in C++
+
+| Tool | Example |
 |---|---|
-| **Abstract base class / interface** (runtime) | `Shape`, `DiscountRule` |
-| **Strategy** object passed in | pricing, sorting order |
-| **std::function / lambda** | `sort(v.begin(), v.end(), cmp)`: `sort` is closed, you extend with `cmp` |
-| **Templates / concepts** (compile time) | `template <Drawable T> void render(T&)` |
-| **Registry / factory** | `map<string, Creator>` so new types register themselves |
-| **Decorator** | add behaviour by wrapping, without editing |
-| **Callbacks / events** | listeners added from outside |
+| Interface (abstract class) | `Shape`, `DiscountRule` |
+| Strategy (pass in a behaviour) | pricing rule, sort order |
+| `std::function` or lambda | `sort(v.begin(), v.end(), cmp)` |
+| Templates | `template <Drawable T> void render(T&)` |
+| Registry or factory | a map from name to "how to create" |
+| Decorator (wrap to add behaviour) | add logging without editing the old class |
+| Callbacks or events | listeners added from outside |
 
-`std::sort` is a perfect everyday example: it is *closed* (nobody edits it) but *open* (you pass any comparator).
+`std::sort` is a nice everyday example. Nobody edits `sort` (it is closed), but you can pass any comparison you like (it is open).
 
-## OCP is about *predicted* change
+## You cannot close everything
 
-You cannot close a design against **every** possible change. Choose the changes you expect (from the requirements and experience) and design for those. Then, the first time an unexpected change forces an edit, **refactor** so that kind of change is covered next time. This is "fool me once".
+You cannot protect your code from **every** future change. So guess the changes that are **likely** (from the requirements and from experience) and prepare for those. If a surprise change comes later, refactor the code then, so that kind of change is easy next time.
 
 :::warn Do not make everything an interface
-Adding an abstraction for something that will never vary is over-engineering (it breaks KISS and YAGNI). If there is one tax rate and nobody expects another, a constant is fine. Abstract where **real variation** exists: you have two or three cases already, or the requirements clearly say more will come.
+If something will never change, keep it simple. If there is only one tax rate and nobody expects another, a constant is enough. Add an interface only where there is **real variation**: you already have two or three cases, or the requirements clearly say more will come.
 :::
 
+## Short answer to say in an interview
+
 :::interview How do you recognise an OCP violation?
-"A `switch` or an `if/else if` chain over a type code or enum, repeated in several places, so that adding a new case means editing all of them. I replace it with an interface and one class per case, or with a strategy or registry, so a new case is a new class. The existing code stays untouched and tested."
+"I look for a switch or if-else chain on a type, repeated in many places, so that every new case means editing old code. I fix it by creating an interface and one class per case, so a new case becomes a new class. The old code stays untouched and tested."
 :::
 
 ```quiz
-? What is the best sign of an OCP violation?
+? What is the best sign that OCP is broken?
 - A class with private members
-+ A switch over a type code that must be edited for every new type
++ A switch on a type that must be edited for every new type
 - A virtual destructor
-> A new case forces editing existing code in several places.
+> Every new case forces edits in old code.
 ? Which standard function is a good example of OCP?
-- `std::swap`
-+ `std::sort` with a custom comparator
-- `std::move`
-> sort never changes, but a comparator extends its behaviour.
-? When should you not apply OCP?
-- When requirements are known to vary
-+ When there is no real variation: an abstraction would be speculative over-engineering
+- std::swap
++ std::sort with your own comparison
+- std::move
+> sort never changes, but you can change its behaviour by passing a comparison.
+? When should you not use OCP?
+- When requirements clearly change
++ When nothing will really vary, because it only adds extra complexity
 - Never
-> Add extension points at real variation points, not everywhere.
+> Add flexibility only where change is likely.
 ```
 
 :::keypoints
-- Add behaviour by adding code, not by editing tested code.
-- The usual cure for a type-code `switch` is polymorphism: one class per case behind an interface.
-- Other mechanisms: strategy, `std::function`, templates, registries, decorators.
-- Close against *likely* changes only. Refactor when a surprise change appears.
+- Add new behaviour by adding new code, not by editing old tested code.
+- The usual cure for a "switch on type" is an interface with one class per case.
+- Other tools: strategy, `std::function`, templates, registry, decorator.
+- Prepare only for **likely** changes. Refactor when a surprise change comes.
 :::

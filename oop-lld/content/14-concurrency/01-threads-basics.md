@@ -2,13 +2,21 @@
 title: Threads, data races and why they matter
 level: intermediate
 time: 35
-summary: Starting and joining threads with std::thread, passing arguments safely, what a data race is and why it is undefined behaviour, the lost-update bug explained step by step, and the first fixes: mutex and atomic.
+summary: Start and join threads, pass arguments safely, understand what a data race is with the lost-update example, and learn the first fixes: a mutex, an atomic, or not sharing at all.
 ---
 
-Most LLD problems with "many users" (a parking lot with several gates, a ticket booking system, a cache, a rate limiter) quietly assume **concurrency**. Interviewers ask: "What if two threads do this at the same time?" You need a clear mental model and the C++ tools.
+Many LLD problems quietly assume **many users at the same time**: a parking lot with several gates, ticket booking, a cache, a rate limiter. Interviewers often ask: **"What if two threads do this at the same time?"**
 
-:::analogy Think of it like this
-A shared whiteboard in a kitchen where several cooks note the remaining eggs. Two cooks read "10", each takes 2, each writes "8". The true answer is 6, but the board says 8. They did not do anything wrong individually; they just interleaved their steps. That is a **race condition**.
+This lesson gives you a clear mental picture and the C++ tools to answer.
+
+## First, what is a thread?
+
+A **thread** is one line of work running inside your program. A normal program has one thread. With more threads, several things can run **at the same time**.
+
+:::analogy Think of a kitchen whiteboard
+Several cooks write the number of remaining eggs on one shared whiteboard. The board says 10. Two cooks read "10" at the same time. Each takes 2 eggs. Each writes "8". The real answer should be 6, but the board says 8.
+
+Neither cook did anything wrong alone. Their steps just **got mixed up**. This is called a **race condition**.
 :::
 
 ## Starting threads
@@ -36,10 +44,10 @@ int main() {
 
 Rules to remember:
 
-1. A `std::thread` **must be joined or detached** before it is destroyed, otherwise the program calls `std::terminate`.
-2. Arguments are **copied** into the thread. Use `std::ref(x)` for a reference. Pointers and references to locals that die before the thread finishes are dangling.
-3. `join()` waits for the thread to finish. `detach()` lets it run on its own (rarely a good idea).
-4. Threads are RAII-unfriendly by default. C++20's `std::jthread` joins automatically in its destructor and supports cancellation tokens.
+1. A `std::thread` **must be joined or detached** before it is destroyed. Otherwise the program stops with `std::terminate`.
+2. Arguments are **copied** into the thread. To pass a reference, write `std::ref(x)`. Be careful with pointers to local variables that may disappear before the thread ends.
+3. `join()` means "wait until this thread finishes". `detach()` means "let it run on its own" (usually not a good idea).
+4. In C++20, `std::jthread` joins automatically when it is destroyed. It is safer.
 
 ```cpp run title="Lambdas capture by value to be safe"
 #include <iostream>
@@ -61,10 +69,10 @@ int main() {
 ## The data race
 
 :::def Data race
-Two threads access the **same memory location** at the same time, **at least one is a write**, and there is **no synchronisation** between them. In C++ a data race is **undefined behaviour**: not "slightly wrong numbers", but anything may happen, including the compiler optimising your loop away.
+Two threads use the **same memory** at the same time, **at least one of them writes**, and **nothing coordinates them**. In C++ this is **undefined behaviour**. That does not just mean "a slightly wrong number". It means anything can happen.
 :::
 
-The classic example: many threads increment a shared counter.
+The classic example: many threads add to one shared counter.
 
 ```cpp title="Display only: a data race (the result differs run to run)"
 int counter = 0;
@@ -73,7 +81,7 @@ void addMany() { for (int i = 0; i < 100000; ++i) ++counter; }     // ++counter 
 // two threads running addMany() usually end with counter < 200000
 ```
 
-Why is it wrong? `++counter` is really three steps:
+Why does it go wrong? `++counter` looks like one step, but it is really **three**:
 
 ```text
 Thread A               Thread B
@@ -85,9 +93,13 @@ write counter (6)
                        write counter (6)      ← one increment was LOST
 ```
 
-Run under ThreadSanitizer (`-fsanitize=thread`), this program is reported as a data race at once. The fixes below all make the increment **indivisible** or **mutually exclusive**.
+If two threads read the same old value, one of the updates is **lost**.
+
+If you run this under ThreadSanitizer (`-fsanitize=thread`), it reports the race at once. The fixes below make the increment **happen as one piece**, or let **only one thread at a time** do it.
 
 ## Fix 1: a mutex
+
+A **mutex** is like a key to a room. Only the thread holding the key can go in. Others wait outside.
 
 ```cpp run title="Protect the shared data with a mutex"
 #include <iostream>
@@ -114,7 +126,7 @@ int main() {
 
 ## Fix 2: an atomic
 
-For a single variable, `std::atomic` makes the read-modify-write **one indivisible operation** with no lock.
+For **one** variable, `std::atomic` makes the read-add-write **one unbreakable step**, with no lock.
 
 ```cpp run title="atomic<int>"
 #include <atomic>
@@ -135,13 +147,13 @@ int main() {
 
 | | `mutex` | `atomic` |
 |---|---|---|
-| Protects | any amount of data, several variables together | **one** variable (or one small struct) |
-| Cost | lock/unlock, may sleep waiting | a special CPU instruction, no sleeping |
-| Use when | an invariant spans several variables | a counter, flag or pointer |
+| Protects | any amount of data, even several variables together | **one** variable |
+| Cost | lock and unlock, may wait | one special CPU instruction, no waiting |
+| Use when | a rule connects several variables | a counter, a flag, a pointer |
 
-## Fix 3: avoid sharing
+## Fix 3: do not share
 
-The best synchronisation is **none**: give each thread **its own** data, then combine at the end.
+The best way to avoid trouble is **not to share anything**. Give each thread its **own data**, and join the results at the end.
 
 ```cpp run title="Each thread sums its own range"
 #include <iostream>
@@ -167,44 +179,46 @@ int main() {
 }
 ```
 
-(Adjacent slots of `partial` can share a CPU cache line, which slows things down: "false sharing". Fine for a demo.)
+(Small note: neighbouring slots of `partial` may share a CPU cache line, which slows things a bit. This is called "false sharing". It is fine for a demo.)
 
-## The vocabulary
+## Words you will hear
 
-| Term | Meaning |
+| Word | Meaning |
 |---|---|
-| **Thread-safe** | correct when used from several threads at once, without extra locking by the caller |
-| **Race condition** | the outcome depends on the timing of threads (broader than a data race) |
-| **Data race** | unsynchronised conflicting access to the same memory (undefined behaviour) |
-| **Critical section** | code that touches shared data and must not run in parallel |
-| **Atomic operation** | indivisible: other threads see it done or not done, never half done |
+| **Thread-safe** | works correctly when many threads use it together |
+| **Race condition** | the result depends on the timing of threads (a wider idea than a data race) |
+| **Data race** | unsafe use of the same memory by many threads (undefined behaviour) |
+| **Critical section** | the part of the code that touches shared data and must not run in parallel |
+| **Atomic operation** | unbreakable: others see it as done or not done, never half done |
 | **Deadlock** | threads wait for each other forever (next lesson) |
-| **Starvation / livelock** | a thread never gets its turn / threads keep reacting without progress |
+| **Starvation / livelock** | a thread never gets its turn / threads keep reacting but make no progress |
 
-:::interview What is a data race and how do you prevent it?
-"A data race is two threads accessing the same memory without synchronisation, with at least one writing. In C++ it is undefined behaviour. I prevent it by not sharing (thread confinement, immutable data), by protecting shared state with a mutex through `lock_guard`, or by using `std::atomic` for single variables. I check with ThreadSanitizer."
+## Short answer to say in an interview
+
+:::interview What is a data race, and how do you prevent it?
+"A data race is when two threads use the same memory at the same time without any coordination, and at least one of them writes. In C++ it is undefined behaviour. I prevent it in three ways: do not share the data at all, protect it with a mutex using lock_guard, or use std::atomic for a single variable. I check my code with ThreadSanitizer."
 :::
 
 ```quiz
-? Why is `++counter` not safe from several threads?
+? Why is ++counter not safe with many threads?
 - It is a function call
-+ It is three steps (read, add, write) that can interleave, losing updates
++ It is three steps (read, add, write) that can get mixed up, so updates are lost
 - Integers are slow
-> Another thread can read the old value between your read and your write.
+> Another thread can read the old value before you write the new one.
 ? What happens if a std::thread is destroyed without join or detach?
 - Nothing
 + std::terminate is called
 - It joins automatically
-> Use join (or std::jthread in C++20).
-? When is atomic preferable to a mutex?
-- For protecting several related variables
-+ For a single counter or flag
+> Use join, or std::jthread in C++20.
+? When is an atomic better than a mutex?
+- To protect several related variables
++ For one counter or one flag
 - Never
-> Atomics are lock-free for single values; multi-variable invariants need a mutex.
+> An atomic works on a single value. Several related values need a mutex.
 ```
 
 :::keypoints
-- `std::thread` must be joined or detached; arguments are copied (use `ref` for references).
-- A data race (conflicting unsynchronised access) is undefined behaviour. `++x` is read-modify-write and not atomic.
-- Fix by: not sharing, a mutex (`lock_guard`), or `std::atomic` for single variables. Test with ThreadSanitizer.
+- A `std::thread` must be joined or detached. Arguments are copied (use `ref` for references).
+- A data race is unsafe shared use of memory, and it is undefined behaviour. `++x` is read, add, write, and it is not atomic.
+- Fix it by not sharing, by using a mutex (`lock_guard`), or by using `std::atomic` for one variable. Test with ThreadSanitizer.
 :::

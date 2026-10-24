@@ -2,139 +2,189 @@
 title: "OOP interview: templates, STL and lambdas"
 level: medium
 time: 30
-summary: Function and class templates, specialisation, SFINAE and concepts, CRTP, STL containers and their complexity, iterators, algorithms, lambdas and std::function.
+summary: Simple answers on templates, specialisation, concepts, CRTP, STL containers and their speed, iterators, algorithms, lambdas and std::function.
 ---
 
 ## Templates
 
 :::qa What is a template and how is it different from a macro? {level=easy}
-A template is a blueprint the compiler instantiates for each type used. Unlike a macro it is type-checked, scoped and understands C++ syntax. The cost: every instantiation produces code (code bloat), and error messages can be long.
+**Say this:** "A template is a blueprint that the compiler fills in for each type. Unlike a macro, it is checked by the compiler and has scope."
+
+**In simple words:** The cost: each type makes new code (code bloat), and error messages can be long.
 :::
 
 :::qa Why are template definitions usually in headers? {level=medium}
-The compiler must see the full definition when it instantiates the template for a type. If the body is in a `.cpp` file, other files cannot instantiate it and the linker reports undefined references, unless you instantiate explicitly there.
+**Say this:** "The compiler needs the full body when it creates the code for a type."
+
+**In simple words:** If the body is in a `.cpp` file, other files cannot create it, and the linker says "undefined reference".
 :::
 
 :::qa What is template specialisation? Full vs partial? {level=medium}
-A special version for particular types. **Full:** `template<> struct Hash<string> {...}` for exactly that type. **Partial:** `template<class T> struct Hash<T*> {...}` for a family of types (class templates only). Function templates cannot be partially specialised; use overloading.
+**Say this:** "A special version for particular types. Full: for exactly one type. Partial: for a family of types."
+
+**In simple words:** `template<> struct Hash<string>` is full. `template<class T> struct Hash<T*>` is partial. Function templates cannot be partially specialised. Use overloading instead.
 :::
 
-:::qa What is the difference between `typename` and `class` in a template parameter? {level=easy}
-None in `template<class T>` / `template<typename T>`. But `typename` is required to tell the compiler a dependent name is a type: `typename T::value_type x;`.
+:::qa What is the difference between typename and class in a template parameter? {level=easy}
+**Say this:** "None in `template<class T>`. But `typename` is needed to say that a dependent name is a type."
+
+**In simple words:** `typename T::value_type x;`
 :::
 
 :::qa What is a variadic template? {level=hard}
-A template with a **parameter pack**: `template<class... Args> void f(Args... args)`. Expand it with `args...`, recursion, or a C++17 fold expression: `(cout << ... << args);`. It is how `make_unique`, `tuple` and `printf`-like functions are built.
+**Say this:** "A template with a pack of any number of parameters: `template<class... Args> void f(Args... args)`."
+
+**In simple words:** You use the pack with `args...`. In C++17, a fold expression is the easy way: `(cout << ... << args);`. `make_unique` and `tuple` are built this way.
 :::
 
 :::qa What are C++20 concepts? {level=medium}
-Named constraints on template parameters: `template<std::integral T> T twice(T x)` or `requires requires(T t) { t.draw(); }`. They give readable errors ("T does not satisfy integral") and replace most SFINAE tricks.
+**Say this:** "Named conditions on template parameters, like `std::integral T`. They give clear error messages."
+
+**In simple words:** They replace most of the old SFINAE tricks.
 :::
 
 :::qa What is SFINAE? {level=hard}
-"Substitution Failure Is Not An Error": if substituting types into a function template's signature produces an invalid type, that overload is quietly dropped rather than causing a compile error. `enable_if` uses this to enable overloads by trait. Concepts and `if constexpr` are the modern, readable alternatives.
+**Say this:** "Substitution Failure Is Not An Error: if filling in types makes an overload's signature invalid, that overload is quietly skipped."
+
+**In simple words:** `enable_if` uses this. Concepts and `if constexpr` are the modern, readable replacements.
 :::
 
-:::qa What is `if constexpr`? {level=medium}
-A compile-time `if`: the branch not taken is not even compiled for that instantiation. It lets one template body handle different types (`if constexpr (is_integral_v<T>) ... else ...`) without SFINAE.
+:::qa What is if constexpr? {level=medium}
+**Say this:** "A compile-time `if`. The branch not taken is not even compiled."
+
+**In simple words:** One template can handle different types: `if constexpr (is_integral_v<T>) ... else ...`.
 :::
 
 :::qa What is CRTP? {level=hard}
-The Curiously Recurring Template Pattern: `class Derived : public Base<Derived>`. The base can call derived functions with `static_cast<Derived&>(*this)`, giving **static polymorphism** with no vtable and full inlining. Used for mixins (counting instances, comparison operators) and performance-critical interfaces.
+**Say this:** "The Curiously Recurring Template Pattern: `class Derived : public Base<Derived>`. The base knows the child type at compile time."
+
+**In simple words:** It gives polymorphism without a vtable (static polymorphism), and full inlining. Used for mix-ins and fast interfaces.
 :::
 
 :::qa What is the difference between static and dynamic polymorphism? {level=medium}
-Static: resolved at compile time via templates/overloading/CRTP: fast, inlinable, but types are fixed at compile time and code is duplicated. Dynamic: resolved at run time via virtual functions: flexible (plugins, heterogeneous containers), slower and requires inheritance.
+**Say this:** "Static is decided at compile time (templates, CRTP): fast but fixed. Dynamic is decided at run time (virtual): flexible but slower."
+
+**In simple words:** Use virtual functions when you need a list of mixed types or plug-ins.
 :::
 
 :::qa What is type erasure? {level=hard}
-Hiding a concrete type behind a uniform interface without inheritance from the user's side. `std::function`, `std::any` and `shared_ptr`'s deleter store an object of any callable/type behind a small virtual interface created inside the template constructor.
+**Say this:** "Hiding a concrete type behind one common interface, without the user inheriting."
+
+**In simple words:** `std::function`, `std::any` and the deleter of `shared_ptr` hold any type behind a small virtual interface that is made inside.
 :::
 
-:::qa What are `decltype` and `auto` return types good for? {level=medium}
-`decltype(expr)` gives the exact type of an expression. Together they let templates compute return types: `template<class A, class B> auto add(A a, B b) -> decltype(a + b)`; in C++14, plain `auto` return deduction is enough.
+:::qa What are decltype and auto return types good for? {level=medium}
+**Say this:** "`decltype(expr)` gives the exact type of an expression, so templates can work out return types."
+
+**In simple words:** `auto add(A a, B b) -> decltype(a + b)`. In C++14, plain `auto` return deduction is enough.
 :::
 
 ## STL containers and algorithms
 
-:::qa Compare `vector`, `list`, `deque`, `array` and when to use each. {level=easy}
-| Container | Memory | Strong points | Cost |
-|---|---|---|---|
-| `vector` | contiguous | default choice; fast iteration; amortised O(1) `push_back` | insert/erase in the middle O(n) |
-| `deque` | chunks | O(1) at both ends | slower iteration |
-| `list` | nodes | O(1) insert/erase with an iterator, stable iterators | poor cache locality, no random access |
-| `array` | contiguous, fixed | no heap, constexpr | size fixed |
+:::qa Compare vector, list, deque, array and when to use each. {level=easy}
+**Say this:** "Start with `vector`. Use others only when you measured a need."
 
-Start with `vector`; measure before choosing anything else.
+| Container | Strong point | Weak point |
+|---|---|---|
+| `vector` | default choice, fast loops, fast `push_back` | inserting in the middle is slow |
+| `deque` | fast at both ends | slower loops |
+| `list` | fast insert and erase with an iterator | poor cache use, no random access |
+| `array` | no heap, fixed size | cannot grow |
 :::
 
-:::qa `map` vs `unordered_map`: differences and complexities? {level=easy}
-`map` is a balanced tree (red-black): sorted by key, O(log n) operations, needs `<`. `unordered_map` is a hash table: O(1) average (O(n) worst), unsorted, needs `hash` and `==`. Use `map` when you need ordering or range queries, otherwise `unordered_map`.
+:::qa map vs unordered_map: differences and complexities? {level=easy}
+**Say this:** "`map` is a sorted tree, O(log n). `unordered_map` is a hash table, O(1) on average, with no order."
+
+**In simple words:** Use `map` when you need order or ranges. Otherwise use `unordered_map`.
 :::
 
-:::qa Why does `map::operator[]` sometimes surprise people? {level=medium}
-It **inserts** a default-constructed value if the key is missing (and so needs a default constructor, and cannot be used on a `const map`). Use `find`, `at` (throws) or `contains` (C++20) to only look.
+:::qa Why does map::operator[] sometimes surprise people? {level=medium}
+**Say this:** "It inserts a default value if the key is missing."
+
+**In simple words:** So it cannot be used on a `const map`. Use `find`, `at` or `contains` just to look.
 :::
 
-:::qa What is the difference between `set`, `multiset`, `map` and `multimap`? {level=easy}
-`set`: unique sorted keys. `multiset`: duplicates allowed. `map`: unique keys with values. `multimap`: duplicate keys with values. Unordered variants use hashing.
+:::qa What is the difference between set, multiset, map and multimap? {level=easy}
+**Say this:** "`set`: unique keys. `multiset`: repeats allowed. `map`: keys with values. `multimap`: repeated keys with values."
 :::
 
-:::qa What is a `priority_queue` and how does it work? {level=easy}
-A container adaptor over a vector that keeps a **binary heap**: `top()` is the largest element (O(1)), `push`/`pop` O(log n). For a min-heap pass `greater<T>`: `priority_queue<int, vector<int>, greater<int>>`.
+:::qa What is a priority_queue and how does it work? {level=easy}
+**Say this:** "A heap on top of a vector. `top()` is the biggest item. `push` and `pop` are O(log n)."
+
+**In simple words:** For a min-heap: `priority_queue<int, vector<int>, greater<int>>`.
 :::
 
-:::qa How does `vector` grow? What is `reserve`? {level=medium}
-When full, it allocates a bigger block (typically 1.5x or 2x), moves/copies elements, and frees the old block, so `push_back` is amortised O(1). `reserve(n)` allocates capacity up front (no size change), avoiding reallocations and keeping iterators valid.
+:::qa How does vector grow? What is reserve? {level=medium}
+**Say this:** "When full, it gets a bigger block (about 1.5 or 2 times), moves the items, and frees the old block. `reserve(n)` gets space in advance."
+
+**In simple words:** So `push_back` is O(1) on average. `reserve` stops the repeated growing and keeps iterators valid.
 :::
 
 :::qa What are the iterator categories? {level=medium}
-Input, output, forward, bidirectional, random-access (and contiguous in C++20). Algorithms require a minimum category: `sort` needs random access (so not `list`; use `list::sort`), `reverse` needs bidirectional.
+**Say this:** "Input, output, forward, bidirectional, random access (and contiguous in C++20)."
+
+**In simple words:** An algorithm needs a minimum category. `sort` needs random access, so it does not work on `list`.
 :::
 
 :::qa What is the erase-remove idiom? {level=medium}
-`std::remove` only shifts the kept elements forward and returns the new logical end; it does not shrink the container. Combine: `v.erase(remove(v.begin(), v.end(), x), v.end());` (C++20: `std::erase(v, x)`).
+**Say this:** "`remove` moves the wanted items forward and returns the new end. `erase` then cuts the tail."
+
+**In simple words:** `v.erase(remove(v.begin(), v.end(), x), v.end());`. In C++20: `std::erase(v, x)`.
 :::
 
-:::qa What do you need to use a custom class as a key in `map` and `unordered_map`? {level=medium}
-`map`: a strict weak ordering (`operator<` or a comparator). `unordered_map`: `operator==` and a `std::hash<T>` specialisation (or a hash functor as a template argument).
+:::qa What do you need to use a custom class as a key in map and unordered_map? {level=medium}
+**Say this:** "`map`: a way to order (`operator<`). `unordered_map`: `operator==` and a hash."
 :::
 
-:::qa `sort` is not stable. What do you use when you need stability? {level=medium}
-`std::stable_sort`. Plain `sort` is introsort (O(n log n) worst case) and may reorder equal elements. Also the comparator must be a strict weak ordering: `<=` as comparison is undefined behaviour.
+:::qa sort is not stable. What do you use when you need stability? {level=medium}
+**Say this:** "`std::stable_sort`."
+
+**In simple words:** The comparison must be a strict ordering. Using `<=` is undefined behaviour.
 :::
 
-:::qa What is the complexity of `find` in `vector` vs `set`? {level=easy}
-`std::find` on a vector: O(n). On a sorted vector use `binary_search`/`lower_bound`: O(log n). `set::find`: O(log n). `unordered_set::find`: O(1) average.
+:::qa What is the complexity of find in vector vs set? {level=easy}
+**Say this:** "`find` on a vector is O(n). On a sorted vector, `binary_search` is O(log n). `set::find` is O(log n). `unordered_set::find` is O(1) on average."
 :::
 
 ## Lambdas and callables
 
 :::qa What is a lambda? Explain the capture list. {level=easy}
-An anonymous function object defined in place: `[captures](params) -> ret { body }`. Captures: `[=]` copy all used variables, `[&]` reference all, `[x]` copy x, `[&x]` reference x, `[this]` the object pointer, `[x = move(y)]` init-capture. Prefer explicit captures.
+**Say this:** "An unnamed function written in place: `[captures](params) { body }`. The capture list says which outside variables it can use."
+
+**In simple words:** `[=]` copies what it uses. `[&]` uses references. `[x]` copies x. `[&x]` references x. `[this]` uses the object. Prefer naming each capture.
 :::
 
 :::qa What is the danger of capturing by reference? {level=medium}
-If the lambda outlives the variable (returned from a function, stored in a thread or callback), the reference dangles. Capture by value for anything that escapes. Likewise `[this]` can dangle if the object dies first.
+**Say this:** "If the lambda outlives the variable, the reference dangles."
+
+**In simple words:** For example, a lambda returned from a function or stored in a thread. Capture by value for anything that escapes.
 :::
 
 :::qa Why can't a normal lambda modify a by-value capture? {level=medium}
-The lambda's `operator()` is `const` by default, so captured copies are read-only. Add `mutable` to modify the lambda's own copy: `[n]() mutable { return ++n; }` (the original is untouched).
+**Say this:** "The lambda's call operator is `const` by default."
+
+**In simple words:** Add `mutable` to change the lambda's own copy: `[n]() mutable { return ++n; }`. The original is not changed.
 :::
 
-:::qa `std::function` vs a lambda vs a function pointer? {level=medium}
-A function pointer holds only plain functions. A lambda has a unique, unnamed type and can hold state (fast, inlinable). `std::function<R(Args...)>` can hold **any** callable of that signature (type-erased), at the cost of a possible heap allocation and an indirect call. Use templates/`auto` parameters for speed, `std::function` for storing heterogeneous callbacks.
+:::qa std::function vs a lambda vs a function pointer? {level=medium}
+**Say this:** "A function pointer holds only plain functions. A lambda is fast and has its own type. `std::function` holds any callable, with a small cost."
+
+**In simple words:** Use templates or `auto` for speed. Use `std::function` to store different callbacks together.
 :::
 
 :::qa What are generic lambdas? {level=medium}
-Lambdas with `auto` parameters (C++14): `[](auto a, auto b) { return a + b; }` is a template under the hood. C++20 adds explicit `template<class T>` syntax.
+**Say this:** "Lambdas with `auto` parameters (C++14): `[](auto a, auto b) { return a + b; }`."
+
+**In simple words:** It is a template in disguise.
 :::
 
-:::qa What is `std::bind` and why is it mostly replaced? {level=medium}
-`bind` builds a callable with some arguments fixed. Lambdas do the same more readably (`[=](int y) { return f(5, y); }`) and inline better, so prefer lambdas.
+:::qa What is std::bind and why is it mostly replaced? {level=medium}
+**Say this:** "`bind` fixes some arguments of a function. Lambdas do the same more clearly."
 :::
 
 :::qa How do you sort a vector of objects by two fields? {level=easy}
+**Say this:** "Use a lambda with `tie`, which compares the fields in order."
+
 ```cpp
 sort(people.begin(), people.end(), [](const Person& a, const Person& b) {
     return tie(a.age, a.name) < tie(b.age, b.name);       // tuple comparison
@@ -147,16 +197,16 @@ sort(people.begin(), people.end(), [](const Person& a, const Person& b) {
 - map
 + unordered_map
 - list
-> Hashing; map is a tree with O(log n).
+> It uses hashing. `map` is a tree with O(log n).
 ? A lambda captures a local by reference and is returned from the function. What happens when it is called?
-- Works fine
+- It works fine
 + Undefined behaviour: the reference dangles
-- Compile error
+- A compile error
 > Capture by value for anything that escapes.
 ```
 
 :::keypoints
-- Templates: header definitions, specialisation, concepts replace SFINAE, CRTP = static polymorphism.
-- Default to `vector`; `map` is ordered O(log n), `unordered_map` O(1) average; erase-remove idiom.
-- Lambdas: explicit captures, never let by-reference captures escape; `std::function` costs, templates do not.
+- Templates: bodies in headers, specialisation, concepts replace SFINAE, CRTP is static polymorphism.
+- Default to `vector`. `map` is ordered O(log n). `unordered_map` is O(1) on average. Use the erase-remove idiom.
+- Lambdas: name your captures. Never let a reference capture escape. `std::function` has a cost, templates do not.
 :::

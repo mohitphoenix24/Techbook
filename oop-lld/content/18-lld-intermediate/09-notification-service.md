@@ -2,33 +2,33 @@
 title: Design a Notification Service
 level: intermediate
 time: 60
-summary: A multi-channel notification platform with templates, user preferences and quiet hours, priorities, retry with exponential backoff, per-user rate limits, de-duplication, asynchronous delivery with worker threads, and delivery status tracking.
+summary: A service that sends messages to users by email, SMS and push. Learn templates, user preferences and quiet hours, priorities, retry with waiting time between tries, limits against spam, removing duplicates, and sending on worker threads.
 ---
 
 :::problem Design a Notification Service {level=medium tags="Strategy,Chain of Responsibility,async,retry,Observer,infrastructure"}
-Design a service that other systems call to notify users (order shipped, OTP, promotions). It must support several channels (email, SMS, push), message templates, user preferences (opted-out channels, quiet hours), priorities (OTP before promotions), retries when a channel fails, and protection against spamming a user. Delivery is asynchronous; callers get a notification id and can query its status.
+Design a service that other systems call to notify users (order shipped, OTP, offers). It must support several channels (email, SMS, push), message templates, user preferences (channels turned off, quiet hours), priorities (an OTP before an offer), retries when a channel fails, and protection against spamming a user. Sending happens in the background. The caller gets a notification id and can ask for its status later.
 :::
 
 :::hint Hint
-Think in two layers. **Accept and decide** (validate, apply preferences, rate limits, de-duplicate: a chain of checks) and **deliver** (a priority queue and workers that call channels with retry). Channels and templates are the extension points.
+Think in two layers. First **accept and decide** (check the request, apply preferences, limit, remove duplicates: a chain of checks). Then **deliver** (a priority queue and workers that call the channels, with retry). Channels and templates are the parts that can be extended.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Channels? | email, SMS, push; more later |
-| Trigger? | an API call: `send(userId, templateId, params, priority)` |
-| Templates? | text with `{placeholders}` per channel |
-| Preferences? | per user: channels allowed per category, quiet hours (promotions only) |
-| Priority? | HIGH (OTP, security) bypasses quiet hours and rate limits; NORMAL; LOW (promotions) |
-| Reliability? | failures retried up to 3 times with exponential backoff; then marked FAILED, or fall back to another channel |
-| Spam control? | max N notifications per user per hour (not for HIGH) |
-| De-dup? | the same `dedupKey` within 10 minutes is dropped |
-| Status? | Queued, Sent, Failed, Dropped(reason) queryable by id |
-| Concurrency? | worker threads drain a priority queue |
+| Channels? | email, SMS, push. More later |
+| What starts it? | an API call: `send(userId, templateId, params, priority)` |
+| Templates? | text with `{placeholders}` for each channel |
+| Preferences? | for each user: which channels are allowed for each type of message, and quiet hours (for offers only) |
+| Priority? | HIGH (OTP, security) ignores quiet hours and limits. NORMAL. LOW (offers) |
+| If it fails? | retry up to 3 times, waiting longer each time. Then mark FAILED, or try another channel |
+| Spam control? | at most N messages for each user in an hour (not for HIGH) |
+| Duplicates? | the same `dedupKey` within 10 minutes is dropped |
+| Status? | Queued, Sent, Failed, Dropped (with a reason). Can be asked by id |
+| Many threads? | worker threads take messages from a priority queue |
 
-## Step 2: the pipeline
+## Step 2: The pipeline
 
 ```viz algo=seq title="From API call to delivery"
 participant c Caller [user]
@@ -49,7 +49,7 @@ w -> ch : send again
 ch --> w : ok
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Notification service"
 class NotificationService
@@ -93,17 +93,17 @@ DeliveryWorker --> RetryPolicy
 ExponentialBackoff ..|> RetryPolicy
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Filters as a Chain of Responsibility**: dedup → preferences → rate limit. Each returns `Accept` or `Drop(reason)`. A new rule (blocked sender, legal hours) is a new filter.
-- **Channel as a Strategy**; the user's preferred channel order decides where to try first, with a fallback list.
-- **TemplateEngine** replaces `{name}` placeholders; templates are data.
-- **Priority queue + worker threads** (a blocking queue ordered by `(priority desc, sequence asc)`): HIGH always overtakes LOW; FIFO inside a priority.
-- **Retry with backoff** handled by the worker; the delay uses an injected clock/scheduler. The demo uses a logical clock so it is deterministic and instant.
-- **Status store** keyed by id for the `status()` query; transitions: Queued → Sent | Failed | Dropped.
-- **Idempotency**: the dedup key prevents duplicate deliveries when callers retry their API call.
+- **Filters are a Chain of Responsibility:** duplicate check, then preferences, then rate limit. Each says `Accept` or `Drop(reason)`. A new rule (blocked sender, legal hours) is a new filter.
+- **Channel is a Strategy.** The user's preferred order of channels decides where to try first, with a list of backups.
+- **TemplateEngine** replaces `{name}` placeholders. Templates are data.
+- **A priority queue and worker threads** (a blocking queue ordered by `(priority high first, sequence old first)`): HIGH always goes before LOW, and the order inside one priority is first come, first served.
+- **Retry with waiting time** is done by the worker. The delay uses a clock we pass in. The demo uses a pretend clock so it is instant and predictable.
+- **A status store** keyed by id answers `status()`. States: Queued, then Sent, Failed or Dropped.
+- **Safe repeats:** the duplicate key stops double delivery when callers repeat their API call.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Filters, templates, priority queue, retries with backoff"
 #include <algorithm>
@@ -284,45 +284,51 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Unknown template | dropped with a reason at accept time (fail fast) |
-| All channels fail | marked Failed after the retry limit; optionally try the next channel (fallback chain) |
-| Duplicate API call | de-dup by key within a window |
-| Quiet hours across midnight | the hour comparison handles wrap-around |
-| Worker crash mid-delivery | durable queue + at-least-once delivery; channels must tolerate duplicates (idempotency key) |
-| Huge bursts | bounded queue with back-pressure; shed LOW priority first |
-| Time zones | quiet hours use the user's zone (store an offset) |
-| Template injection | escape parameters according to the channel (HTML for email) |
+| Unknown template | dropped with a reason when accepted (fail early) |
+| All channels fail | marked Failed after the retry limit. Optionally try the next channel (a chain of backups) |
+| The same API call twice | the duplicate key catches it within the time window |
+| Quiet hours that cross midnight | the hour comparison handles the wrap |
+| A worker crashes during delivery | a durable queue and at-least-once delivery. Channels must handle duplicates (an idempotency key) |
+| Huge bursts | a limited queue that pushes back. Drop LOW priority first |
+| Time zones | quiet hours use the user's zone (save an offset) |
+| Template injection | escape the values for the channel (HTML for email) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Add WhatsApp or Slack" | a new `Channel` class and registration |
-| "Scheduled and recurring notifications" | a scheduler (priority queue by time) feeding the queue |
-| "Batch / digest (daily summary)" | an aggregator filter that holds LOW messages and emits one digest |
-| "Delivery receipts and read tracking" | channels call back; status becomes Delivered/Read (Observer) |
-| "Multi-tenant with quotas" | tenant id in the request; per-tenant rate filters |
-| "Scale: millions per minute" | partition the queue by user id; stateless workers; Kafka as the durable queue (HLD) |
-| "Provider failover" | a `ResilientChannel` decorator with circuit breaker and secondary provider |
-| "Audit and compliance" | event log of every decision and delivery |
+| "Add WhatsApp or Slack" | a new `Channel` class and one registration |
+| "Scheduled and repeating messages" | a scheduler (a priority queue by time) that feeds the queue |
+| "A daily summary instead of many messages" | an aggregator filter that holds LOW messages and sends one summary |
+| "Delivery and read receipts" | channels call back, and the status becomes Delivered or Read (Observer) |
+| "Many customers (tenants) with quotas" | a tenant id in the request, and limit filters for each tenant |
+| "Millions of messages each minute" | split the queue by user id, workers with no state, Kafka as the durable queue (HLD) |
+| "If a provider is down" | a `ResilientChannel` decorator with a circuit breaker and a second provider |
+| "Audit and rules" | a log of every decision and every delivery |
+
+## Short answer to say in an interview
+
+:::interview How do you design a notification service?
+"I split it into two layers. The first layer accepts and decides: a chain of filters checks for duplicates, user preferences and rate limits, and drops a message with a reason if it fails. The second layer delivers: messages go into a priority queue so OTPs go before offers, and worker threads send them through channel strategies, with retries and increasing waiting times. Templates are data. Status can be asked by id. Delivery is at-least-once, so channels must handle duplicates."
+:::
 
 ```quiz
-? Why implement the checks as a chain of filters?
+? Why make the checks a chain of filters?
 - It is shorter
-+ Each rule is independent and a new rule is a new filter; the first refusal drops the request with a reason
++ Each rule is separate, a new rule is a new filter, and the first refusal drops the request with a reason
 - Chains are faster
-> Open for extension, with clear, testable rules.
-? Why does the HIGH priority skip quiet hours and rate limits?
+> Open for adding, with clear rules that are easy to test.
+? Why does HIGH priority skip quiet hours and rate limits?
 - By mistake
-+ Security messages like OTPs must always arrive immediately
++ Security messages like OTPs must always arrive at once
 - Because they are short
-> Priority semantics are part of the contract.
+> Priority is part of the promise.
 ```
 
 :::keypoints
-- Accept (filters: dedup, preferences, rate limit) then deliver (priority queue, workers, retries with backoff).
-- Channels and templates are extension points; status is queryable by id; duplicates are dropped by key.
-- At-least-once delivery means idempotent channels; scale by partitioning the queue.
+- Accept (filters: duplicates, preferences, rate limit), then deliver (priority queue, workers, retries with waiting time).
+- Channels and templates can be extended. Status can be asked by id. Duplicates are dropped by a key.
+- At-least-once delivery needs safe repeats. To scale, split the queue.
 :::

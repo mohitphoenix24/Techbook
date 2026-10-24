@@ -2,94 +2,132 @@
 title: "OOP interview: constructors and destructors"
 level: medium
 time: 30
-summary: Default and parameterised constructors, initialiser lists, order of construction and destruction, delegating constructors, virtual destructors, and the Rule of 0, 3 and 5.
+summary: Simple answers on constructors, initialiser lists, the order of construction and destruction, virtual destructors, and the Rule of 0, 3 and 5.
 ---
 
 ## Constructors
 
 :::qa What are the kinds of constructors in C++? {level=easy}
-Default (no arguments), parameterised, copy (`T(const T&)`), move (`T(T&&)`), delegating (calls another constructor of the same class), converting (single-argument, non-`explicit`), and `explicit` ones. The compiler may supply default, copy and move versions.
+**Say this:** "Default, parameterised, copy, move, delegating and converting constructors."
+
+**In simple words:** A default one has no arguments. A copy one builds from another object of the same type. A move one takes over from a temporary. A delegating one calls another constructor of the same class. The compiler may write some of them for you.
 :::
 
 :::qa When does the compiler NOT generate a default constructor? {level=easy}
-As soon as you declare **any** constructor yourself. Write `T() = default;` to bring it back.
+**Say this:** "As soon as I write any constructor myself. I can bring it back with `T() = default;`."
 :::
 
 :::qa What is an initialiser list and why prefer it? {level=easy}
-`Point(int x, int y) : x_(x), y_(y) {}` initialises members **before** the body runs. It is required for `const` members, reference members and members/bases without a default constructor, and avoids the wasteful "default-construct then assign" for the rest.
+**Say this:** "`Point(int x, int y) : x_(x), y_(y) {}` sets members before the body runs. It is needed for `const` and reference members."
+
+**In simple words:** It also avoids doing the work twice ("make empty, then assign").
 :::
 
 :::qa In what order are members initialised? {level=medium}
-In the order they are **declared in the class**, not the order in the initialiser list. Base classes come first (in declaration order), then members. If one member's initialiser depends on another, declare them in the right order. Compilers warn with `-Wreorder`.
+**Say this:** "In the order they are declared in the class, not in the order of the initialiser list."
+
+**In simple words:** Base classes come first, then members. If one member needs another, declare them in the right order. The compiler warns with `-Wreorder`.
 :::
 
 :::qa In what order are destructors called? {level=medium}
-The reverse of construction: the derived destructor body runs first, then members are destroyed in reverse declaration order, then the base class destructor. Local objects are destroyed in reverse order of creation.
+**Say this:** "The reverse of construction: the child's body, then its members (reversed), then the base class."
+
+**In simple words:** Local objects are also destroyed in reverse order of creation.
 :::
 
 :::qa What is a delegating constructor? {level=medium}
-A constructor that forwards to another one of the same class in its initialiser list: `Account() : Account(0, "none") {}`. It avoids repeating validation code.
+**Say this:** "A constructor that calls another constructor of the same class: `Account() : Account(0, "none") {}`."
+
+**In simple words:** It avoids repeating the checks.
 :::
 
 :::qa What is the "most vexing parse"? {level=hard}
-`Timer t();` declares a **function** named `t` returning `Timer`, not an object. Use `Timer t;` or `Timer t{};`. Likewise `Widget w(Gadget());` declares a function. Brace initialisation avoids it.
+**Say this:** "`Timer t();` declares a function named `t`, not an object."
+
+**In simple words:** Write `Timer t;` or `Timer t{};`. Brace initialisation avoids this trap.
 :::
 
 :::qa Can a constructor be virtual? Why not? {level=medium}
-No. A virtual call needs the object's vtable pointer, which is set up *by* the constructor, so the type does not exist yet. For "virtual construction" use a **factory** or a virtual `clone()` function.
+**Say this:** "No. A virtual call needs the object's type, and the constructor is what builds the object."
+
+**In simple words:** For "virtual construction", use a factory or a virtual `clone()` function.
 :::
 
 :::qa What happens if you call a virtual function from a constructor? {level=hard}
-It calls the version of the class **being constructed**, not the most derived override, because the derived part does not exist yet. The same applies in destructors. Avoid virtual calls there.
+**Say this:** "It calls the version of the class being built, not the child's override."
+
+**In simple words:** The child part does not exist yet. The same is true in destructors. Avoid virtual calls there.
 :::
 
 :::qa What happens if a constructor throws? {level=hard}
-The object is never considered constructed, so its destructor is **not** called. But fully constructed members and bases are destroyed. So hold resources in RAII members (`unique_ptr`, `vector`) and nothing leaks; raw `new` in a constructor body can leak.
+**Say this:** "The object is not built, so its destructor does not run. But the members that were fully built are destroyed."
+
+**In simple words:** So keep resources in RAII members (`unique_ptr`, `vector`). A raw `new` in the constructor body can leak.
 :::
 
 :::qa What is a private constructor useful for? {level=medium}
-It stops outside code from creating objects: used for the Singleton, for factories (`static create()`), and for classes made only of static members. Together with `= delete` for copy it controls how objects come to be.
+**Say this:** "It stops outside code from creating objects. Used for Singleton and for factories."
 :::
 
-:::qa What does `= default` and `= delete` do? {level=easy}
-`= default` asks the compiler to generate the special function. `= delete` forbids it: calling it is a compile error. Delete copying for unique-ownership types, and delete unwanted overloads (`void f(double) = delete;`).
+:::qa What does = default and = delete do? {level=easy}
+**Say this:** "`= default` asks the compiler to write the function. `= delete` forbids it, and using it is a compile error."
+
+**In simple words:** Delete copying for types with one owner. Delete unwanted overloads, like `void f(double) = delete;`.
 :::
 
 ## Destructors
 
 :::qa What is a destructor for? {level=easy}
-To release what the object owns (memory, files, locks, sockets) at the end of its life. This automatic clean-up is **RAII**: acquire in the constructor, release in the destructor.
+**Say this:** "To give back what the object owns, like memory, files, locks and sockets, at the end of its life."
+
+**In simple words:** This automatic clean-up is called **RAII**: get the resource in the constructor, release it in the destructor.
 :::
 
 :::qa When must a destructor be virtual? {level=easy}
-When the class is meant to be used polymorphically, that is, you may `delete` a derived object through a base pointer. Without `virtual ~Base()`, only the base destructor runs: the derived part leaks and the behaviour is undefined.
+**Say this:** "When I may delete a child object through a base pointer."
+
+**In simple words:** Without a virtual destructor, only the base destructor runs. The child part leaks, and the behaviour is undefined.
 :::
 
 :::qa Should every class have a virtual destructor? {level=medium}
-No. Only base classes designed for polymorphic deletion need it. It adds a vtable pointer to every object. A common rule: if a class has virtual functions, give it a virtual (or protected non-virtual) destructor. Value-like classes do not need one.
+**Say this:** "No. Only base classes made for use through pointers need it."
+
+**In simple words:** It adds a hidden pointer to each object. Simple value classes do not need it.
 :::
 
 :::qa Can a destructor throw? {level=hard}
-It can, but it should not. Destructors are `noexcept` by default; if one throws while another exception is already unwinding the stack, `std::terminate` is called. Catch inside the destructor and log or swallow.
+**Say this:** "It can, but it should not. If it throws while another error is already being handled, the program stops (`std::terminate`)."
+
+**In simple words:** Catch the error inside the destructor and log it.
 :::
 
 :::qa Can a destructor be pure virtual? {level=hard}
-Yes, to make a class abstract when it has no other pure functions: `virtual ~Base() = 0;`. But it **must still have a definition** (`Base::~Base() {}`), because derived destructors call it.
+**Say this:** "Yes, to make a class abstract. But it must still have a body."
+
+**In simple words:** `virtual ~Base() = 0;` plus `Base::~Base() {}`, because child destructors call it.
 :::
 
 :::qa What is the Rule of Zero? {level=medium}
-If your class owns no raw resources (it uses `string`, `vector`, `unique_ptr` and so on), write **none** of the destructor, copy or move functions. The compiler-generated ones are correct. This is the preferred design.
+**Say this:** "If my class owns no raw resources, I write none of the special functions. The compiler's ones are correct."
+
+**In simple words:** Use `string`, `vector` and `unique_ptr` as members. This is the best design.
 :::
 
 :::qa What is the Rule of Three? {level=medium}
-If a class needs a custom destructor, copy constructor **or** copy assignment operator, it almost certainly needs all three, because it manages a resource by hand. Otherwise copies share the resource (double free).
+**Say this:** "If I need a custom destructor, copy constructor or copy assignment, I probably need all three."
+
+**In simple words:** Because the class manages a resource by hand. Otherwise copies share the resource, and it is freed twice.
 :::
 
 :::qa What is the Rule of Five? {level=medium}
-In modern C++ add the **move constructor** and **move assignment** to the Rule of Three. Declaring any of the five stops the compiler from generating the move operations, so be explicit with `= default` or `= delete` for the ones you do not customise.
+**Say this:** "The Rule of Three plus the move constructor and move assignment."
+
+**In simple words:** Writing any one of the five stops the compiler from writing the move operations. So write each of them, or mark it `= default` or `= delete`.
 :::
 
 :::qa How do you make a class non-copyable but movable? {level=medium}
+**Say this:** "Delete copying, and default the moves."
+
 ```cpp
 class Handle {
 public:
@@ -99,14 +137,18 @@ public:
     Handle& operator=(Handle&&) noexcept = default;
 };
 ```
-`unique_ptr` and `std::thread` work like this.
+**In simple words:** `unique_ptr` and `std::thread` work like this.
 :::
 
 :::qa How do you make a class that can only be created on the heap? Only on the stack? {level=hard}
-**Heap only:** make the destructor `private`/`protected` and offer a `static` factory that does `new`, plus a `destroy()` method. **Stack only:** `delete` `operator new` (`static void* operator new(size_t) = delete;`).
+**Say this:** "Heap only: make the destructor private and give a static `create()`. Stack only: delete `operator new`."
+
+**In simple words:** These are rare tricks. Know that they exist.
 :::
 
 :::qa Implement a Singleton in C++. What are its drawbacks? {level=medium}
+**Say this:** "A private constructor, deleted copying, and a function-local static."
+
 ```cpp
 class Config {
     Config() = default;
@@ -116,24 +158,24 @@ public:
     Config& operator=(const Config&) = delete;
 };
 ```
-Drawbacks: hidden global state, hard to test, tight coupling, lifetime order problems at exit. Prefer passing the dependency in. (See the creational patterns module for details.)
+**Drawbacks:** it is hidden global state, hard to test, tightly coupled, and has a risk with the order of destruction at exit. Prefer passing the one object in. (See the creational patterns module.)
 :::
 
 ```quiz
 ? A base class has a non-virtual destructor and you delete a Derived through a Base*. What happens?
-- Derived destructor then Base destructor
-+ Undefined behaviour; typically only the Base destructor runs
-- Compile error
+- The Derived destructor, then the Base destructor
++ Undefined behaviour. Usually only the Base destructor runs
+- A compile error
 > Make the base destructor virtual.
 ? Members a_ then b_ are declared in that order, but the initialiser list says b_(1), a_(b_). What happens?
 - b_ is initialised first
-+ a_ is initialised first, reading an uninitialised b_
-- Compile error always
-> Initialisation follows declaration order.
++ a_ is initialised first, and reads an uninitialised b_
+- A compile error always
+> Initialisation follows the declaration order.
 ```
 
 :::keypoints
-- Initialiser lists; members initialise in declaration order; destruction is the reverse.
-- Virtual destructor for polymorphic bases; never throw out of a destructor.
-- Rule of 0 (best), 3, 5; `= default` and `= delete` express intent.
+- Initialiser lists. Members are built in declaration order and destroyed in the reverse order.
+- Virtual destructor for classes used through base pointers. Never throw out of a destructor.
+- Rule of 0 (best), 3 and 5. `= default` and `= delete` show your intention.
 :::

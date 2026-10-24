@@ -2,16 +2,29 @@
 title: State
 level: intermediate
 time: 40
-summary: Letting an object change its behaviour when its internal state changes, by delegating to state objects: replacing a growing switch, a vending machine and a document workflow, who owns the transitions, state tables, shared stateless states, and the contrast with Strategy.
+summary: Let an object behave differently depending on its current state, by giving each state its own class. See why a big switch is a problem, a gumball machine, a document workflow, who controls the transitions, a table version, and how State differs from Strategy.
 ---
 
+## What is the State pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "The same button does different things depending on the situation. A lift button works one way when the lift is moving, and another way when the doors are open."
+
+Many things in real life (and in code) behave differently depending on their **mode**:
+
+- a vending machine: idle, has money, dispensing,
+- a document: draft, in review, published,
+- an order: placed, paid, shipped, delivered, cancelled,
+- a media player: stopped, playing, paused.
+
 :::def State
-Allow an object to **alter its behaviour when its internal state changes**. The object will appear to change its class.
+Let an object **change its behaviour when its internal state changes**, by handing the work to a **state object**. From outside it looks like the object changed its class.
 :::
 
-Many objects behave differently depending on their **mode**: a vending machine (idle, has money, dispensing), a document (draft, review, published), an order (placed, paid, shipped, delivered, cancelled), a TCP connection, a media player (stopped, playing, paused), a traffic light, an elevator. The usual first attempt is a big `switch (state)` inside every method.
+## The problem: a switch in every method
 
-## The problem: switch statements in every method
+The first idea most people try is a `switch (state)` inside every method.
 
 ```cpp run title="Every operation switches on the state"
 #include <iostream>
@@ -43,11 +56,11 @@ private:
 int main() { Gumball g; g.insertCoin(); g.turnCrank(); g.turnCrank(); }
 ```
 
-Adding a new state ("Winner: two gumballs") means editing **every method's** switch. The behaviour of one state is scattered over many places. This breaks OCP and SRP.
+Now imagine adding a new state, like "Winner: gives two gumballs". You must edit **every** method. And one state's behaviour is scattered across many places. This breaks both the "one job per class" and the "do not edit old code" rules.
 
 ## The State pattern
 
-Make each state a **class** that implements all the operations for that state. The **context** holds a pointer to the current state and **delegates** every call to it. States perform transitions by telling the context to switch.
+Make each state its **own class**. That class knows what to do for every action **in that state**. The main object (the **context**) keeps a pointer to the current state and **passes every call to it**. When something changes, a state tells the context to switch to a new state.
 
 ```viz algo=uml title="State"
 class GumballMachine
@@ -142,11 +155,11 @@ int main() {
 }
 ```
 
-Now each state's behaviour is **in one class**. Adding a state (`WinnerState`) is a new class plus the transitions into it. The machine class has no conditionals.
+Now each state's behaviour lives **in one class**. To add `WinnerState`, you write a new class and add the arrows into it. The machine class has no `if` or `switch`.
 
-## A document workflow
+## Another example: a document workflow
 
-A second example with permissions depending on the state: a document can be edited only as a draft, approved only in review, and archived once published.
+Here, what you can do depends on the state: you can edit only in Draft, approve only in Review, and a Published document can only be archived.
 
 ```cpp run title="Document lifecycle with the State pattern"
 #include <iostream>
@@ -216,13 +229,13 @@ int main() {
 }
 ```
 
-## Who defines the transitions?
+## Who decides the next state?
 
-| Option | How | Trade-off |
+| Option | How | Good / not so good |
 |---|---|---|
-| **States decide** (as above) | each state calls `context.set(new State)` | easy to add states; states know their neighbours (some coupling between states) |
-| **Context decides** | context holds a transition table; states only act | transitions are in one place; good for many states with data-driven rules |
-| **Table-driven** (no state classes) | `map<pair<State, Event>, State>` | compact and easy to verify; behaviour per state is in separate functions |
+| **The states decide** (as above) | each state tells the context what comes next | easy to add states, but states know their neighbours |
+| **The context decides** | the context keeps a table of transitions; states only act | all transitions in one place |
+| **Table only** (no state classes) | `map<pair<State, Event>, State>` | short and easy to check; behaviour is in separate functions |
 
 ```cpp run title="Table-driven state machine"
 #include <iostream>
@@ -262,11 +275,11 @@ int main() {
 }
 ```
 
-The whole machine is **data**: easy to print, validate and test. For small, stable machines this is often the best choice; the State pattern wins when each state has **rich behaviour**.
+In the table version, the whole machine is just **data**. It is easy to print, check and test. For small, stable machines this is often the best choice. The State pattern is better when each state has **a lot of behaviour**.
 
 ## Sharing state objects
 
-State objects often hold **no data of their own**: they are stateless. Then one shared instance of each is enough (a Flyweight/Singleton per state), avoiding repeated allocation:
+Often a state object has **no data of its own**. Then one shared copy of each state is enough. This saves memory and avoids creating objects again and again.
 
 ```cpp run title="Stateless states as shared singletons"
 #include <iostream>
@@ -301,40 +314,42 @@ int main() {
 
 ## State vs Strategy
 
-Both hold an interface pointer and delegate. The difference is **who changes it and why**.
+Both hold a pointer to an interface and pass the work on. The difference is **who changes it and why**.
 
 | | State | Strategy |
 |---|---|---|
-| The object swaps the pointer | **itself**, as it moves through its lifecycle | the **client** sets it from outside |
-| Variants know each other | **yes**: a state names the next state | no |
-| Question it answers | "What can I do *now*?" | "*How* shall I do this?" |
-| Typical | workflow, protocol, machine | sorting order, pricing, routing |
+| Who changes the pointer? | the object **itself**, as it moves along | the **user**, from outside |
+| Do the variants know each other? | **yes**, a state names the next state | no |
+| The question it answers | "What can I do **now**?" | "**How** should I do this?" |
+| Typical use | workflows, protocols, machines | sorting, pricing, routing |
 
-:::interview How is the State pattern different from a switch or from Strategy?
-"A switch scatters one state's behaviour across every method and must be edited for each new state. State puts each state's behaviour in a class and the context delegates, so adding a state is adding a class. It differs from Strategy in that the object changes its own state object as it runs, and the states encode the valid transitions, whereas a strategy is chosen by the client and strategies do not know each other."
+## Short answer to say in an interview
+
+:::interview How is State different from a switch, and from Strategy?
+"A switch spreads one state's behaviour across all the methods, and I must edit every method for a new state. With the State pattern each state is a class, and the main object passes calls to the current state. So a new state is just a new class. It differs from Strategy because the object changes its own state as it runs, and states know the valid transitions. A strategy is chosen by the user, and strategies do not know each other."
 :::
 
 ```quiz
 ? What does the context do in the State pattern?
-- Implements every state's logic
-+ Holds the current state object and delegates operations to it
+- Writes the logic of every state
++ Holds the current state object and passes the calls to it
 - Chooses a strategy
-> It has no conditionals on state; the state object decides the behaviour.
-? Which is a good reason to use a table-driven machine instead of state classes?
-- The states have complex behaviour
-+ The machine is small and mostly data (transitions), and easy to validate
-- You need polymorphism
-> A transition table is compact; use state classes when each state has rich behaviour.
-? How can stateless state objects be made cheaper?
-- By using raw pointers
-+ Share one instance of each (like flyweights/singletons)
+> It has no switch on the state. The state object decides what to do.
+? When is a table-driven machine a good choice?
+- When each state has a lot of behaviour
++ When the machine is small, mostly transitions, and easy to check
+- When you need polymorphism
+> A table is short. Use state classes when each state has rich behaviour.
+? How can states that have no data be made cheaper?
+- Use raw pointers
++ Share one object for each state
 - They cannot be shared
-> If they hold no per-context data, a single shared object per state is enough.
+> If a state keeps no data, one shared copy is enough.
 ```
 
 :::keypoints
-- State: one class per state implementing all operations; the context delegates; states trigger transitions.
-- Replaces repeated `switch` over a state enum (OCP, SRP). Invalid operations get a clear default response.
-- Transitions can live in the states, in the context, or in a table. Share stateless states.
-- State changes itself over time; Strategy is chosen from outside.
+- State: one class per state. The context passes calls to the current state. States trigger the transitions.
+- It replaces repeated `switch` on a state. Invalid actions get a clear default reply.
+- Transitions can live in the states, in the context, or in a table. Share states that have no data.
+- State changes by itself over time. Strategy is chosen from outside.
 :::

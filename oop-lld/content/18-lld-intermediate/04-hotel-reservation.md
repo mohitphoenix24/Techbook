@@ -2,32 +2,32 @@
 title: Design a Hotel Reservation System
 level: intermediate
 time: 60
-summary: Room types and rooms, date-range availability with overlap checks, searching free rooms, pricing strategies (seasonal, weekend), cancellation policies, preventing double booking with a lock per room, and reservation states.
+summary: Rooms, date ranges and a simple overlap check, searching for free rooms, prices that change by season, cancellation rules, and a lock for each room so two guests never get the same room on the same dates.
 ---
 
 :::problem Design a Hotel Reservation System {level=medium tags="booking,date ranges,Strategy,concurrency,pricing"}
-Design a hotel reservation system. A hotel has rooms of different types. Guests search for availability by dates and room type, book a room for a stay (check-in to check-out), and may cancel. Prices vary by season and weekday. A room can never be double booked for overlapping dates.
+Design a hotel reservation system. A hotel has rooms of different types. Guests search for rooms by dates and room type, book a room for a stay (check-in to check-out), and can cancel. Prices change by season and by weekday. A room must never be booked twice for dates that overlap.
 
 :::hint Hint
-Availability is about **date ranges**, so use half-open intervals `[checkIn, checkOut)` and the overlap test `a.start < b.end && b.start < a.end`. Booking must **check and insert atomically** per room. Price and cancellation rules are strategies.
+Availability is about **date ranges**. Use ranges that include the start date but not the end date, `[checkIn, checkOut)`, and this overlap test: `a.start < b.end && b.start < a.end`. Booking must **check and save as one step** for each room. Price and cancellation rules are strategies.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
 | Rooms? | numbered rooms, each with a type (Standard, Deluxe, Suite) and a base price |
-| Dates? | whole days; a stay is `[checkIn, checkOut)`, so checking out and in on the same day is fine |
-| Search? | free rooms of a type (or any) for a date range |
-| Booking? | by room type: the system picks a free room; or a specific room |
-| Pricing? | base price per night x multipliers (weekend, peak season); a strategy |
-| Cancellation? | policy: free until 48 hours before check-in, then one night's charge; a strategy |
-| States? | Confirmed, Cancelled, CheckedIn, CheckedOut |
-| Concurrency? | two guests must not get the same room for overlapping dates |
-| Out of scope | payments, housekeeping, loyalty |
+| Dates? | whole days. A stay is `[checkIn, checkOut)`, so one guest can leave and another arrive on the same day |
+| Search? | free rooms of a type (or any type) for a date range |
+| Booking? | by room type (the system picks a free room), or a specific room |
+| Price? | base price for each night times extras (weekend, busy season). A strategy |
+| Cancel? | free until 48 hours before check-in, then one night's charge. A strategy |
+| Reservation states? | Confirmed, Cancelled, CheckedIn, CheckedOut |
+| Many users? | two guests must not get the same room on overlapping dates |
+| Not needed | payments, housekeeping, loyalty points |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Hotel reservation"
 class HotelService
@@ -69,16 +69,16 @@ SeasonalPricing ..|> PricingStrategy
 FlexiblePolicy ..|> CancellationPolicy
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **`DateRange`** is an immutable value object with `overlaps` and `nights`, used everywhere (the toolkit's `TimeRange`).
-- **Each `Room` owns its bookings and a mutex.** `tryBook` checks all existing non-cancelled reservations for overlap and inserts one under the lock: atomic per room. Different rooms never contend.
-- **Picking a room by type**: iterate rooms of that type and try each; the first successful `tryBook` wins. If `tryBook` fails because another thread got it first, try the next room (no global lock).
-- **Pricing as Strategy**: sums `nightlyRate(room, day)` over the stay, so weekend or peak multipliers live in one class.
-- **CancellationPolicy as Strategy** returns the refund. Cancelling marks the reservation `Cancelled`, which frees the dates for overlap checks.
-- **Reservation status** is a small enum with guarded transitions (cancel only when Confirmed).
+- **`DateRange`** is a small value that never changes. It has `overlaps` and `nights`, and is used everywhere (it is the toolkit's `TimeRange`).
+- **Each `Room` owns its bookings and a mutex.** `tryBook` checks all existing, not-cancelled reservations for an overlap and saves the new one while holding the lock. So each room is safe on its own, and different rooms never wait for each other.
+- **Choosing a room by type:** go through the rooms of that type and try each one. The first successful `tryBook` wins. If it fails because another thread was faster, try the next room (no global lock).
+- **Price is a Strategy.** It adds up `nightlyRate(room, day)` for the stay, so weekend and busy-season extras live in one class.
+- **Cancellation rule is a Strategy** that returns the refund. Cancelling marks the reservation `Cancelled`, which frees the dates.
+- **Reservation status** is a small enum with checked changes (cancel only when Confirmed).
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Rooms, date ranges, pricing, cancellation, double-booking race"
 #include <algorithm>
@@ -221,44 +221,50 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Check-out day equals another guest's check-in | half-open ranges: no overlap |
-| `checkOut <= checkIn` | rejected by `DateRange` |
-| Cancelled stays | status filter in `freeLocked`: dates become available again |
-| Booking different room types at once | one reservation per room; a group booking is a coordinator (extension) |
-| Many rooms, many requests | per-room locks, no global lock |
-| Pricing changes after booking | the total is stored on the reservation: it does not change |
-| Double cancellation | the second call finds no active reservation |
+| Check-out day is the same as another guest's check-in day | no overlap, because the end day is not included |
+| `checkOut <= checkIn` | refused by `DateRange` |
+| Cancelled stays | filtered out in `freeLocked`, so the dates are free again |
+| Booking different room types together | one reservation for each room. A group booking is a coordinator (extension) |
+| Many rooms and many requests | locks for each room, no global lock |
+| The price changes after booking | the total is saved on the reservation and does not change |
+| Cancelling twice | the second call finds no active reservation |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Choose a specific room or best match (high floor)" | a `RoomSelectionStrategy` used by `book` |
-| "Overbooking like airlines" | a policy allowing a configurable over-allocation, with relocation rules |
-| "Add-ons (breakfast, late checkout)" | decorators on the reservation price |
-| "Rate plans (refundable vs non-refundable)" | `RatePlan` carrying both a pricing multiplier and a cancellation policy |
-| "Check-in/out lifecycle and no-shows" | State machine; a daily job marks no-shows |
-| "Search at scale" | per-room-type interval trees or a calendar table with date buckets |
-| "Multiple hotels" | `Hotel` aggregate and a `SearchService` facade |
-| "Notifications" | Observer on reservation events |
+| "Pick a specific room or the best match (high floor)" | a `RoomSelectionStrategy` used by `book` |
+| "Overbooking like airlines" | a rule that allows a set amount of extra bookings, with moving rules |
+| "Extras (breakfast, late checkout)" | decorators on the reservation price |
+| "Rate plans (refundable or not)" | a `RatePlan` that has a price extra and a cancellation rule |
+| "Check-in, check-out and no-shows" | a state machine, and a daily job that marks no-shows |
+| "Search on a big scale" | an interval tree for each room type, or a calendar table by date |
+| "Many hotels" | a `Hotel` class and a `SearchService` facade |
+| "Messages to guests" | Observer on reservation events |
+
+## Short answer to say in an interview
+
+:::interview How do you stop double booking in a hotel system?
+"A stay is a range of dates that includes the check-in day but not the check-out day. Two stays overlap if a.start < b.end and b.start < a.end. Each room keeps its own reservations and a mutex, and tryBook checks for an overlap and saves the booking in one locked step. So two guests cannot get the same room on overlapping dates, and different rooms do not wait for each other. Cancelled reservations do not block."
+:::
 
 ```quiz
-? Why are stays modelled as half-open ranges?
+? Why are stays ranges that exclude the end day?
 - C++ uses them everywhere
-+ Checking out and in on the same day does not count as an overlap
++ One guest can check out and another check in on the same day without a clash
 - They save memory
-> `[checkIn, checkOut)` makes back-to-back stays compatible.
-? How is double booking prevented under concurrency?
+> `[checkIn, checkOut)` makes back-to-back stays fit.
+? How is double booking prevented with many users?
 - A global lock for the whole hotel
-+ Each room checks overlap and inserts the reservation under its own lock
-- By retrying later
-> Check-and-insert is atomic per room, so only one concurrent booking can succeed.
++ Each room checks for overlap and saves the booking under its own lock
+- By trying again later
+> Check and save is one step for each room, so only one booking can win.
 ```
 
 :::keypoints
-- DateRange value object with `overlaps`; per-room lock for atomic check-and-insert; cancelled bookings do not block.
-- Pricing and cancellation are strategies; the reservation stores its total at booking time.
-- Scaling: calendar indexes and conditional database updates keep the same logic.
+- A DateRange value with `overlaps`. A lock for each room for check-and-save. Cancelled bookings do not block.
+- Price and cancellation are strategies. The reservation stores its total when booked.
+- To scale: calendar indexes and conditional database updates, with the same logic.
 :::

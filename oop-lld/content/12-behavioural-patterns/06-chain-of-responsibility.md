@@ -2,20 +2,26 @@
 title: Chain of Responsibility
 level: intermediate
 time: 35
-summary: Passing a request along a chain of handlers until one handles it: support-ticket escalation, a logger with levels, an ATM cash dispenser, a validation and middleware pipeline, building and ordering the chain, and the two variants (first handler wins vs everyone processes).
+summary: Pass a request along a line of handlers until one of them deals with it. See expense approval, logging levels, an ATM note dispenser, middleware pipelines, and the choices you must make.
 ---
 
+## What is Chain of Responsibility?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "I do not know who will solve my problem. So I give it to the first person. If they can't, they pass it to the next one, and so on, until someone solves it."
+
+:::analogy Think of customer support
+You call the helpline (level 1). If they cannot solve your problem, they pass you to a senior agent (level 2), and then to a manager (level 3). You do not choose who answers. Your request moves up until someone can handle it.
+:::
+
 :::def Chain of Responsibility
-Avoid coupling the **sender** of a request to its **receiver** by giving **more than one object a chance to handle the request**. Chain the receiving objects and pass the request along the chain until an object handles it.
+Link several handlers in a line. A request goes to the first one. Each handler either **handles it** or **passes it to the next**. The sender does not need to know who will handle it.
 :::
 
-:::analogy Think of it like this
-A customer-support escalation. You call the helpline (level 1). If they cannot solve it, they pass you to a senior agent (level 2), then a manager (level 3). You do not choose who answers; the request travels up until someone can resolve it.
-:::
+Where you will see it: web **middleware** (login check, logging, rate limit), event bubbling in UIs, logging systems, approval workflows, ATM note dispensers, request checks.
 
-Where it appears: servlet filters and web **middleware** (authentication, logging, rate limiting), event bubbling in GUIs, logging frameworks, approval workflows, exception handling (catch blocks), ATM note dispensers, request validation.
-
-## Structure
+## The structure
 
 ```viz algo=uml title="Chain of Responsibility"
 abstract class Handler
@@ -33,7 +39,7 @@ Handler o-- Handler : next
 
 ## Example: expense approval
 
-Small expenses are approved by a team lead; larger ones by a manager; larger still by a director.
+A small expense is approved by the team lead. A bigger one by the manager. An even bigger one by the director.
 
 ```cpp run title="Each handler decides: handle it, or pass it on"
 #include <iostream>
@@ -77,11 +83,11 @@ int main() {
 }
 ```
 
-The client sends the request to the **head** and does not know who will handle it. Adding a `VicePresident` level is a new class inserted into the chain; nothing else changes.
+The user sends the request to the **first** handler and does not know who will approve it. To add a `VicePresident` level, write one new class and put it in the chain. Nothing else changes.
 
 ## Example: logging levels
 
-A log message goes to every logger whose level is at or above a threshold. Here the variant is "**everyone who is interested processes it**" (the chain continues even after handling).
+A log message goes to every logger whose level is high enough. Here, the chain **continues even after one handler has acted**, because many loggers may care.
 
 ```cpp run title="Console, file and alert loggers in a chain"
 #include <iostream>
@@ -132,7 +138,7 @@ int main() {
 
 ## Example: ATM cash dispenser
 
-Each handler dispenses as many notes of its denomination as it can, then passes the **remainder** on.
+Each handler gives as many notes of its type as it can, then passes the **remaining amount** to the next handler.
 
 ```cpp run title="Dispense Rs 3,770 with 2000, 500, 100 notes"
 #include <iostream>
@@ -163,9 +169,9 @@ int main() {
 }
 ```
 
-## Pipelines and middleware with std::function
+## Pipelines and middleware with `std::function`
 
-In modern C++ a chain of `std::function` steps is often simpler than classes. Each step receives the request and a `next` callback, and decides whether to continue (like Express.js or ASP.NET middleware).
+In modern C++, a chain of small functions is often simpler than classes. Each step gets the request and a `next` function, and decides whether to continue. This is how many web frameworks work.
 
 ```cpp run title="Middleware: authenticate, rate-limit, then handle"
 #include <functional>
@@ -199,49 +205,51 @@ int main() {
 }
 ```
 
-Any link can **short-circuit** the chain (return early), as authentication does here.
+Any step can **stop the chain** early. The login check does that here.
 
-## Design decisions
+## Choices you must make
 
 | Question | Options |
 |---|---|
-| Who stops the chain? | the **first** handler that handles it (approval, ATM remainder), or **none** (logging: all interested handlers act) |
-| What if nobody handles it? | a default handler at the end, an error, or ignore |
-| Who builds the chain? | the client or a factory; the **order** matters, so document it |
-| Handlers hold `next` how? | `unique_ptr` (owned chain), or the chain lives in a `vector` and the runner loops |
-| Request passed how? | an object (`Request`) so handlers can read and annotate it |
+| Who stops the chain? | the **first** handler that handles it (approval, ATM), or **nobody** (logging: all interested handlers act) |
+| What if nobody handles it? | a default handler at the end, an error, or ignore it |
+| Who builds the chain? | the user or a factory. The **order** matters, so write it down |
+| How does a handler keep `next`? | with `unique_ptr`, or keep all handlers in a `vector` and loop over them |
+| How is the request passed? | as an object (`Request`), so handlers can read and note things on it |
 
-## Pitfalls
+## Mistakes to avoid
 
-- A request may **fall off the end** unhandled: always decide the default.
-- **Long chains** are hard to debug and slow: keep them short, or log each hop.
-- Cycles in the chain cause infinite loops.
-- Handlers with hidden dependence on order are fragile. Make each independent where possible.
+- A request may **fall off the end** and nobody handles it. Always decide what happens then.
+- **Long chains** are hard to debug and slow. Keep them short, or log each step.
+- A chain that loops back on itself runs forever.
+- If handlers depend on each other's order in hidden ways, the chain becomes fragile. Make each handler independent.
 
-:::interview Chain of Responsibility: when and why?
-"When more than one object may handle a request and the handler is not known in advance. The sender hands the request to the first object in a chain; each handler either handles it or passes it to the next. It decouples senders from receivers, and handlers can be added or reordered. Examples: approval limits, logging levels, middleware pipelines, event bubbling. I decide whether the first handler stops the chain or all interested handlers act, and what happens if no one handles the request."
+## Short answer to say in an interview
+
+:::interview When do you use Chain of Responsibility?
+"When more than one object may handle a request, and I do not know in advance which one. The sender gives the request to the first object in a chain. Each handler either handles it or passes it on. This separates the sender from the receivers, and I can add or reorder handlers easily. Examples are approval limits, logging levels and middleware. I decide whether the first handler stops the chain or all interested handlers act, and what happens if nobody handles the request."
 :::
 
 ```quiz
 ? What does the sender know about the handlers?
-- Every concrete handler
+- Every handler
 + Only the first one in the chain
 - Nothing at all
-> It sends to the head; the chain decides who handles it.
-? In a logging chain, why does each logger pass the message on even after handling it?
-- A bug
-+ Because several loggers (console, file, alert) may each be interested
+> It sends to the first one. The chain decides who handles it.
+? In a logging chain, why does each logger pass the message on after handling it?
+- It is a bug
++ Because several loggers (console, file, alert) may each care about it
 - To avoid recursion
-> This is the "everyone processes" variant, as opposed to "first handler wins".
+> This is the "everyone acts" kind, not the "first handler wins" kind.
 ? What is a risk of long chains?
 - Compile errors
-+ Hard-to-debug flow and a request that falls off the end unhandled
-- They use more templates
-> Always define a default and keep chains short and well-logged.
++ Hard-to-follow flow, and a request that may fall off the end unhandled
+- They use templates
+> Always define a default and keep chains short.
 ```
 
 :::keypoints
-- Chain of Responsibility: handlers linked in order; each handles the request or passes it on; the sender knows only the head.
-- Two variants: first handler wins (approvals, ATM) or all interested act (logging, middleware).
-- Decide the default for unhandled requests, the chain order, and how to avoid cycles.
+- Chain of Responsibility: handlers in a line. Each handles the request or passes it on. The sender knows only the first one.
+- Two kinds: first handler wins (approvals, ATM), or all interested act (logging, middleware).
+- Decide the default for unhandled requests, the order of the chain, and avoid loops.
 :::

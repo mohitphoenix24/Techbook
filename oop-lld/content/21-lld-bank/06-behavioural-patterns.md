@@ -2,103 +2,151 @@
 title: "LLD interview: behavioural patterns"
 level: medium
 time: 40
-summary: Strategy, Observer, Command, State, Template Method, Chain of Responsibility, Iterator, Mediator, Memento, Visitor and Interpreter: intent, how to implement in C++, and the comparisons interviewers ask for.
+summary: Simple answers about Strategy, Observer, Command, State, Template Method, Chain of Responsibility, Iterator, Mediator, Memento, Visitor and Interpreter, and how to compare them.
 ---
 
 :::qa What is the Strategy pattern? {level=easy}
-Define a family of interchangeable algorithms behind an interface and let the context choose one at run time: `Cart` with `PricingStrategy` (`Regular`, `Festival`, `Bulk`). It replaces `if/else` on type and supports OCP. In C++ the strategy can also be a `std::function` or a template parameter.
+**Say this:** "Keep different ways of doing one job in separate classes behind one interface, and pick one when needed."
+
+**In simple words:** A `Cart` with `PricingStrategy` (`Regular`, `Festival`, `Bulk`). It replaces if-else chains. In C++ a strategy can also be a `std::function` or a template parameter.
 :::
 
 :::qa Strategy vs State: what is the difference? {level=medium}
-Both delegate to an interface. With **Strategy**, the *client* picks the algorithm and it rarely changes during the object's life. With **State**, the *object itself* changes its state object as events occur, and states often know their successors. Strategy = how to do something; State = what mode am I in.
+**Say this:** "In Strategy the user picks the algorithm. In State the object changes its own state as things happen."
+
+**In simple words:** Strategy = **how** to do something. State = **what mode** am I in. States often know the next state. Strategies do not know each other.
 :::
 
 :::qa What is the Observer pattern? {level=easy}
-A one-to-many dependency: when a subject changes, all registered observers are notified automatically (publish/subscribe). Examples: UI events, stock tickers, model-view. The subject only knows the observer interface.
+**Say this:** "One object announces changes, and many others who subscribed are told automatically."
+
+**In simple words:** Like a YouTube channel and its subscribers. The subject only knows the observer interface. Examples: button clicks, stock prices, model and view.
 :::
 
 :::qa What are the pitfalls of Observer in C++? {level=hard}
-Lifetime (an observer destroyed while still registered gives a dangling call: use `weak_ptr` or unsubscribe in the destructor), re-entrancy (an observer that subscribes/unsubscribes during notification: iterate over a copy), exceptions from observers, notification order, memory leaks from forgotten subscriptions, and thread-safety (notify outside the lock).
+**Say this:** "An observer may be destroyed while still subscribed. The list can change during notification. Threads and errors need care."
+
+**In simple words:** Use `weak_ptr` or a subscription token. Loop over a copy of the list. Notify outside the lock. And do not forget to unsubscribe.
 :::
 
 :::qa Push vs pull model in Observer? {level=medium}
-**Push:** the subject sends the changed data in the notification (simple for observers, may send unneeded data). **Pull:** it sends only "I changed" and observers read what they need from the subject (flexible, couples observers to the subject's getters).
+**Say this:** "Push sends the data with the notification. Pull only says 'something changed', and the observer asks for what it needs."
+
+**In simple words:** Push is simple but may send unneeded data. Pull is flexible but ties observers to the subject's methods.
 :::
 
 :::qa What is the Command pattern and what is it used for? {level=easy}
-It wraps a request as an object (`execute()`, often `undo()`), so you can queue, log, schedule, undo/redo and parameterise it. Examples: editor actions, task queues, remote control buttons, transactional systems.
+**Say this:** "It turns a request into an object, so I can store it, queue it, log it, and undo it."
+
+**In simple words:** Like an order slip in a restaurant. Examples: editor actions, task queues, remote control buttons.
 :::
 
 :::qa How do you implement undo/redo with Command? {level=medium}
-Each command stores what it needs to reverse itself (`undo()`). An **undo stack** holds executed commands; `undo()` pops, calls `undo` and pushes onto a **redo stack**; a new command clears the redo stack. For big states use the Memento (snapshots) or store diffs.
+**Say this:** "Each command has `execute` and `undo`. I keep an undo stack and a redo stack. A new command clears the redo stack."
+
+**In simple words:** Run a command, push it on the undo stack. Undo: pop it, call `undo()`, push it on the redo stack. For big state, use Memento (snapshots).
 :::
 
 :::qa What is the State pattern? {level=easy}
-An object's behaviour changes with its internal state, modelled as separate state classes behind an interface (`VendingMachine` with `Idle`, `HasMoney`, `Dispensing`). Each state handles events and decides the next state. It removes big `switch (state)` statements.
+**Say this:** "An object behaves differently in each state, and each state is its own class."
+
+**In simple words:** A vending machine with `Idle`, `HasMoney` and `Dispensing`. Each state decides what each action does and what comes next. It removes big `switch (state)` code.
 :::
 
 :::qa State pattern vs a table-driven state machine? {level=hard}
-State classes are good when each state has substantial behaviour. A transition table (`map<pair<State, Event>, State>`) is shorter for pure transitions and easy to validate or load from config. Use the table for many states with little behaviour, classes when behaviour differs a lot.
+**Say this:** "State classes are good when each state has real behaviour. A table is shorter when states mostly just move to other states."
+
+**In simple words:** A table like `map<pair<State, Event>, State>` is easy to check and can come from a config file.
 :::
 
 :::qa What is the Template Method pattern? {level=easy}
-The base class defines the **skeleton of an algorithm** (a non-virtual function) and lets subclasses override specific steps (virtual hooks): `DataMiner::mine()` calls `open()`, `parse()`, `analyse()`, `close()`. It enforces the order, and is the Hollywood principle in action.
+**Say this:** "The base class fixes the steps of a job, and children fill in some steps."
+
+**In simple words:** `DataMiner::mine()` calls `open()`, `parse()`, `analyse()`, `close()` in that order. Children change `parse()` only. It follows the Hollywood idea: the base calls the child.
 :::
 
 :::qa Template Method vs Strategy? {level=medium}
-Template Method uses **inheritance** and fixes the structure at compile time per subclass. Strategy uses **composition** and swaps the whole algorithm at run time. Prefer Strategy when you want flexibility; Template Method when the sequence is invariant and variation is small.
+**Say this:** "Template Method uses inheritance and changes steps. Strategy uses composition and swaps the whole job."
+
+**In simple words:** Strategy can be changed while running. Template Method is fixed by which subclass you choose.
 :::
 
 :::qa What is the Chain of Responsibility pattern? {level=easy}
-Pass a request along a chain of handlers; each decides to handle it or forward it. Examples: logging levels, middleware, approval workflows (manager → director → VP), ATM cash dispensers (₹500 → ₹100 notes), support escalation.
+**Say this:** "A request goes along a line of handlers. Each handles it or passes it on."
+
+**In simple words:** Examples: logging levels, middleware, approval by manager then director, an ATM giving Rs 500 and then Rs 100 notes.
 :::
 
 :::qa Chain of Responsibility vs Decorator? {level=medium}
-A chain handler usually **stops** the request (or passes it on conditionally) and only one may handle it. A decorator **always** forwards and adds behaviour. Middleware pipelines blur the line: each layer may short-circuit.
+**Say this:** "A chain handler may stop the request. A decorator always passes it on and adds something."
+
+**In simple words:** Middleware is in between: each layer may stop the request or let it go on.
 :::
 
 :::qa What is the Iterator pattern, and how does C++ implement it? {level=easy}
-It provides a way to traverse a collection without exposing its structure. C++ iterators (`begin()`/`end()`, `++`, `*`) make containers work with range-for and algorithms; you implement a custom iterator type for your own collection.
+**Say this:** "It lets me go through a collection without knowing how it is stored. C++ uses `begin()`, `end()` and iterators."
+
+**In simple words:** That is why range-for and algorithms work for every container. For your own class, write `begin()`, `end()` and an iterator with `*`, `++` and `!=`.
 :::
 
 :::qa What is the Mediator pattern? {level=medium}
-An object that coordinates communication between others, so they do not reference each other (many-to-many becomes many-to-one). A chat room, an air-traffic controller, a form dialog. Risk: the mediator becomes a God class.
+**Say this:** "One object in the middle controls how many objects talk to each other, so they do not know each other."
+
+**In simple words:** A chat room, or an air-traffic tower. The risk is that the mediator becomes a giant class.
 :::
 
 :::qa Mediator vs Observer? {level=medium}
-Observer is a broadcast from a subject to subscribers (one-way, decoupled by events). A Mediator centralises **two-way coordination logic** between colleagues. A mediator is often built using observers.
+**Say this:** "Observer is a one-way announcement. Mediator is two-way coordination through a hub that holds the rules."
+
+**In simple words:** A mediator is often built using observers.
 :::
 
 :::qa What is the Memento pattern? {level=medium}
-Capture and restore an object's internal state without exposing it: the **originator** creates a `Memento` snapshot, a **caretaker** stores it. Used for undo, checkpoints, transactions. Cost: memory per snapshot (store diffs or limit history).
+**Say this:** "Save a snapshot of an object's state and restore it later, without exposing its private data."
+
+**In simple words:** Used for undo, checkpoints and rollback. The cost is memory, so keep a limited history or store only differences.
 :::
 
 :::qa What is the Visitor pattern, and when is it useful? {level=hard}
-It adds new operations to a class hierarchy without modifying the classes, using **double dispatch**: `element.accept(visitor)` calls `visitor.visit(*this)`. Good when the element hierarchy is stable but operations change (AST printing, evaluation, export). In C++17, `std::variant` + `std::visit` gives the same with less boilerplate.
+**Say this:** "It adds new operations to a group of classes without editing them, using two virtual calls (double dispatch)."
+
+**In simple words:** `element.accept(visitor)` calls `visitor.visit(*this)`. Good when the classes are stable but jobs keep growing (a syntax tree). In C++17, `std::variant` with `std::visit` often does the same job more simply.
 :::
 
 :::qa What is the drawback of Visitor? {level=hard}
-Adding a new element type forces changes in every visitor (it is the opposite of OCP for types), and elements must expose enough state for visitors. Choose it only when the type set is stable.
+**Say this:** "Adding a new element type means changing every visitor."
+
+**In simple words:** So use it only when the set of element types is stable.
 :::
 
 :::qa What is double dispatch and how does Visitor achieve it? {level=hard}
-C++ virtual calls dispatch on one object. Visitor makes two virtual calls: `accept` dispatches on the element type, then `visitor.visit(Concrete&)` is an overload chosen with the element's static type inside `accept`, so the final code depends on both the element and the visitor.
+**Say this:** "The call depends on two types: the element and the visitor. Two virtual calls give that."
+
+**In simple words:** The first call (`accept`) finds the real element type. Inside it, `visit(*this)` picks the right overload for that type.
 :::
 
 :::qa What is the Interpreter pattern? {level=hard}
-Represent a grammar as a class hierarchy (terminal and non-terminal expressions) and evaluate sentences by recursion: arithmetic expressions, rule conditions, query filters. Good for small DSLs; for big grammars, use a parser generator.
+**Say this:** "One class for each grammar rule, so a sentence becomes a tree that evaluates itself."
+
+**In simple words:** Good for small rule languages, like `age > 18 AND country == IN`. For big grammars use a parser tool.
 :::
 
 :::qa What is the Null Object pattern? {level=medium}
-Provide a do-nothing implementation of an interface instead of passing `nullptr`: a `NullLogger` that discards messages. It removes null checks and conditional code at call sites.
+**Say this:** "A do-nothing object that follows the interface, so I do not need null checks."
+
+**In simple words:** A `NullLogger` that discards messages. Do not use it where a missing object is an error that must be noticed.
 :::
 
 :::qa What is the Specification pattern? {level=medium}
-Encapsulate a business rule as an object with `isSatisfiedBy(candidate)`, combinable with `and/or/not`. Use for filtering and validation (`isActive && isPremium`). It is Strategy + Composite + Interpreter in one small design.
+**Say this:** "A business rule as an object with `isSatisfiedBy`, which can be joined with and, or, not."
+
+**In simple words:** `isActive && isPremium`. It stops you from writing a new filter function for every combination.
 :::
 
-:::qa Which behavioural pattern is `std::function` / a lambda callback an example of? {level=medium}
-Strategy (a pluggable algorithm), Command (a request as an object) or Observer (a registered callback), depending on how it is used. The functional style often replaces the class-based patterns.
+:::qa Which behavioural pattern is a std::function or lambda callback an example of? {level=medium}
+**Say this:** "It can be Strategy, Command or Observer, depending on how it is used."
+
+**In simple words:** A lambda passed to `sort` is a strategy. A lambda stored to run later is a command. A lambda registered for events is an observer.
 :::
 
 ```quiz
@@ -111,11 +159,11 @@ Strategy (a pluggable algorithm), Command (a request as an object) or Observer (
 - Strategy
 - Visitor
 + State
-> The machine switches state objects as events occur.
+> The machine switches state objects as events happen.
 ```
 
 :::keypoints
-- Strategy (algorithm), State (mode), Observer (events), Command (action object, undo), Template Method (fixed skeleton), Chain (pipeline of handlers).
-- Visitor needs a stable type set; Mediator centralises coordination; Memento snapshots state.
-- Compare: Strategy vs State vs Template Method; Decorator vs Chain; Mediator vs Observer.
+- Strategy (a way of doing a job), State (a mode), Observer (events), Command (action object, undo), Template Method (fixed steps), Chain (a line of handlers).
+- Visitor needs stable types. Mediator holds the coordination. Memento saves state.
+- Compare: Strategy, State and Template Method; Decorator and Chain; Mediator and Observer.
 :::

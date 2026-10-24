@@ -2,18 +2,24 @@
 title: Proxy
 level: intermediate
 time: 35
-summary: A stand-in object with the same interface that controls access to the real one: virtual (lazy), protection, caching, logging and remote proxies, smart pointers as proxies, and the differences from Decorator and Adapter.
+summary: A stand-in object that looks the same as the real one but controls access to it. See lazy loading, permission checks, caching, logging, smart pointers as proxies, and how Proxy differs from Decorator and Adapter.
 ---
 
+## What is the Proxy pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Sometimes you should not talk to the real object directly. A **stand-in** stands in front of it and decides when, and whether, to pass your request on."
+
+:::analogy Think of everyday proxies
+A cheque is a stand-in for cash. A security guard at an office is a stand-in for the building: you reach the people inside only through him, and he checks your pass. A receptionist who says "she is in a meeting, I will take a message" is a stand-in for your manager.
+:::
+
 :::def Proxy
-Provide a **surrogate or placeholder** for another object to **control access to it**. The proxy has the **same interface** as the real subject, so clients cannot tell the difference.
+A **stand-in object** with the **same interface** as the real object. It controls access to the real one. The user cannot tell the difference.
 :::
 
-:::analogy Think of it like this
-A cheque is a proxy for cash. A security guard at an office is a proxy for the building: you reach the people inside only through him, and he checks your pass. A receptionist who says "she is in a meeting, I will take a message" is a proxy for your manager.
-:::
-
-## Structure
+## The structure
 
 ```viz algo=uml title="Proxy"
 interface Image
@@ -32,20 +38,20 @@ ImageProxy --> RealImage : creates and uses
 Client --> Image
 ```
 
-The client talks to an `Image`. It may hold a `RealImage` or an `ImageProxy`. The proxy decides **when and whether** to involve the real one.
+The user talks to an `Image`. It might be holding a `RealImage` or an `ImageProxy`. The proxy decides **when and whether** to use the real one.
 
 ## Kinds of proxy
 
-| Kind | Purpose | Example |
+| Kind | What it does | Example |
 |---|---|---|
-| **Virtual proxy** | create an expensive object **lazily** | load a large image only when displayed |
-| **Protection proxy** | check **permissions** before forwarding | only admins may delete |
-| **Caching proxy** | remember results | avoid repeating a slow call |
-| **Logging/monitoring proxy** | record calls, timing | audit trail |
-| **Remote proxy** | local stand-in for an object in **another process/machine** | an RPC stub that serialises calls |
-| **Smart reference** | extra bookkeeping on access | reference counting, locking (`shared_ptr`) |
+| **Virtual proxy** | creates a costly object **only when needed** (lazy) | load a big image only when it is shown |
+| **Protection proxy** | checks **permission** before passing on | only admins may delete |
+| **Caching proxy** | remembers answers | avoid repeating a slow call |
+| **Logging proxy** | records calls and time | audit trail |
+| **Remote proxy** | local stand-in for an object on **another machine** | a network call stub |
+| **Smart reference** | does extra work on access | `shared_ptr` counting references |
 
-## 1. Virtual proxy: lazy loading
+## 1. Virtual proxy: load late
 
 ```cpp run title="The image loads only when first displayed"
 #include <iostream>
@@ -87,7 +93,9 @@ int main() {
 }
 ```
 
-## 2. Protection proxy: access control
+The image is loaded only the first time we call `display()`. If we never display it, we never pay the cost.
+
+## 2. Protection proxy: check permissions
 
 ```cpp run title="Permission check in front of a document"
 #include <iostream>
@@ -172,7 +180,7 @@ int main() {
 }
 ```
 
-## 4. Logging proxy: a generic wrapper with a template
+## 4. Logging proxy
 
 ```cpp run title="A reusable timing/logging proxy"
 #include <iostream>
@@ -213,9 +221,11 @@ int main() {
 }
 ```
 
-## 5. Smart pointers are proxies
+## 5. Smart pointers are proxies too
 
-`std::unique_ptr` and `std::shared_ptr` are *smart reference* proxies: they look like pointers (`->`, `*`), and add lifetime management (deleting, reference counting) behind the same syntax. The `std::vector<bool>::reference` object returned by `operator[]` is also a proxy (it stands in for a single bit).
+`std::unique_ptr` and `std::shared_ptr` look like normal pointers (`->`, `*`). But behind the scenes they also manage the object's life (deleting it, counting references). That is a proxy at work.
+
+Another example: `vector<bool>`'s `operator[]` returns a small helper object that stands in for one bit.
 
 ```cpp run title="A tiny smart-reference proxy: counting accesses"
 #include <iostream>
@@ -245,45 +255,46 @@ int main() {
 
 | | Proxy | Decorator | Adapter |
 |---|---|---|---|
-| Interface vs the wrapped object | **same** | **same** | **different** |
-| Intent | **control access** to the subject | **add behaviour/responsibility** | **convert** an interface |
-| Who creates the real subject? | often the proxy itself (lazy) | the client passes it in | the client passes it in |
-| Typical lifecycle | proxy manages the subject's lifecycle | client builds a chain | n/a |
-| Number of wrappers | usually one | often several, stacked | one |
+| Interface vs the real object | **same** | **same** | **different** |
+| Purpose | **control access** | **add a feature** | **convert** an interface |
+| Who creates the real object? | often the proxy itself (lazily) | the user passes it in | the user passes it in |
+| How many wrappers? | usually one | often several, stacked | one |
 
-The code can look identical to Decorator; the **intent** decides the name. If you are controlling *whether and when* the real object is used, it is a proxy; if you are *enriching* what it does, it is a decorator.
+The code can look the same as a decorator. The **purpose** gives it the name. If you control *whether and when* the real object is used, it is a proxy. If you *add* to what it does, it is a decorator.
 
-## Pitfalls
+## Mistakes to avoid
 
-- A proxy that exposes extra methods breaks substitutability: keep the interface identical.
-- Remote proxies must handle failures (timeouts, retries); the call looks local but is not.
-- Caching proxies need an **invalidation** strategy and thread-safety.
-- Do not use a proxy when plain `unique_ptr` + a lazily created member is enough.
+- If a proxy adds extra methods, it is no longer a perfect stand-in. Keep the interface identical.
+- A remote proxy looks like a local call but is not. Handle timeouts and failures.
+- A caching proxy needs a way to **clear old data** and must be thread-safe.
+- Do not build a proxy when a simple `unique_ptr` with lazy creation is enough.
 
-:::interview Proxy vs Decorator?
-"Both wrap an object with the same interface. A decorator adds behaviour the client composes; a proxy controls access to its subject: it may create it lazily, check permissions, cache results or forward over a network, and often manages the subject's lifetime. A proxy usually has one wrapped subject; decorators are stacked."
+## Short answer to say in an interview
+
+:::interview What is the difference between Proxy and Decorator?
+"Both wrap an object and have the same interface. A decorator adds a feature that the user chooses, and decorators are often stacked. A proxy controls access to the real object. It might create it lazily, check permissions, cache results, or call over a network. A proxy often manages the real object's lifetime."
 :::
 
 ```quiz
-? What is a virtual proxy for?
+? What is a virtual proxy used for?
 - Checking permissions
-+ Delaying creation of an expensive object until it is actually needed
++ Delaying the creation of a costly object until it is really needed
 - Converting interfaces
 > It stands in for the real object and builds it on first use.
-? A proxy's interface compared with the real subject's is...
-- Simplified
+? Compared with the real object, a proxy's interface is...
+- Simpler
 + The same
-- Larger
-> Clients must not be able to tell whether they hold the proxy or the real object.
-? Which of these is a proxy?
+- Bigger
+> Users must not be able to tell whether they hold the proxy or the real object.
+? Which one of these is a proxy?
 - std::vector
 + std::shared_ptr
 - std::sort
-> A smart pointer is a smart-reference proxy: pointer syntax plus lifetime management.
+> A smart pointer looks like a pointer and also manages the object's life.
 ```
 
 :::keypoints
-- Proxy = same-interface stand-in that controls access: virtual (lazy), protection, caching, logging, remote, smart reference.
-- It usually manages the real object's creation or lifetime; clients cannot tell it apart.
-- Smart pointers are proxies. Distinguish from Decorator (adds behaviour) and Adapter (changes interface).
+- Proxy = a stand-in with the same interface that controls access: lazy, permission, cache, logging, remote, smart reference.
+- It often manages the real object's creation or lifetime. Users cannot tell it apart.
+- Smart pointers are proxies. Do not confuse it with Decorator (adds a feature) or Adapter (changes the interface).
 :::

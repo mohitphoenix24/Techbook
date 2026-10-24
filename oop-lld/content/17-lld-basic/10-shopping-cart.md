@@ -2,31 +2,31 @@
 title: Design a Shopping Cart with pricing rules
 level: easy
 time: 45
-summary: Products, a cart with quantities, a pricing engine built from pluggable rules (bulk discount, coupon, category tax), exact money arithmetic, stock checks at checkout, and an order with a clear price breakdown.
+summary: Products, a cart with quantities, a price engine built from swappable rules (bulk discount, coupon, tax by category), exact money handling, a stock check at checkout, and an order with a clear price breakdown.
 ---
 
 :::problem Design a Shopping Cart {level=easy tags="e-commerce,Strategy,pricing,money,chain of rules"}
-Design the shopping cart of an online store. Customers add and remove products, change quantities, apply a coupon and check out. Prices depend on rules that change often: bulk discounts, coupon codes, taxes that differ per product category. The cart must show an itemised breakdown and must not sell more than the stock.
+Design the shopping cart of an online store. Customers add and remove products, change quantities, apply a coupon and check out. Prices depend on rules that change often: bulk discounts, coupon codes, and taxes that differ by product category. The cart must show a line-by-line breakdown, and it must not sell more than the stock.
 
 :::hint Hint
-The pricing rules change more than anything else, so do not put them in `Cart`. Model each as a small rule object, run them in order over the cart, and record what each did. Store money as integers.
+Pricing rules change more than anything else, so do not put them inside `Cart`. Make each rule a small object, run the rules in order over the cart, and record what each one did. Store money as integers.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Money? | integer paise; single currency |
-| Cart operations? | add (increase qty), remove, set quantity, clear, view totals |
-| Discounts? | **bulk**: 10% off a line when quantity ≥ 5; **coupon**: `SAVE100` takes Rs 100 off orders over Rs 1000, `NEW10` 10% off once |
-| Taxes? | by category: food 5%, books 0%, electronics 18% (applied after discounts) |
-| Rule order? | line discounts → cart discounts → tax |
-| Stock? | checked at checkout; checkout fails if any line is over stock; stock is reduced on success |
-| Output? | per-line price, each rule's effect, subtotal, discounts, tax, total |
-| Out of scope | payment, shipping, user accounts |
+| Money? | whole paise as integers. One currency |
+| Cart actions? | add (increase the quantity), remove, set quantity, clear, show totals |
+| Discounts? | **bulk**: 10% off a line when the quantity is 5 or more. **Coupon**: `SAVE100` takes Rs 100 off orders above Rs 1000, `NEW10` gives 10% off once |
+| Taxes? | by category: food 5%, books 0%, electronics 18% (after discounts) |
+| Order of rules? | line discounts, then cart discounts, then tax |
+| Stock? | checked at checkout. Checkout fails if any line is over stock. Stock goes down only on success |
+| Output? | price of each line, what each rule did, subtotal, discounts, tax, total |
+| Not needed | payment, shipping, user accounts |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Shopping cart"
 class Cart
@@ -66,16 +66,16 @@ PricingEngine ..> Pricing
 Checkout ..> PricingEngine
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **`PriceRule` is a Strategy list.** The engine builds a mutable `Pricing` working object and each rule adjusts it. Order matters, so the engine runs rules in the order configured. Adding "buy 2 get 1 free" or a festival discount is a new class.
-- **`Pricing` records every adjustment** (name, amount) so the invoice can explain the total. A rule never mutates the cart.
-- **Immutable products**; the cart holds `Line {product, qty}`.
+- **`PriceRule` is a list of strategies.** The engine builds a working `Pricing` object, and each rule adjusts it. The order matters, so the engine runs rules in the order we set. A new rule like "buy 2 get 1 free" or a festival discount is a new class.
+- **`Pricing` writes down every change** (name and amount), so the invoice can explain the total. A rule never changes the cart itself.
+- **Products never change.** The cart holds `Line {product, qty}`.
 - **Money** is a small value type with integer paise (see the toolkit lesson).
-- **Checkout** is the only place that changes stock, and it re-checks stock first (the cart view may be stale).
-- **Rounding policy** is explicit: percentages computed with integer maths, truncating toward zero in the customer's favour for discounts, rounding up for tax.
+- **Checkout is the only place that changes stock.** It checks stock again first, because the cart you saw may be out of date.
+- **The rounding rule is written down.** Percentages use integer maths. Discounts round down (good for the customer), tax rounds up.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Cart, pricing rules, coupon and checkout"
 #include <iostream>
@@ -230,42 +230,48 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
 | Quantity set to 0 | the line is removed |
-| Coupon below the minimum | recorded as "not applicable" so the user sees why |
-| Discount larger than the order | `Pricing` clamps; totals never negative (add a final `max(0, ...)` if needed) |
-| Stock changed since the cart was built | `placeOrder` re-checks all lines before changing anything |
-| Rounding | integer maths; tax rounds up, discounts truncate; state the policy |
-| Same product added twice | merges into one line |
+| A coupon with a minimum that is not met | it is noted as "not applicable", so the user sees why |
+| A discount bigger than the order | `Pricing` limits it, so a total is never negative (add a final `max(0, ...)` if needed) |
+| Stock changed after the cart was built | `placeOrder` checks all lines again before changing anything |
+| Rounding | integer maths. Tax rounds up, discounts round down. Say this policy out loud |
+| The same product added twice | joins into one line |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Buy 2 get 1 free" or "festival sale" | new `PriceRule` classes; registered in order |
-| "Stackable vs exclusive coupons" | a coupon rule with a `stackable` flag; the engine applies the best exclusive one |
-| "Different tax by state" | `TaxPolicy` Strategy chosen from the shipping address |
-| "Concurrent checkouts for the last item" | lock the inventory for check-and-take (one critical section), or reserve at add-to-cart with a timeout |
-| "Save the cart / abandoned cart" | a `CartRepository` interface; the cart is plain data |
-| "Show price history/audit" | persist the `Pricing` with the order |
-| "Multiple currencies" | `Money` carries a currency; conversion is a service |
+| "Buy 2 get 1 free", "festival sale" | new `PriceRule` classes added in order |
+| "Coupons that stack or do not stack" | a `stackable` flag on the coupon rule. The engine applies the best one that does not stack |
+| "Different tax for each state" | a `TaxPolicy` strategy chosen from the shipping address |
+| "Two buyers want the last item" | lock the stock while checking and taking (one step), or hold the item when added to the cart with a time limit |
+| "Save the cart / abandoned cart" | a `CartRepository` interface. The cart is plain data |
+| "Show the price history" | save the `Pricing` with the order |
+| "Many currencies" | `Money` carries a currency. Conversion is a separate service |
+
+## Short answer to say in an interview
+
+:::interview How do you design the pricing in a shopping cart?
+"I keep pricing out of the cart. Each rule, like a bulk discount, a coupon or a tax, is a small strategy object. A price engine runs them in a fixed order over a working pricing object and records what each rule did, so the invoice can explain the total. Money is an integer in paise, and the rounding rule is stated. Checkout first checks stock for all lines and only then changes it, so it is all or nothing."
+:::
 
 ```quiz
-? Why must pricing rules run in a defined order?
+? Why must pricing rules run in a fixed order?
 - It looks nicer
-+ Tax must use the price after discounts; a different order gives a different total
-- Because maps are ordered
++ Tax must use the price after discounts. A different order gives a different total
+- Maps are ordered
 > The engine applies line discounts, then cart discounts, then tax.
 ? Why check stock for all lines before reducing any?
 - To print one error
-+ Checkout must be all-or-nothing: a failure on line 3 must not leave lines 1 and 2 already deducted
-- To speed up
-> Validate first, then commit changes.
++ Checkout must be all or nothing. A failure on line 3 must not leave lines 1 and 2 already reduced
+- To make it faster
+> Check everything first, then make the changes.
 ```
 
 :::keypoints
-- Cart is plain data; the PricingEngine runs ordered `PriceRule` strategies over a working `Pricing` that records each adjustment.
-- Use exact money, state the rounding policy, and make checkout validate-then-commit.
-- New promotions are new rule classes; taxes, coupons and bulk deals never touch `Cart`.
+- The cart is plain data. The price engine runs ordered `PriceRule` strategies over a working `Pricing` that records each change.
+- Use exact money, state the rounding rule, and make checkout check first, then commit.
+- New offers are new rule classes. Taxes, coupons and bulk deals never touch `Cart`.
 :::

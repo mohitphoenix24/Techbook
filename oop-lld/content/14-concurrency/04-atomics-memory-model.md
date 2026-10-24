@@ -2,12 +2,18 @@
 title: Atomics and the memory model
 level: advanced
 time: 40
-summary: std::atomic operations, compare-and-swap loops, a spinlock and a lock-free stack, the meaning of relaxed, acquire, release and sequentially consistent memory orders in plain words, why volatile is not for threads, and when to prefer a mutex.
+summary: What std::atomic does, how compare-and-swap works, a spinlock, why lock-free code is hard, memory orders explained in plain words, why volatile is not for threads, and when to simply use a mutex.
 ---
 
-An **atomic** variable supports operations that no other thread can observe half-done. This lesson goes from the simple (a counter) to the subtle (memory ordering). For most LLD answers, `atomic<int>` for counters and flags, and mutexes for everything else, is enough. But you should know what lies underneath.
+:::note How much do you need from this lesson?
+For most LLD interviews, you only need this: **use `atomic<int>` for simple counters and flags, and use a mutex for everything else.** The later parts of this lesson (memory order, lock-free) are optional. Read them if you want to go deeper, or if the interviewer asks.
+:::
 
-## Basic operations
+## What is an atomic?
+
+An **atomic** variable supports operations that **cannot be seen half-done** by another thread. Think of a bank counter where a clerk serves **one customer completely** before starting the next. Nobody can cut in the middle.
+
+## The basic operations
 
 ```cpp run title="load, store, exchange, fetch_add"
 #include <atomic>
@@ -25,9 +31,15 @@ int main() {
 }
 ```
 
+- `load` reads the value, `store` writes it.
+- `exchange` writes a new value and gives back the old one.
+- `fetch_add` adds and gives back the old value. All of these happen **as one step**.
+
 ## Compare-and-swap (CAS)
 
-The building block of lock-free programming: "if the value is still what I expect, replace it; otherwise tell me what it is now."
+This is the building block of lock-free programming. In plain words:
+
+> "If the value is still what I **expect**, change it to the new value. Otherwise, tell me what it is **now**."
 
 ```cpp run title="A CAS loop: atomic maximum"
 #include <atomic>
@@ -53,9 +65,11 @@ int main() {
 }
 ```
 
-`compare_exchange_weak` may fail spuriously, so it belongs in a loop; `compare_exchange_strong` does not fail spuriously (for single attempts).
+(`compare_exchange_weak` may sometimes fail for no reason, so use it inside a loop. `compare_exchange_strong` does not fail for no reason, so use it for a single try.)
 
-## A spinlock from an atomic flag
+## A spinlock built from an atomic flag
+
+A **spinlock** keeps checking in a loop until the lock is free.
 
 ```cpp run title="A spinlock: busy-wait instead of sleeping"
 #include <atomic>
@@ -82,7 +96,7 @@ int main() {
 }
 ```
 
-A spinlock burns CPU while waiting, so it only makes sense for **very short** critical sections on multi-core machines. A `std::mutex` sleeps the waiting thread instead, which is better for anything longer.
+A spinlock wastes CPU while waiting. So it makes sense only for **very short** locked parts on multi-core machines. A normal `std::mutex` puts the waiting thread to sleep, which is better for anything longer.
 
 ## A lock-free stack
 
@@ -120,25 +134,29 @@ int main() {
 }
 ```
 
-:::warn Lock-free is hard
-This stack is correct for a single thread and shows the CAS idea. With several threads, `delete h` is unsafe: another thread may still be reading `h->next` (a **memory-reclamation** problem), and the pointer may be recycled with the same address (the **ABA problem**). Real lock-free structures use hazard pointers, epoch reclamation or tagged pointers. In interviews: *mention* these, then use a mutex.
+:::warn Lock-free code is hard
+This stack shows the CAS idea, and works for one thread. With many threads it has two serious problems: `delete h` is unsafe because another thread may still be reading it, and the same address can be reused so a CAS wrongly succeeds (this is called the **ABA problem**). Real lock-free code uses special tricks (hazard pointers, epoch schemes). In an interview, **mention** these problems, and then use a mutex.
 :::
 
-## Memory ordering, in plain words
+## Advanced (optional): memory order in plain words
 
-Modern CPUs and compilers **reorder** operations for speed. Within one thread you never notice. Between threads you can, unless you tell the machine what order matters. Each atomic operation takes a **memory order**:
+:::note Optional section
+Skip this on the first read. You can come back later.
+:::
 
-| Order | What it guarantees | Cost |
+Modern CPUs and compilers **change the order** of operations to run faster. In a single thread you never notice. Between threads, you might. Each atomic operation lets you say how much ordering you want. This is the **memory order**.
+
+| Order | In simple words | Cost |
 |---|---|---|
-| `memory_order_seq_cst` (default) | all threads agree on one global order of all atomic operations | highest, simplest to reason about |
-| `memory_order_acquire` (loads) | nothing after this load can move **before** it; sees everything the releasing thread wrote before its release | medium |
-| `memory_order_release` (stores) | nothing before this store can move **after** it | medium |
-| `memory_order_acq_rel` (read-modify-write) | both | medium |
-| `memory_order_relaxed` | only atomicity, **no ordering** between different variables | lowest |
+| `seq_cst` (default) | everyone agrees on one global order. Easiest to think about | highest |
+| `acquire` (for loads) | after this read, I will see everything the writer did before its `release` | medium |
+| `release` (for stores) | everything I did before this write becomes visible to the reader that acquires it | medium |
+| `acq_rel` | both of the above (for read-modify-write) | medium |
+| `relaxed` | the operation is unbreakable, but **no ordering** with other variables | lowest |
 
-### The release/acquire handshake
+### The release and acquire handshake
 
-The standard idiom: one thread **publishes** data and sets a flag with `release`; another waits for the flag with `acquire`, and is then guaranteed to see the data.
+A common pattern: one thread **prepares data**, then sets a flag with `release`. Another thread waits for the flag with `acquire`. It is then guaranteed to see the data.
 
 ```cpp run title="Publishing data with release/acquire"
 #include <atomic>
@@ -163,11 +181,11 @@ int main() {
 }
 ```
 
-If both operations were `relaxed`, the consumer could see `ready == true` and still read an **old or partial** `message`. This is why the ordering matters.
+If both used `relaxed`, the second thread could see `ready == true` and still read **old or half-written** data. That is why the order matters.
 
-### Relaxed is fine for plain counters
+### Relaxed is fine for simple counters
 
-When the atomic is **independent** and nobody uses it to publish other data (statistics, id generators), `relaxed` is enough and fastest.
+When an atomic stands alone (like statistics or an id counter), and nobody uses it to hand over other data, `relaxed` is enough and fastest.
 
 ```cpp run title="A relaxed counter"
 #include <atomic>
@@ -186,15 +204,15 @@ int main() {
 }
 ```
 
-**Rule for interviews:** use the default (`seq_cst`) unless you can explain why a weaker order is correct.
+**Rule for interviews:** use the default (`seq_cst`) unless you can explain why a weaker order is safe.
 
-## volatile is NOT for threads
+## `volatile` is NOT for threads
 
-In C++, `volatile` tells the compiler "do not optimise accesses away" (for hardware registers). It gives **no atomicity and no ordering** between threads. A `volatile bool done` is still a data race. Use `std::atomic<bool>`.
+In C++, `volatile` only tells the compiler "do not skip this read or write" (it is meant for hardware registers). It gives **no safety between threads**. A `volatile bool done` is still a data race. Use `std::atomic<bool>`.
 
 ## False sharing
 
-Two threads writing **different** variables that sit in the **same CPU cache line** (typically 64 bytes) slow each other down, because the line bounces between cores. Pad hot variables apart:
+If two threads write **different** variables that sit **next to each other** in memory (the same cache line, usually 64 bytes), they slow each other down, because the CPU keeps moving that block between cores. The fix is to space them apart:
 
 ```cpp run title="alignas to avoid false sharing"
 #include <iostream>
@@ -205,39 +223,41 @@ struct alignas(64) PaddedCounter { long value = 0; };       // each counter gets
 int main() { cout << "sizeof(PaddedCounter) = " << sizeof(PaddedCounter) << "\n"; }
 ```
 
-## Choosing between mutex and atomic
+## Atomic or mutex?
 
 | Situation | Choose |
 |---|---|
-| A counter or flag | `atomic` |
-| An invariant over several variables (balance and history) | `mutex` |
-| Publishing a pointer to immutable data | `atomic<shared_ptr<T>>` (C++20) or a mutex |
-| Complex data structure | `mutex` (or a library's concurrent container) |
-| Performance critical, proven contended, you can prove correctness | lock-free (rarely) |
+| A counter or a flag | `atomic` |
+| A rule that connects several variables (balance and history) | `mutex` |
+| A shared pointer to unchanging data | `atomic<shared_ptr<T>>` (C++20) or a mutex |
+| A complex data structure | `mutex` (or a ready-made concurrent container) |
+| Very high speed, proven contention, and you can prove it is correct | lock-free (rarely) |
 
-:::interview What does memory_order_acquire/release mean?
-"Release on a store means all my earlier writes become visible to a thread that later does an acquire load of that same variable and sees my value. Acquire on a load means reads and writes after it cannot be moved before it. Together they give a happens-before edge, so a producer can publish data by writing it and then release-storing a flag, and a consumer that acquire-loads the flag sees the data. Relaxed gives atomicity only. I default to seq_cst unless I can justify weaker."
+## Short answer to say in an interview
+
+:::interview What do acquire and release mean?
+"Release on a write means that everything I did before it becomes visible to a thread that later reads the same variable with acquire and sees my value. Acquire on a read means nothing after it can move before it. Together, a producer can write data and then release-store a flag, and a consumer that acquire-loads the flag will see the data. Relaxed gives only an unbreakable operation, with no ordering. I use the default seq_cst unless I can justify a weaker order."
 :::
 
 ```quiz
 ? What does compare_exchange do?
 - Compares two atomics
-+ Replaces the value only if it still equals the expected one, otherwise reports the current value
++ Changes the value only if it still equals the expected one, otherwise reports the current value
 - Locks a mutex
-> It is the building block for lock-free algorithms (a CAS loop).
-? Is `volatile bool done;` safe for signalling between threads?
+> It is the base of lock-free algorithms (a CAS loop).
+? Is volatile bool done; safe for signalling between threads?
 - Yes
-+ No: volatile gives no atomicity or ordering; use atomic<bool>
-> volatile is for hardware access, not synchronisation.
-? When is memory_order_relaxed acceptable?
++ No. volatile gives no atomicity or ordering. Use atomic<bool>
+> volatile is for hardware access, not for threads.
+? When is memory_order_relaxed fine?
 - Always
-+ For an independent counter that is not used to publish other data
++ For a stand-alone counter that is not used to hand over other data
 - Never
-> Relaxed provides atomicity without ordering relative to other variables.
+> Relaxed gives an unbreakable operation but no ordering with other variables.
 ```
 
 :::keypoints
-- `std::atomic` gives indivisible operations: `load`, `store`, `exchange`, `fetch_add`, `compare_exchange`. CAS loops build lock-free updates.
-- Memory orders: seq_cst (default, safest), release/acquire (publish/consume), relaxed (counters only).
-- `volatile` is not synchronisation. Beware false sharing, ABA and memory reclamation. Prefer a mutex unless you must go lock-free.
+- `std::atomic` gives unbreakable operations: `load`, `store`, `exchange`, `fetch_add`, `compare_exchange`. A CAS loop is the base of lock-free updates.
+- Memory orders: `seq_cst` (default and safest), `release` and `acquire` (hand over data), `relaxed` (counters only).
+- `volatile` is not for threads. Watch for false sharing and the ABA problem. Use a mutex unless you really must go lock-free.
 :::

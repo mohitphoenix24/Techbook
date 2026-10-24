@@ -2,18 +2,24 @@
 title: Iterator
 level: intermediate
 time: 35
-summary: Walking through a collection without exposing its structure: how the C++ standard library is built on iterators, writing your own iterator for a range-for loop, a binary-tree in-order iterator, iterator categories, a generator-style iterator, and invalidation.
+summary: Go through the items of a collection one by one, without knowing how it is stored inside. See how C++ uses iterators everywhere, how to write your own, a tree iterator, iterator categories, and lazy sequences.
 ---
 
+## What is the Iterator pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "I want to visit every item in a collection, one by one. I don't care if it is stored as an array, a linked list or a tree. I just want to say 'give me the next one'."
+
 :::def Iterator
-Provide a way to **access the elements of an aggregate object sequentially** without exposing its underlying representation.
+A way to **go through the items of a collection one by one**, without exposing how the collection is stored inside.
 :::
 
-The classical GoF iterator has `first()`, `next()`, `isDone()`, `current()`. **C++ built the idea into the language and the standard library**: `begin()`, `end()`, `++it`, `*it`, `it != end`. Every container, algorithm and range-for loop relies on it.
+In many books, an iterator has `first()`, `next()`, `isDone()` and `current()`. **C++ already built this idea into the language.** Its version uses `begin()`, `end()`, `++it`, `*it` and `it != end`. Every container, every algorithm and every range-for loop depends on it.
 
-## Why iterators matter
+## Why iterators are useful
 
-A vector is a contiguous array; a `list` is linked nodes; a `map` is a tree; an `unordered_map` is a hash table. The same loop works for all, because each offers an iterator:
+A `vector` is an array. A `list` is a chain of nodes. A `map` is a tree. An `unordered_map` is a hash table. All are stored very differently. But the same loop works for all of them, because each gives an iterator:
 
 ```cpp run title="One loop, four very different containers"
 #include <iostream>
@@ -39,11 +45,11 @@ int main() {
 }
 ```
 
-Algorithms such as `std::find`, `std::sort` and `std::copy` take **iterator pairs**, not containers. That separates *algorithms* from *data structures*: N containers + M algorithms, not N × M functions.
+Algorithms like `std::find`, `std::sort` and `std::copy` work with **a pair of iterators**, not with a container. So we only need N containers + M algorithms, and not N × M separate functions.
 
-## Writing your own iterator
+## Write your own iterator
 
-To make your class usable in a range-for loop, provide `begin()` and `end()` returning an iterator type with `operator*`, `operator++` and `operator!=`.
+To use your class in a range-for loop, give it `begin()` and `end()`. They return an iterator type that supports `operator*` (get the item), `operator++` (move on) and `operator!=` (check for the end).
 
 ```cpp run title="A range-for-friendly Countdown"
 #include <iostream>
@@ -72,9 +78,14 @@ int main() {
 }
 ```
 
-The range-for loop `for (x : obj)` is translated by the compiler into `auto it = obj.begin(); while (it != obj.end()) { x = *it; ++it; }`.
+The loop `for (x : obj)` is turned by the compiler into roughly this:
 
-## A collection iterator: iterating a custom container
+```text
+auto it = obj.begin();
+while (it != obj.end()) { x = *it; ++it; }
+```
+
+## Iterating a custom container
 
 ```cpp run title="Ring buffer with an iterator that hides the wrap-around"
 #include <iostream>
@@ -112,11 +123,11 @@ int main() {
 }
 ```
 
-The caller sees the **last three messages in order** (`c d e`) and never knows about the head index or the wrap-around. That is the pattern's purpose.
+The caller sees the **last three messages in order** and never learns about the head index or the wrap-around. That is the whole point of the pattern.
 
 ## Tree traversal: an in-order iterator
 
-Iterating a tree needs to remember where you are. The iterator holds an explicit **stack** instead of using recursion.
+To walk a tree, the iterator must remember where it is. Instead of recursion, it keeps its own **stack**.
 
 ```cpp run title="In-order iterator over a binary search tree"
 #include <iostream>
@@ -161,24 +172,24 @@ int main() {
 }
 ```
 
-Clients get a **sorted traversal** without knowing about nodes or the tree shape. You could add `preOrderBegin()` or a `LevelOrder` iterator without changing the users.
+The user gets a **sorted walk** without knowing about nodes or the shape of the tree. We could add a pre-order or level-order iterator later without changing any user.
 
 ## Iterator categories (what C++ promises)
 
-| Category | Operations | Examples | Algorithms that need it |
+| Category | What it can do | Examples | Algorithms that need it |
 |---|---|---|---|
-| **Input** | read once, move forward | `istream_iterator` | `std::find`, `std::accumulate` |
-| **Output** | write once, move forward | `ostream_iterator`, `back_inserter` | `std::copy` (destination) |
-| **Forward** | multi-pass, forward only | `forward_list`, `unordered_set` | `std::replace` |
-| **Bidirectional** | also `--it` | `list`, `set`, `map` | `std::reverse` |
-| **Random access** | `it + n`, `it[n]`, `it1 - it2` | `vector`, `deque`, arrays | `std::sort`, `std::binary_search` |
-| **Contiguous** (C++20) | random access over contiguous memory | `vector`, `array`, `string` | `std::span` |
+| **Input** | read once, move forward | `istream_iterator` | `std::find` |
+| **Output** | write once, move forward | `back_inserter` | `std::copy` (the destination) |
+| **Forward** | go forward many times | `forward_list` | `std::replace` |
+| **Bidirectional** | also go back (`--it`) | `list`, `set`, `map` | `std::reverse` |
+| **Random access** | jump (`it + n`, `it[n]`) | `vector`, `deque` | `std::sort` |
+| **Contiguous** (C++20) | random access in one block | `vector`, `array`, `string` | `std::span` |
 
-That is why `std::sort` does not compile on a `std::list`: lists give bidirectional iterators and `sort` needs random access. (`list::sort()` is a member function for that reason.)
+This explains why `std::sort` does not work on a `std::list`: a list gives only bidirectional iterators, and `sort` needs random access. (That is why `list` has its own `list::sort()`.)
 
-## A generator-like iterator
+## A generator-style iterator
 
-An iterator needn't have a container behind it. It can **compute** values on demand.
+An iterator does not need a container behind it. It can **calculate** the next value when asked.
 
 ```cpp run title="Fibonacci numbers, lazily"
 #include <iostream>
@@ -206,7 +217,7 @@ int main() {
 }
 ```
 
-C++20 **ranges** (`std::views::iota`, `views::filter`, `views::transform`) provide lazy sequences like this out of the box.
+C++20 **ranges** (`views::iota`, `views::filter`, `views::transform`) give you lazy sequences like this ready-made.
 
 ```cpp run title="Lazy views with C++20 ranges"
 #include <iostream>
@@ -220,33 +231,35 @@ int main() {
 }
 ```
 
-## Iterator invalidation (reminder)
+## A reminder about invalidation
 
-Iterators are not magical: modifying the container may **invalidate** them (see the containers lesson). A custom container should document which operations invalidate its iterators.
+If you change a container (like adding to a vector), old iterators may become **invalid**. If you write your own container, say which operations invalidate iterators.
 
-:::interview Iterator: what and why? How does C++ use it?
-"Iterator gives sequential access to an aggregate's elements without exposing its representation. C++ makes it a core idiom: containers offer `begin()`/`end()`, and algorithms work on iterator ranges, so any algorithm works with any container that provides the needed iterator category. To make my own class work with range-for I provide `begin()`, `end()` and an iterator type with `*`, `++` and `!=`. Traversal state, like a stack for tree in-order traversal, lives in the iterator, and there can be several independent iterators over one collection."
+## Short answer to say in an interview
+
+:::interview What is the Iterator pattern, and how does C++ use it?
+"An iterator lets me go through a collection one item at a time without knowing how it is stored. In C++ it is a core idea. Containers give begin() and end(), and algorithms work on ranges of iterators, so one algorithm works with many containers. To make my own class work in a range-for loop, I write begin(), end() and an iterator with *, ++ and !=. The walking state, like a stack for a tree, lives inside the iterator."
 :::
 
 ```quiz
 ? What is the main benefit of the Iterator pattern?
 - Faster loops
-+ Clients traverse a collection without knowing its internal structure
++ Users walk through a collection without knowing how it is stored
 - Fewer classes
-> It separates traversal from the data structure, so algorithms are reusable.
-? What do you need for a class to work in a range-for loop?
+> It separates the walking from the data structure, so algorithms can be reused.
+? What does a class need to work in a range-for loop?
 - A virtual destructor
-+ begin() and end() returning an iterator with *, ++ and !=
++ begin() and end() that give an iterator with *, ++ and !=
 - A template
-> The compiler rewrites range-for into iterator calls.
+> The compiler changes range-for into iterator calls.
 ? Why can std::sort not be used on a std::list?
 - Lists cannot be sorted
-+ sort needs random-access iterators, and a list provides only bidirectional ones
-> Use list::sort() or copy into a vector.
++ sort needs random-access iterators, and a list gives only bidirectional ones
+> Use list::sort(), or copy into a vector.
 ```
 
 :::keypoints
-- Iterator: sequential access without exposing the structure. In C++ it is the foundation of containers and algorithms.
-- Custom iterator: `begin()`, `end()`, and an iterator with `operator*`, `operator++`, `operator!=` enables range-for.
-- Traversal state (a stack, an index) lives in the iterator. Know the iterator categories and invalidation rules.
+- Iterator = go through a collection without knowing its insides. In C++ it is the base of containers and algorithms.
+- A custom iterator needs `begin()`, `end()`, and `operator*`, `operator++`, `operator!=` to work in range-for.
+- The walking state (a stack, an index) lives in the iterator. Know the categories and when iterators become invalid.
 :::

@@ -1,15 +1,25 @@
 ---
-title: I: Interface Segregation Principle
+title: "I: Interface Segregation Principle"
 level: intermediate
 time: 25
-summary: Clients should not be forced to depend on methods they do not use. A fat interface and its empty or throwing implementations, splitting into role interfaces, C++ multiple inheritance of interfaces, and how ISP relates to SRP.
+summary: Do not force a class to have methods it does not need. See the problem with one big interface, how to split it into small role-based interfaces, and how this keeps the code safe and easy to change.
 ---
 
+**I** in SOLID stands for **Interface Segregation Principle**, or **ISP**.
+
+Don't memorise the definition yet. Think of it like this:
+
+> "Don't make me sign a form with 20 rules when I only need to follow 2 of them."
+
 :::def Interface Segregation Principle (ISP)
-**No client should be forced to depend on methods it does not use.** Prefer many small, focused interfaces over one large general-purpose interface.
+**Nobody should be forced to depend on methods they do not use.** Prefer several small interfaces over one big interface.
 :::
 
-## A fat interface
+(Remember: an **interface** here is a class that only lists *what can be done*, with no real code inside.)
+
+## The problem: one big interface
+
+Imagine a `Worker` interface with three methods: `work`, `eat` and `sleep`.
 
 ```cpp run title="One interface for everything: Robot has to fake eating"
 #include <iostream>
@@ -47,11 +57,13 @@ int main() {
 }
 ```
 
-`Robot` must implement `eat` and `sleep` though it has no use for them, so it writes an empty body or throws. Anyone who calls `eat()` through a `Worker` gets nonsense. Also, a change to `eat()`'s signature forces `Robot` to change and recompile, though it never uses `eat`.
+A human worker is fine. But a `Robot` is also a `Worker`. A robot does not eat or sleep, but it is **forced** to write `eat()` and `sleep()`. So it writes an empty method, or throws an error.
 
-## Segregated "role" interfaces
+Now anyone who calls `eat()` on a worker may get a strange result. Also, if someone changes `eat()`, the `Robot` must change and be rebuilt, even though it never used `eat()`.
 
-Split by **role**: what a client *needs to do* with the object.
+## The fix: small interfaces based on roles
+
+Split the big interface by **role**, which means "what does the user need to do with this object?"
 
 ```cpp run title="Small interfaces, combined where needed"
 #include <iostream>
@@ -84,7 +96,9 @@ int main() {
 }
 ```
 
-Each function now depends on exactly the capability it uses. `lunchBreak` cannot be given a robot, so the mistake is caught by the compiler.
+Now each function asks only for the ability it needs. For example, `lunchBreak` needs something that can **eat**. If you try to give it a robot, the program **will not compile**. The mistake is caught early.
+
+Here is the picture:
 
 ```viz algo=uml title="Role interfaces"
 interface Workable
@@ -101,7 +115,7 @@ Human ..|> Sleepable
 Robot ..|> Workable
 ```
 
-## A realistic example: a printer hierarchy
+## A real example: printers
 
 ```cpp run title="Multi-function device vs simple printer"
 #include <iostream>
@@ -133,9 +147,11 @@ int main() {
 }
 ```
 
-## ISP in a client's view: depend on less
+A simple printer only needs to print. A multi-function device can print, scan and fax. Each one follows only the interfaces that fit it.
 
-ISP is about the **client's** dependency. A function or class should name the smallest interface it needs.
+## ISP from the user's side: ask for less
+
+ISP is also about **the code that uses** an interface. A function should ask for the **smallest** interface it needs.
 
 ```cpp run title="A function that needs only reading takes the read-only interface"
 #include <iostream>
@@ -162,42 +178,49 @@ int main() {
 }
 ```
 
-## ISP and SRP
+If a function only reads a setting, give it the read-only interface. Then it cannot change anything by mistake, and it is easy to test.
 
-They are cousins. **SRP**: a *class* should have one reason to change. **ISP**: a *client* should depend only on the part of an interface it uses. A fat interface is often a symptom of a class (or a role) doing too much.
+## ISP and SRP: close cousins
 
-## How to apply it
+- **SRP**: one class should have one reason to change.
+- **ISP**: one user should depend only on the part it uses.
 
-1. List the **clients** of the interface. What does each one call?
-2. If different clients use **different subsets**, split the interface along those lines.
-3. Name interfaces by **role**: `Readable`, `Closeable`, `Comparable`, `Printable`.
-4. A concrete class can implement **several** interfaces (multiple inheritance of data-free interfaces is safe).
-5. Do not create interfaces with one method each *everywhere*: split only when clients really differ.
+When you see a fat interface, a class or a role is usually doing too much.
 
-:::interview ISP: example and benefit
-"A fat `Worker` interface with `work`, `eat` and `sleep` forces a `Robot` to implement methods it cannot honour. I split it into `Workable`, `Eatable`, `Sleepable` so each class implements only its real roles, and each client depends only on what it uses. Benefits: no dummy or throwing methods (so LSP holds), fewer recompiles when an unused method changes, and mistakes that become compile errors."
+## How to use it
+
+1. List who **uses** the interface. What does each user call?
+2. If different users use **different parts**, split the interface that way.
+3. Name interfaces by **role**: `Readable`, `Closeable`, `Printable`.
+4. One class can follow **many** small interfaces. That is safe.
+5. Do not make one-method interfaces everywhere. Split only when users really differ.
+
+## Short answer to say in an interview
+
+:::interview What is ISP? Give an example.
+"ISP says a class should not be forced to implement methods it does not need. For example, a Worker interface with work, eat and sleep forces a Robot to write fake eat and sleep methods. I split it into Workable, Eatable and Sleepable, so each class follows only the roles it really has. This avoids empty or error-throwing methods and makes mistakes show up at compile time."
 :::
 
 ```quiz
 ? What problem does a "fat interface" cause?
 - It is slower
-+ Implementers must provide methods they cannot or should not support
++ Classes must write methods they cannot or should not support
 - It cannot be inherited
-> They end up with empty or throwing implementations, breaking contracts.
+> They end up with empty or error-throwing methods.
 ? How do you apply ISP?
-- Merge interfaces
-+ Split an interface by client roles so each client sees only what it needs
+- Merge the interfaces
++ Split the interface by role, so each user sees only what it needs
 - Remove virtual functions
-> Role interfaces give small, focused dependencies.
-? Does ISP forbid a class from implementing several interfaces?
-- Yes
-+ No: a class may implement multiple small interfaces
-> Multiple inheritance of pure interfaces is safe and common.
+> Small interfaces give small, safe dependencies.
+? Can one class follow several small interfaces?
+- No
++ Yes, and it is common and safe
+> Following several pure interfaces is a normal way to combine roles.
 ```
 
 :::keypoints
-- Do not force clients (or implementers) to depend on methods they do not use.
-- Split fat interfaces into role interfaces; a class can implement several.
-- Functions should accept the smallest interface they need (`const ConfigReader&`, not `Config&`).
-- ISP prevents empty/throwing overrides, helping Liskov, and reduces recompilation.
+- Do not force a class to have methods it does not need.
+- Split big interfaces by role. One class can follow many small interfaces.
+- A function should ask for the smallest interface it needs, such as a read-only one.
+- ISP avoids empty or throwing methods (which helps the Liskov rule) and avoids needless rebuilds.
 :::

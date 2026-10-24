@@ -1,30 +1,52 @@
 ---
-title: What is low-level design? The 8-step framework
+title: What is low-level design? The 8-step method
 level: easy
 time: 30
-summary: Low-level design versus high-level design, what a complete LLD answer contains, an 8-step framework you can apply to any problem, and a full worked mini example (a notification system) from requirements to running code.
+summary: What LLD means in simple words, how it differs from system design, what a good LLD answer contains, an 8-step method you can use for every problem, and one small worked example (a notification system) from idea to running code.
 ---
 
-**High-level design (HLD)** decides the big boxes: services, databases, queues, how they talk and scale. **Low-level design (LLD)**, also called **object-oriented design (OOD)**, decides what happens **inside one of those boxes**: the classes, their responsibilities, their relationships, and the code structure.
+Let's start with the basics, step by step.
+
+## What is LLD in simple words?
+
+Imagine you want to build a house.
+
+- **High-level design (HLD)** is the map of the whole colony: where the roads, the water tank and the electricity lines go.
+- **Low-level design (LLD)** is the plan of **one house**: which rooms, how big, and how the doors connect them.
+
+In software:
+
+- **HLD** answers: "Which servers, databases and services do we need?"
+- **LLD** answers: "Inside one service, which **classes** do we write, what does each class do, and how do they talk to each other?"
+
+LLD is also called **OOD** (object-oriented design). Same thing.
 
 | | HLD | LLD |
 |---|---|---|
-| Question | "How do we build and scale Uber?" | "How do we structure the code for the ride-matching module?" |
-| Output | architecture diagram, data stores, APIs between services | class diagram, interfaces, patterns, key methods, working code |
-| Concerns | scale, latency, availability, consistency | readability, extensibility, testability, correctness, concurrency inside a process |
-| Tools | boxes and arrows, estimates | UML, SOLID, design patterns, C++/Java code |
+| Question | "How do we build Uber for millions of users?" | "How do we write the code for the ride-matching part?" |
+| What you draw | boxes for servers and databases | classes, interfaces and the links between them |
+| What you care about | speed, scale, availability | clean code, easy to change, easy to test |
+| What you write | diagrams | diagrams **plus real code** |
 
-## What a complete LLD answer contains
+:::note One-line difference
+HLD = the big boxes. LLD = what is inside one box.
+:::
 
-1. **Requirements** (what is in scope, what is not).
-2. **Entities** (the classes) and **relationships** between them.
-3. **Interfaces and public APIs**: the methods each class offers.
-4. **Flows**: how the objects collaborate for the main use cases.
-5. **Design decisions**: which patterns, and why.
-6. **Code** for the core pieces (often runnable in a machine-coding round).
-7. **Extensions and edge cases**: what changes easily, what does not, and concurrency.
+## What should a complete LLD answer have?
 
-## The 8-step framework
+Interviewers look for these seven things, in this order:
+
+1. **Requirements**: what we will build, and what we will not.
+2. **Classes** (called entities) and how they are related.
+3. **Methods**: what each class can do.
+4. **Flow**: how the objects work together for the main use case.
+5. **Design choices**: which pattern you used and why.
+6. **Code** for the important parts.
+7. **Extra cases**: what if a new feature comes? What if two users act at the same time?
+
+## The 8-step method
+
+Use the **same 8 steps every time**. Having a fixed routine stops you from freezing in front of a blank page.
 
 ```viz algo=seq title="The framework, as a conversation"
 participant you You [user]
@@ -39,32 +61,34 @@ you -> spec : 7. Add patterns where things vary | Strategy, Factory, Observer, S
 you -> spec : 8. Code, then extend | Core code, a demo, then edge cases, concurrency and "what if" changes.
 ```
 
-Use the same eight steps every time. A stable routine is the best defence against blank-page panic.
-
-:::tip Pro habit
-Say the step you are on: "Now I will list the entities." It shows structure, helps the interviewer follow, and stops you from jumping ahead.
+:::tip Say the step out loud
+Say "Now I will list the classes." It shows the interviewer you have a plan, and it stops you from jumping to code too early.
 :::
 
-## Worked mini example: a notification service
+## A small worked example: notification service
 
-**Prompt:** "Design a notification service that can send a message to a user by email, SMS or push. Users choose their preferred channels. We may add channels (WhatsApp, Slack) later."
+**Question:** "Design a system that sends a message to a user by email, SMS or push notification. Each user picks the channels they like. Later we may add WhatsApp or Slack."
 
-### Step 1: requirements
+### Step 1: Ask questions (requirements)
 
-| Question | Answer (assumed) |
+| Question | Our assumption |
 |---|---|
-| Channels now? | email, SMS, push |
-| One or many channels per user? | a user has a **set** of preferred channels |
-| Failure handling? | if one channel fails, continue with the others, and report the result |
-| Delivery details (real SMTP etc.)? | out of scope: simulate sending |
-| Extensibility? | **new channels without changing existing code** |
+| Which channels now? | email, SMS, push |
+| One channel or many per user? | many; each user has a list of favourites |
+| What if one channel fails? | try the others, and tell the caller what happened |
+| Do we send real emails? | no, we will just print (simulate) |
+| Will new channels come? | yes, **adding one should not touch old code** |
 
-### Steps 2 to 4: entities, responsibilities, relationships
+That last line is the most important one. It tells us where the design must be flexible.
 
-- **User**: name and preferred channels (data).
-- **Message**: title and body (a value object).
-- **Channel** (interface): knows how to `send(user, message)`. `EmailChannel`, `SmsChannel`, `PushChannel` implement it. *This is the variation point.*
-- **NotificationService**: given a user and message, sends through each of the user's channels, collects results.
+### Steps 2 to 4: Find the classes
+
+- **User**: has a name and a list of preferred channels.
+- **Message**: has a title and a body.
+- **Channel**: "something that can send a message". `EmailChannel`, `SmsChannel` and `PushChannel` are different kinds of it.
+- **NotificationService**: takes a user and a message and sends it through each of the user's channels.
+
+Here is the picture:
 
 ```viz algo=uml title="Notification service: class diagram"
 class NotificationService
@@ -92,11 +116,16 @@ PushChannel ..|> Channel
 User --> ChannelType
 ```
 
-### Steps 5 to 7: flow and pattern
+### Steps 5 to 7: How does it flow, and which pattern?
 
-The flow: `service.send(user, msg)` → for each preferred channel type → look up the `Channel` → `channel.send(...)` → record the result. Because *channels vary*, `Channel` is an interface (the **Strategy** pattern). Adding WhatsApp = one new class + one registration line.
+1. Someone calls `service.send(user, message)`.
+2. The service goes through the user's channels one by one.
+3. For each channel it calls `channel.send(...)`.
+4. It collects the results and returns them.
 
-### Step 8: the code
+Why is `Channel` an **interface** (a class that only says *what* to do, not *how*)? Because the channels are **different ways of doing the same job**. This is the **Strategy pattern**: many ways to do one thing, and you can swap them. In plain words: the service says "send this", and each channel knows its own way.
+
+### Step 8: The code
 
 ```cpp run title="Notification service: complete"
 #include <iostream>
@@ -196,40 +225,46 @@ int main() {
 }
 ```
 
-Look at what the design gives us: `NotificationService` never mentions `EmailChannel`, `SmsChannel` or `PushChannel`. To add `WhatsAppChannel`, write one class and call `registerChannel`. Nothing else changes. That is what an interviewer means by "extensible".
+Notice one thing: `NotificationService` never mentions `EmailChannel`, `SmsChannel` or `PushChannel` by name. To add WhatsApp you write one new class and register it. **You do not edit any old code.** That is what interviewers mean by "easy to extend".
 
-### What an interviewer would ask next (and your answers)
+### What the interviewer may ask next
 
-| Follow-up | Answer sketch |
+| Follow-up | Simple answer |
 |---|---|
-| "Retry failed sends?" | Wrap a channel in a **Decorator** (`RetryingChannel`) or give the service a retry policy. |
-| "Send asynchronously, many users?" | Put messages on a queue; worker threads call `send` (concurrency module). |
-| "Different templates per channel?" | A `Formatter` strategy per channel, or a `MessageBuilder`. |
-| "Users can mute a channel at night?" | A `DeliveryRule` chain (Chain of Responsibility) checked before `send`. |
-| "Log every send?" | **Observer**: the service publishes `Sent`/`Failed` events. |
+| "What if sending fails? Retry?" | Wrap the channel in a `RetryingChannel` that tries again (Decorator pattern). |
+| "What if there are millions of users?" | Put messages in a queue and let worker threads send them. |
+| "Different text for each channel?" | Add a small formatter for each channel. |
+| "Don't disturb users at night?" | Add a rule check before sending. |
+| "Log every send?" | Let the service announce "sent" or "failed" events that a logger listens to (Observer pattern). |
 
-## Common mistakes in the first LLD round
+## Mistakes beginners make
 
-- Jumping to code and discovering missing requirements at minute 30.
-- Creating a class for everything (`NotificationManagerHelperUtil`). Classes need a clear *job*.
-- Forgetting an **interface at the variation point**, then using `if (type == EMAIL)` chains.
-- Drawing a beautiful diagram that the code does not follow.
+- Starting to code at once, then finding a missing requirement at minute 30.
+- Making a class for everything, like `NotificationManagerHelperUtil`. Every class needs one clear job.
+- Using `if (type == EMAIL) ... else if (type == SMS) ...` instead of an interface.
+- Drawing a nice diagram and then writing code that does not match it.
+
+## Short answer to say in an interview
+
+:::interview What is LLD, and how do you start?
+"LLD means designing the classes and code inside one component. I first clarify the requirements, then list the classes and their jobs, decide how they connect, put an interface wherever things can vary, and then write the main flow in code. Finally I talk about edge cases and extensions."
+:::
 
 ```quiz
-? Which of these belongs to LLD rather than HLD?
-- Choosing between SQL and NoSQL for the whole system
-+ Deciding the classes, interfaces and relationships inside one service
-- Sizing the load balancer
-> LLD is about the structure of code within a component.
-? In the notification example, why is `Channel` an interface?
-- Because C++ requires it
-+ Channels vary and new ones will be added; the service should not change when they do
-- To avoid using pointers
-> It is the variation point: the Strategy pattern keeps the service closed for modification and open for extension.
+? Which of these is an LLD question?
+- Which database should the whole system use?
++ Which classes and interfaces should we write inside one service?
+- How many load balancers do we need?
+> LLD is about the structure of the code inside one part of the system.
+? In the notification example, why is Channel an interface?
+- C++ forces us to
++ Channels are different ways of doing the same job, and new ones will come later
+- To avoid pointers
+> It lets us add a new channel without touching the service.
 ```
 
 :::keypoints
-- LLD = the classes, interfaces, relationships and code inside a component. HLD = the big boxes between components.
-- Use the same 8 steps: clarify, entities, responsibilities, relationships, interfaces, flows, patterns where things vary, code and extend.
-- Find the **variation points** early: they become interfaces (strategies) so that new cases mean new classes, not edits.
+- LLD = the classes, interfaces and code **inside** one part. HLD = the big boxes **between** parts.
+- Always follow the same steps: ask, find classes, give each a job, connect them, add interfaces where things vary, code, then extend.
+- Spot "things that can change" early. Each one becomes an interface, so a new case means a **new class**, not an edit.
 :::

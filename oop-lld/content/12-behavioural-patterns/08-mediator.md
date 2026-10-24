@@ -2,20 +2,28 @@
 title: Mediator
 level: intermediate
 time: 30
-summary: Centralising communication between many objects so they no longer refer to each other directly: a chat room, an air-traffic tower and a UI dialog, the many-to-many to many-to-one reduction, the risk of a god mediator, and how Mediator differs from Observer and Facade.
+summary: Put one object in the middle so that many objects can work together without knowing each other. See a chat room, a sign-up form and an air-traffic tower, the danger of a giant mediator, and how Mediator differs from Observer and Facade.
 ---
 
+## What is the Mediator pattern?
+
+Don't memorise the definition yet. Think of it like this:
+
+> "If everyone talks to everyone, it becomes a mess. So everyone talks to **one person in the middle**, and that person coordinates."
+
+:::analogy Think of an air-traffic control tower
+Planes do not talk to each other to decide who lands first. With 10 planes, that would need 90 conversations! Each pilot talks only to the tower, and the tower decides who uses the runway.
+:::
+
 :::def Mediator
-Define an object that **encapsulates how a set of objects interact**. Mediator promotes **loose coupling** by keeping objects from referring to each other explicitly, and lets you vary their interaction independently.
+An object in the middle that **controls how a group of objects talk to each other**. The objects no longer need to know about each other.
 :::
 
-:::analogy Think of it like this
-An air-traffic control tower. Aircraft do not talk to each other to decide who lands first (n planes would need n × (n-1) conversations). Every pilot talks only to the tower, and the tower coordinates the runway.
-:::
+## The problem: a web of connections
 
-## The problem: a web of dependencies
+Take a sign-up form. When the "Country" dropdown changes, the "State" list must refill. When the "Agree" checkbox is ticked, the "Submit" button must turn on. When "Submit" is pressed, all fields must be checked.
 
-In a dialog box: when the "Country" dropdown changes, the "State" list must refill; when the "Agree" checkbox is ticked, the "Submit" button must enable; when "Submit" is pressed, all fields validate. If every widget refers to the others, you get a tangle where each widget knows about several siblings, and none can be reused alone.
+If every widget knows about the others, you get a tangled web. No widget can be reused alone.
 
 ```text
 Without a mediator (many-to-many):         With a mediator (many-to-one):
@@ -27,7 +35,7 @@ Without a mediator (many-to-many):         With a mediator (many-to-one):
    C ──── D                         
 ```
 
-## Structure
+## The structure
 
 ```viz algo=uml title="Mediator"
 interface ChatMediator
@@ -45,7 +53,7 @@ ChatRoom o-- User
 User --> ChatMediator
 ```
 
-## A chat room
+## Example: a chat room
 
 ```cpp run title="Users talk to the room, never to each other"
 #include <iostream>
@@ -89,11 +97,9 @@ int main() {
 }
 ```
 
-`User` knows **only the mediator**. To add rules (mute lists, private messages, profanity filters, history), you change `ChatRoom` only, and no user class.
+A `User` knows **only the room**. To add new rules (mute lists, private messages, a bad-word filter, history), you change only `ChatRoom`. No user class changes.
 
-## A UI dialog mediator
-
-The classic use: widgets coordinate through a dialog object.
+## Example: a sign-up form
 
 ```cpp run title="A sign-up form with a mediator"
 #include <iostream>
@@ -156,9 +162,9 @@ int main() {
 }
 ```
 
-The widgets are plain and reusable: none mentions another widget. The business rule "submit is enabled only with an email and accepted terms" lives in **one** place.
+The widgets are simple and reusable. None of them mentions another. The rule "Submit is enabled only if there is an email and the terms are accepted" lives in **one** place.
 
-## An air-traffic tower: coordination logic
+## Example: an air-traffic tower
 
 ```cpp run title="The tower owns the single runway"
 #include <iostream>
@@ -191,51 +197,53 @@ int main() {
 }
 ```
 
-Planes would never coordinate this safely by talking to each other. The mediator holds the **shared state** (runway, queue) and the policy.
+The planes could never do this safely by talking to each other. The tower keeps the **shared information** (the runway and the waiting line) and the **rules**.
 
 ## Mediator vs Observer vs Facade
 
 | | Mediator | Observer | Facade |
 |---|---|---|---|
-| Direction | peers talk **through** a hub, in both directions | a subject **broadcasts** one way | clients call **in** to a subsystem |
-| Colleagues know it? | **yes** (they hold the mediator) | observers know the subject interface | the subsystem does **not** know the facade |
-| Has logic? | **yes**: coordination rules | no: just notifies | orchestrates calls |
-| Typical use | dialog boxes, chat, tower | model→view updates, events | simplified API |
+| Direction | peers talk **through** the middle, both ways | a subject **announces** one way | users call **into** a group of classes |
+| Do they know it? | **yes**, they hold the mediator | observers know the subject's interface | the inner classes do **not** know the facade |
+| Does it have rules? | **yes**, coordination rules | no, it only notifies | it only organises calls |
+| Typical use | dialog boxes, chat, tower | model to view updates, events | a simpler API |
 
-In practice the two combine: colleagues may notify the mediator through an Observer-like callback.
+In real systems they are often used together.
 
-## The danger: a god mediator
+## The danger: a giant mediator
 
-All the interaction logic moves into the mediator, which can grow into a huge, tangled class. Keep it healthy by:
+All the interaction rules move into the mediator, so it can grow into a huge tangled class. To keep it healthy:
 
-- splitting it into several mediators by area;
-- making colleagues emit **events** and the mediator route them through small handlers;
-- letting each rule be a small object the mediator consults (Strategy / Chain).
+- split it into several mediators by area,
+- let objects send **events**, and let the mediator send each event to a small handler,
+- keep each rule in a small object (Strategy or Chain).
 
-:::interview Mediator vs Observer?
-"With Observer, one subject broadcasts changes to many observers who do not interact; the subject keeps a list. With Mediator, many peers communicate with each other *through* a central object that holds the interaction rules, so peers do not know each other. Mediator centralises coordination logic and turns many-to-many dependencies into many-to-one; the cost is that the mediator can become a god class."
+## Short answer to say in an interview
+
+:::interview What is the difference between Mediator and Observer?
+"In Observer, one subject announces changes to many observers, and the observers do not talk to each other. In Mediator, many objects talk to each other through a central object that holds the rules, so they do not know each other. Mediator turns many-to-many links into many-to-one. The risk is that the mediator becomes a giant class."
 :::
 
 ```quiz
 ? What does a Mediator reduce?
-- Memory usage
-+ Direct dependencies among peer objects (many-to-many becomes many-to-one)
+- Memory use
++ Direct links between objects (many-to-many becomes many-to-one)
 - The number of classes
-> Colleagues talk only to the mediator.
-? Where does the coordination logic live?
-- In each colleague
+> Objects talk only to the mediator.
+? Where do the coordination rules live?
+- In each object
 + In the mediator
 - In a base class
-> That is its job: encapsulate how the objects interact.
-? What is the main risk of the pattern?
+> That is its job: it controls how the objects work together.
+? What is the main risk of this pattern?
 - Too many interfaces
-+ The mediator grows into a god class
-- It breaks encapsulation of the colleagues
-> Split it by area or delegate rules to small objects.
++ The mediator grows into a giant class
+- It breaks the other objects' privacy
+> Split it by area or give rules to small objects.
 ```
 
 :::keypoints
-- Mediator: colleagues talk only to a central object that encapsulates their interaction; many-to-many becomes many-to-one.
-- Use for dialog widgets, chat rooms, air-traffic style coordination, workflow orchestration.
-- Watch for a god mediator. Differs from Observer (one-way broadcast) and Facade (simplified entry; subsystem unaware).
+- Mediator: objects talk only to a central object that holds their interaction rules. Many-to-many becomes many-to-one.
+- Use it for dialog widgets, chat rooms, air-traffic style coordination and workflows.
+- Watch out for a giant mediator. It is different from Observer (one-way announcement) and Facade (a simple front door).
 :::

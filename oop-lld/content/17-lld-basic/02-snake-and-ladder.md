@@ -2,35 +2,35 @@
 title: Design Snake and Ladder
 level: easy
 time: 40
-summary: A dice-driven board game with snakes and ladders as jump rules, an injectable dice for deterministic tests, rule variants (exact finish, bonus turn on six) as options, and a clean turn-by-turn game loop.
+summary: A dice game on a 100-square board. Learn to treat snakes and ladders as one idea (a jump), to hide the dice behind an interface so tests are predictable, and to keep rule options simple.
 ---
 
 :::problem Design Snake and Ladder {level=easy tags="games,simulation,strategy,randomness"}
-Design the classic Snake and Ladder game for 2 to 6 players on a 100-square board. Players roll a die in turn and move forward. Landing on the bottom of a ladder moves you up to its top; landing on a snake's head moves you down to its tail. The first player to reach square 100 wins. Make the dice and the rule variants easy to change.
+Design the classic Snake and Ladder game for 2 to 6 players on a 100-square board. Players roll a die one after another and move forward. If you land at the bottom of a ladder, you go up to its top. If you land on a snake's head, you go down to its tail. The first player to reach square 100 wins. Make the dice and the rule options easy to change.
 
 :::hint Hint
-Model snakes and ladders as one concept: a **jump** from one square to another (ladders jump up, snakes down). The board is then just a map. Hide the dice behind an interface so a test can supply a fixed sequence of rolls.
+Snakes and ladders are really the same thing: a **jump** from one square to another. Ladders jump up, snakes jump down. So the board is just a map of jumps. Also, hide the dice behind an interface, so a test can give a fixed list of rolls.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Board? | 100 squares (configurable size); snakes and ladders given as (from, to) pairs, no square is the start of two jumps |
+| The board? | 100 squares (can be changed). Snakes and ladders are given as (from, to) pairs. No square is the start of two jumps |
 | Players? | 2 to 6, all start at 0 |
-| Dice? | one die, 1 to 6, behind an interface (random in production, scripted in tests) |
-| Finishing? | variant A: **exact roll** needed to land on 100 (overshoot = stay); variant B: any roll reaching 100 wins |
-| Bonus turn on a six? | optional rule, off by default |
-| Out of scope | UI, networking |
+| Dice? | one die, 1 to 6, behind an interface (random in real use, fixed list in tests) |
+| How to finish? | Option A: you need the **exact** number to land on 100 (if you roll too much, you stay). Option B: any roll that reaches 100 wins |
+| Extra turn on a six? | optional rule, off by default |
+| Not needed | screen, network |
 
-## Step 2: entities
+## Step 2: Find the classes
 
-- **Board**: size and a `map<int,int> jumps`; `int resolve(int square)` returns the final square after any jump.
-- **Dice** (interface): `int roll()`. `RandomDice` (seeded), `SequenceDice` (scripted).
-- **Player**: name and position.
+- **Board**: knows its size and a `map<int,int> jumps`. `resolve(square)` gives the final square after any jump.
+- **Dice** (interface): `roll()`. Two versions: `RandomDice` (with a seed) and `SequenceDice` (a fixed list).
+- **Player**: a name and a position.
 - **Rules** (options): `exactFinish`, `extraTurnOnSix`.
-- **Game**: players in turn order, the dice, the board; `playTurn()`; `winner()`.
+- **Game**: the players in order, the dice, the board. It has `playTurn()` and `winner()`.
 
 ```viz algo=uml title="Snake and Ladder"
 class Game
@@ -60,7 +60,7 @@ RandomDice ..|> Dice
 SequenceDice ..|> Dice
 ```
 
-## Step 3: a turn
+## Step 3: One turn
 
 ```viz algo=seq title="One turn"
 participant g Game [box]
@@ -76,14 +76,16 @@ g -> p : moveTo(final)
 g -> g : did the player reach 100? else next player (or same on a six, if enabled)
 ```
 
-## Step 4: design decisions
+In words: the game asks the dice for a number, moves the player, asks the board if there is a jump at the new square, and then checks if the player has won.
 
-- **One concept for snakes and ladders** (`jump`) removes duplicate code. Validation: a jump's end cannot itself be a jump start (no chains), and a snake must go down, a ladder up (optional check).
-- **`Dice` interface** gives deterministic tests and the ability to add a "crooked dice" later without touching `Game`.
-- **Rules as a small struct** passed in, not hard-coded flags scattered in the loop (a simple Strategy; a full strategy class would be overkill).
-- `Game::playTurn` does exactly one player's move and returns what happened, so a UI, a console log or a test can drive it.
+## Step 4: Design decisions
 
-## Step 5: the code
+- **One idea for snakes and ladders** (`jump`). This removes repeated code. We check that a jump does not end on another jump's start (no chains).
+- **`Dice` is an interface.** Tests become predictable, and a "crooked dice" can be added later without touching `Game`.
+- **Rules are a small struct** that we pass in. We do not scatter flags inside the loop.
+- **`playTurn` does exactly one player's move** and tells what happened. So a screen, a console log or a test can all drive it.
+
+## Step 5: The code
 
 ```cpp run title="Snake and Ladder: complete, with scripted dice"
 #include <iostream>
@@ -186,39 +188,45 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Roll overshoots the last square | `exactFinish`: the player stays; otherwise capped at the last square |
-| Ladder top is the start of a snake | rejected by `addJump` (no chains) or allow one level of resolution by repeating `resolve` |
-| Two players on the same square | allowed (no capture in the basic game; capture is an extension) |
-| Many turns without a winner | the loop bound in `main` protects the demo; real games always finish with probability 1 |
+| The roll goes past the last square | with `exactFinish` the player stays. Otherwise the player stops at the last square |
+| A ladder top is the start of a snake | `addJump` rejects it (no chains), or we resolve one more level |
+| Two players on the same square | allowed (no capturing in the basic game) |
+| A very long game | the demo stops after a fixed number of turns. In real games, the game always ends in the end |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Two dice" or "crooked dice" | new `Dice` implementation (`TwoDice`, `LoadedDice`) |
-| "A player sent back to start when landing on another" | rule hook in `playTurn`: check other players' positions |
-| "Multiple winners / ranking" | continue until all finish, record the finishing order in a vector |
-| "Observers for UI/logging" | `Game` emits events (`Moved`, `Jumped`, `Won`) to listeners |
-| "Save and resume" | players and turn index are plain data: serialise them (Memento) |
-| "Random board generator" | a `BoardBuilder` that places jumps while checking constraints |
+| "Two dice" or "crooked dice" | a new `Dice` class (`TwoDice`, `LoadedDice`) |
+| "Send a player back to the start if another player lands on them" | a check in `playTurn` for other players' positions |
+| "More than one winner, a ranking" | keep playing until all finish, and keep the finishing order in a vector |
+| "Watchers for a screen or log" | `Game` announces `Moved`, `Jumped`, `Won` to listeners |
+| "Save and continue later" | players and the turn number are plain data, so save them (Memento) |
+| "Make a random board" | a `BoardBuilder` that places jumps and checks the rules |
+
+## Short answer to say in an interview
+
+:::interview How would you design Snake and Ladder so it is easy to test?
+"I treat snakes and ladders as one idea, a jump, stored in a map on the board. I put the dice behind an interface, so a test can pass a fixed list of rolls and get the same game every time. Rule options like exact finish are a small struct. The game's playTurn does exactly one move and returns what happened."
+:::
 
 ```quiz
-? Why model snakes and ladders as one "jump" concept?
+? Why treat snakes and ladders as one "jump" idea?
 - Fewer files
-+ They behave identically (from, to); the board only needs a map
-- Because ladders are rare
-> One rule replaces two near-duplicate code paths.
-? Why inject the Dice?
++ They work the same way (from, to), so the board needs only a map
+- Ladders are rare
+> One rule replaces two almost identical code paths.
+? Why pass the Dice in?
 - It is faster
-+ A scripted dice makes games deterministic for tests and demos
-- C++ forbids rand()
-> Randomness is a classic hidden dependency; make it a seam.
++ A fixed-list dice makes games predictable for tests and demos
+- C++ does not allow rand()
+> Randomness is a hidden helper. Make it replaceable.
 ```
 
 :::keypoints
-- Board = size + jump map; Dice = interface; Rules = small options; Game = turn loop.
-- Snakes and ladders are the same concept (a jump), validated once.
-- Injectable dice gives deterministic tests; rule variants stay data, not scattered `if`s.
+- Board = size and a map of jumps. Dice = an interface. Rules = small options. Game = the turn loop.
+- Snakes and ladders are one idea (a jump), checked once.
+- A replaceable dice gives predictable tests. Rule options are data, not scattered `if`s.
 :::

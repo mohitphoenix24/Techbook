@@ -2,30 +2,34 @@
 title: Design a Mini Git (version control)
 level: advanced
 time: 80
-summary: The object model behind Git: content-addressed blobs, tree snapshots and commits forming a DAG, branches and HEAD as movable references, commit, log, checkout, diff by longest common subsequence, and merging with fast-forward, merge-base and three-way file merge with conflicts.
+summary: How Git works inside, in simple steps. Learn blobs, trees and commits, why branches are cheap, how commit, log and checkout work, how diff finds what changed, and how merge works (fast-forward, finding the common ancestor, and a three-way merge with conflicts).
 ---
 
 :::problem Design a Mini Git {level=hard tags="version control,DAG,hashing,immutability,merge,Composite,Memento"}
-Design a simplified version control system. Users stage files and **commit** snapshots, view the **log**, create **branches**, **checkout** any commit or branch, see a **diff** between two versions, and **merge** one branch into another (fast-forward when possible, otherwise a three-way merge that detects conflicts). Content must be stored efficiently: identical content is stored once.
+Design a simplified version control system. Users add files and **commit** snapshots, view the **log**, make **branches**, **checkout** any commit or branch, see a **diff** between two versions, and **merge** one branch into another (a fast-forward when possible, and otherwise a three-way merge that finds conflicts). Content must be stored in a smart way: the same content is stored only once.
 :::
 
 :::hint Hint
-Git is a **content-addressable store** plus a **graph of immutable objects**. A file's content is a *blob* named by the hash of its bytes. A *tree* maps paths to blob hashes (a snapshot). A *commit* points to a tree and to its parent commit(s). Branches and HEAD are just **named pointers** to commits. Almost every feature falls out of these four ideas.
+Git is a **store where things are named by their content**, plus a **graph of objects that never change**. A file's content is a *blob*, named by the hash of its bytes. A *tree* maps file names to blob hashes (a snapshot). A *commit* points to a tree and to its parent commit(s). Branches and HEAD are just **named pointers** to commits. Almost every feature comes from these four ideas.
 :::
 
-## Step 1: requirements
+## First, what is a hash?
 
-| Question | Assumption |
+A **hash** is a short code made from some content. The same content always gives the same code. Different content gives a different code (almost always). So the hash works like a **fingerprint** of the content. Git uses the fingerprint as the name of the object.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Content model? | text files, flat paths (`src/a.txt` as a key); trees are maps path → blob id |
-| Operations? | `add(path, content)` (stage), `commit(message)`, `log()`, `branch(name)`, `checkout(name or commit)`, `diff(a, b)`, `merge(branch)` |
-| Storage? | content-addressed, immutable objects; deduplicated by hash |
-| Branches? | movable pointers to commits; `HEAD` points to a branch (or a commit: detached) |
-| Merge? | fast-forward if possible; else three-way merge per file using the merge base; conflicts produce markers and no merge commit until resolved |
-| Hashing? | a simple 64-bit FNV-1a hex digest (Git uses SHA-1/SHA-256: the structure is identical) |
-| Out of scope | directories as nested trees, packfiles, remotes, rebase, binary files |
+| The content model? | text files with flat names (`src/a.txt` as a key). A tree is a map from path to blob id |
+| Actions? | `add(path, content)` (stage), `commit(message)`, `log()`, `branch(name)`, `checkout(name or commit)`, `diff(a, b)`, `merge(branch)` |
+| Storage? | objects named by content, which never change. The same content is stored once |
+| Branches? | movable pointers to commits. `HEAD` points to a branch (or to a commit: "detached") |
+| Merge? | a fast-forward if possible. Otherwise a three-way merge for each file using the common ancestor. A conflict leaves markers, and there is no merge commit until it is fixed |
+| Hashing? | a simple 64-bit FNV-1a hex digest (Git uses SHA-1 or SHA-256, but the structure is the same) |
+| Not needed | folders as nested trees, packfiles, remote servers, rebase, binary files |
 
-## Step 2: the object model
+## Step 2: The object model
 
 ```text
  blob  b1 = "hello"          blob b2 = "world"          blob b3 = "hello world"
@@ -37,9 +41,9 @@ Git is a **content-addressable store** plus a **graph of immutable objects**. A 
                                               branch main, HEAD
 ```
 
-Every object's id is the hash of its content. An unchanged file in a new commit points to the **same blob**: no copy. Commits form a **DAG**; a merge commit has **two parents**.
+The id of every object is the hash of its content. A file that did not change in a new commit points to the **same blob**, so there is no copy. Commits form a **DAG** (a graph with no loops). A merge commit has **two parents**.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Mini Git"
 class Repository
@@ -78,23 +82,23 @@ Repository ..> Differ
 Repository ..> Merger
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Immutability**: objects are never modified; a "change" creates new objects. This makes history trustworthy (the id of a commit includes its parents' ids: a Merkle DAG), sharing safe, and caching trivial.
-- **Content addressing**: `putBlob(content)` returns `hash(content)`; storing the same text twice stores it once. Commit id = hash of (tree entries, parents, message).
-- **Refs**: `refs["main"] = commitId`; `HEAD` = name of the current branch (or a detached commit id). `commit` moves the current branch pointer. **Branching is O(1)** (copy a pointer).
-- **Index (staging area)**: the proposed next tree. `commit` freezes the index into a tree and a commit.
-- **Checkout** sets the index/working tree to a commit's tree and moves HEAD. (We keep the "working directory" as a map in memory.)
-- **Diff** = line-based **LCS** (longest common subsequence) between two blobs; output `+`/`-` lines.
-- **Merge base**: the nearest common ancestor of two commits: collect all ancestors of A (BFS) then walk B's ancestors in BFS order until one is in A's set.
-- **Three-way merge** per path with `(base, ours, theirs)`:
-  - ours == theirs → take it;
-  - base == ours → take theirs (only they changed it);
-  - base == theirs → take ours;
-  - otherwise → **conflict** (write conflict markers).
-- **Fast-forward**: if the current commit is an ancestor of the target, just move the pointer; no new commit.
+- **Nothing changes after it is made.** Objects are never edited. A "change" makes new objects. This makes history trustworthy (a commit's id includes its parents' ids, a Merkle DAG), sharing safe, and caching easy.
+- **Naming by content:** `putBlob(content)` returns `hash(content)`. Saving the same text twice stores it once. The commit id is the hash of (tree entries, parents, message).
+- **Refs:** `refs["main"] = commitId`. `HEAD` is the name of the current branch (or a commit id when detached). `commit` moves the current branch pointer. **Making a branch is O(1)**: copy one pointer.
+- **Index (staging area):** the proposed next tree. `commit` freezes the index into a tree and a commit.
+- **Checkout** sets the index (the working files) to the tree of a commit and moves HEAD. (We keep the "working folder" as a map in memory.)
+- **Diff** = a line-by-line **LCS** (longest common subsequence) between two blobs. The output is `+` and `-` lines.
+- **Merge base:** the nearest common ancestor of two commits. Collect all ancestors of A (BFS), then walk B's ancestors in BFS order until one is in A's set.
+- **Three-way merge** for each path with `(base, ours, theirs)`:
+  - if ours == theirs, take it;
+  - if base == ours, take theirs (only they changed it);
+  - if base == theirs, take ours (only we changed it);
+  - otherwise there is a **conflict**, and we write conflict markers.
+- **Fast-forward:** if the current commit is an ancestor of the target, just move the pointer. No new commit.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Blobs, trees, commits, branches, diff and three-way merge"
 #include <algorithm>
@@ -270,61 +274,67 @@ int main() {
 }
 ```
 
-## How the pieces map to real Git
+## How this maps to real Git
 
 | Mini Git | Real Git |
 |---|---|
-| `Id` = 7 hex digits of FNV | full SHA-1 (or SHA-256) of a typed object (`blob <size>\0...`) |
-| `Tree` = flat map | nested tree objects per directory; unchanged subtrees are shared |
+| `Id` = 7 hex digits of FNV | the full SHA-1 (or SHA-256) of a typed object (`blob <size>\0...`) |
+| `Tree` = a flat map | nested tree objects for each folder. Unchanged subtrees are shared |
 | `branches_` map | `.git/refs/heads/*` files |
 | `head_` | `.git/HEAD` (`ref: refs/heads/main`) |
-| `index_` | `.git/index` (staging area), separate from the working directory |
-| `ancestors`/`mergeBase` | `git merge-base`, commit-graph |
+| `index_` | `.git/index` (the staging area), separate from the working folder |
+| `ancestors` and `mergeBase` | `git merge-base`, the commit-graph |
 | `diffLines` LCS | Myers' O(ND) diff |
-| three-way merge per file | per-hunk three-way merge (`git merge-file`), then recursive/ort strategies |
+| three-way merge for each file | a merge for each hunk (`git merge-file`), then the recursive or ort strategies |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Committing with nothing staged/changed | detect identical tree to the parent and refuse ("nothing to commit") |
-| Same content added under two paths | same blob id: stored once |
-| Criss-cross merges (two merge bases) | recursive strategy: merge the bases first; we pick one |
-| Deleting a file on one branch, editing on the other | conflict (modify/delete) |
-| Detached HEAD | `head_` holds a commit id instead of a branch name |
-| Hash collisions | cryptographic hashes make them negligible; FNV here is for the demo only |
-| Large files | chunking and delta compression in packfiles |
-| Renames | detected by similarity of blob content, not stored explicitly |
+| Committing when nothing changed | find that the tree is the same as the parent's, and refuse ("nothing to commit") |
+| The same content under two names | the same blob id, stored once |
+| Merges with two common ancestors (criss-cross) | the recursive strategy merges the ancestors first. We pick one |
+| Deleted on one branch, edited on the other | a conflict (modify/delete) |
+| Detached HEAD | `head_` holds a commit id and not a branch name |
+| Hash collisions | strong hashes make them almost impossible. FNV here is for the demo only |
+| Big files | cut into chunks and compressed as differences in packfiles |
+| Renames | found by how similar the contents are, not stored directly |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Nested directories" | `Tree` entries become `(name → Blob or Tree)`: a Composite; commit hashing recurses |
+| "Folders inside folders" | `Tree` entries become `(name → Blob or Tree)`, a Composite. Commit hashing goes down the tree |
 | "Rebase" | replay commits onto a new base by cherry-picking: apply the diff of each commit |
-| "Remotes: push and pull" | exchange missing objects (walk the DAG from refs, send unknown ids) |
-| "Tags and annotated tags" | more refs |
-| "Garbage collection" | mark reachable objects from refs, delete the rest |
-| "Blame / bisect" | walk the DAG with diffs; binary search over the commit list |
-| "Hooks and permissions" | Observer events around commit/push |
-| "Line-level merge" | run diff3 between base/ours/theirs and merge hunks that do not overlap |
-| "Performance on huge repos" | packfiles with delta chains, commit-graph files, partial clones |
+| "Remote servers: push and pull" | exchange the missing objects (walk the DAG from the refs, send the ids the other side does not know) |
+| "Tags" | more refs |
+| "Cleaning up (garbage collection)" | mark the objects reachable from refs and delete the rest |
+| "Blame and bisect" | walk the DAG with diffs. Binary search over the list of commits |
+| "Hooks and permissions" | Observer events around commit and push |
+| "Merging inside a file" | run diff3 between base, ours and theirs and merge the parts that do not overlap |
+| "Huge repositories" | packfiles with chains of differences, commit-graph files, partial clones |
+
+## Short answer to say in an interview
+
+:::interview How does Git store history, and why is branching cheap?
+"Git stores objects named by the hash of their content. A blob is a file's content, a tree maps names to blobs, and a commit points to a tree and its parent commits. Objects never change, so identical content is stored once, and commits form a graph. A branch is just a named pointer to a commit, so creating one copies a single pointer. A merge finds the nearest common ancestor. If the current commit is an ancestor, it is a fast-forward, which only moves the pointer. Otherwise, a three-way merge compares base, ours and theirs for each file, and it reports a conflict only if both sides changed the same file differently."
+:::
 
 ```quiz
 ? Why is branching nearly free in Git?
 - Branches copy all files
-+ A branch is just a named pointer to a commit; no content is copied
++ A branch is just a named pointer to a commit, and no content is copied
 - Branches are compressed
-> The commit DAG and immutable objects make a new branch O(1).
+> Because objects never change and form a graph, a new branch is O(1).
 ? How is a merge conflict decided in a three-way merge?
 - Any difference is a conflict
-+ A path conflicts only if both sides changed it differently relative to the common ancestor
-- Randomly
-> If only one side changed it, that side's version wins automatically.
++ A file conflicts only if both sides changed it in different ways since the common ancestor
+- At random
+> If only one side changed it, that side's version wins on its own.
 ```
 
 :::keypoints
-- Content-addressed immutable objects (blob, tree, commit) form a Merkle DAG; branches and HEAD are movable pointers.
-- Diff = LCS over lines; merge base = nearest common ancestor; merge = fast-forward or per-file three-way merge.
-- Identical content is stored once; history cannot be altered without changing ids. Real Git adds nested trees, packfiles and remotes.
+- Objects that never change and are named by content (blob, tree, commit) form a Merkle DAG. Branches and HEAD are movable pointers.
+- Diff = LCS over lines. Merge base = the nearest common ancestor. Merge = a fast-forward or a three-way merge for each file.
+- The same content is stored once. History cannot be changed without changing ids. Real Git adds nested trees, packfiles and remote servers.
 :::

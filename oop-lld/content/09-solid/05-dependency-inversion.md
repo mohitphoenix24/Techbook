@@ -1,18 +1,33 @@
 ---
-title: D: Dependency Inversion and dependency injection
+title: "D: Dependency Inversion and dependency injection"
 level: intermediate
 time: 40
-summary: High-level code should depend on abstractions, not on low-level details. The problem with new inside a class, inverting the dependency with an interface, constructor/setter/method injection, a composition root, testing with fakes, and the difference between DIP, DI and IoC.
+summary: Your main business code should not be tied to small details like email or databases. Learn why creating objects inside a class is a problem, how an interface fixes it, the three ways to pass objects in, and how to test with a fake.
 ---
 
+**D** in SOLID stands for **Dependency Inversion Principle**, or **DIP**.
+
+Don't memorise the formal definition yet. Think of it like this:
+
+> "My main code should not care *which* tool does the small job. It should only say *what* job needs to be done."
+
 :::def Dependency Inversion Principle (DIP)
-1. **High-level modules should not depend on low-level modules. Both should depend on abstractions.**
-2. **Abstractions should not depend on details. Details should depend on abstractions.**
+1. Your **important code** (business rules) should not depend on **small details** (email, database, files). Both should depend on an **interface**.
+2. The interface should not be shaped by one detail. The details should follow the interface.
 :::
 
-High-level = your business rules ("remind users about overdue books"). Low-level = the mechanics (send email through SMTP, write to MySQL, call a REST API). The business rules should not know which mechanism is used.
+Two words to keep in mind:
 
-## The problem: a class that creates its own collaborators
+- **High-level code** = your business rules. Example: "remind users about overdue books".
+- **Low-level code** = the small mechanics. Example: send an email using SMTP, write to MySQL, call a web API.
+
+The business rule should not know *how* the message is sent.
+
+:::analogy Think of a phone and a charger
+Your phone does not care if the electricity comes from a plug at home, a power bank or a car. It only needs a standard charging port (the interface). Because of that, you can change the source without touching the phone.
+:::
+
+## The problem: a class that creates its own helper
 
 ```cpp run title="High-level code welded to a concrete class"
 #include <iostream>
@@ -38,28 +53,30 @@ int main() {
 }
 ```
 
-What is wrong?
+What is wrong here?
 
-- To use **SMS** instead of email, you must **edit** `OverdueReminder` (breaks OCP).
-- You cannot **test** the reminder without really sending email.
-- The business rule is tied to SMTP's header, libraries and failure modes.
+- To send an **SMS** instead of an email, you must **edit** `OverdueReminder`.
+- You cannot **test** it without really sending an email.
+- Your business rule is now tied to the details of SMTP.
 
-The dependency arrows point from high-level to low-level:
+The arrow of dependency points like this:
 
 ```text
    OverdueReminder  ───►  EmailSender          (policy depends on mechanism)
 ```
 
-## Inverting the dependency
+The important code depends on the small detail. That is the wrong direction.
 
-Introduce an **abstraction owned by the high-level code**, and make the detail implement it.
+## The fix: put an interface in between
+
+Create an **interface** (owned by the important code). Let the small details follow it.
 
 ```text
    OverdueReminder  ───►  «interface» MessageSender  ◄───  EmailSender
                                                       ◄───  SmsSender
 ```
 
-Now `EmailSender` depends on the interface (it implements it): the arrow from the low-level detail **points upward**. The dependency is "inverted".
+Now the arrow from `EmailSender` points **up** to the interface. The direction is **inverted**. That is where the name comes from.
 
 ```cpp run title="Depend on an interface; inject the implementation"
 #include <iostream>
@@ -100,11 +117,11 @@ int main() {                                            // the "composition root
 }
 ```
 
-`OverdueReminder` is unchanged when the channel changes. `main` (the **composition root**) is the only place that knows the concrete classes.
+Notice that `OverdueReminder` does not change when we change the channel. Only `main` knows the real classes. The place that creates and connects all the objects is called the **composition root**. Here it is `main`.
 
-## Testing: the biggest practical payoff
+## Why this helps most: testing
 
-Because the dependency is an interface, a test can pass a **fake** that records what happened.
+Because the dependency is an interface, a test can pass a **fake** that just remembers what was sent.
 
 ```cpp run title="A test with a fake sender: no email, no network"
 #include <iostream>
@@ -145,15 +162,19 @@ int main() {
 }
 ```
 
-## Three ways to inject a dependency
+No real email, no network, and the test runs in a blink.
 
-| Style | Code | Use when |
+## Three ways to give a class its helper
+
+This is called **dependency injection (DI)**. "Inject" simply means "hand it in from outside".
+
+| Way | Code | Use when |
 |---|---|---|
-| **Constructor injection** (preferred) | `Reminder(MessageSender& s)` | the dependency is required for the object to work |
-| **Setter injection** | `reminder.setSender(&s)` | optional, or changeable at run time |
-| **Method (parameter) injection** | `reminder.remind(m, days, sender)` | the dependency differs per call |
+| **Constructor** (best) | `Reminder(MessageSender& s)` | the class cannot work without it |
+| **Setter** | `reminder.setSender(&s)` | it is optional, or can change later |
+| **Method parameter** | `reminder.remind(m, days, sender)` | it is different for every call |
 
-Constructor injection makes dependencies **visible and mandatory**: an object can never be half-configured.
+Constructor injection is the best default. The object can never be half-ready.
 
 ```cpp run title="Ownership when injecting: reference, unique_ptr, shared_ptr"
 #include <iostream>
@@ -193,20 +214,24 @@ int main() {
 }
 ```
 
-Choose by **lifetime**: borrow (reference) when the caller outlives the service; own (`unique_ptr`) when the service is the sole user; share (`shared_ptr`) when lifetimes are genuinely shared.
+Which type should you store? Use this simple guide:
 
-## DIP, DI and IoC: three terms people mix up
+- **A reference**: the caller keeps the helper alive for longer than the class.
+- **`unique_ptr`**: only this class uses the helper, so it owns it.
+- **`shared_ptr`**: several classes really share it.
 
-| Term | What it is |
+## Three terms people mix up
+
+| Term | In simple words |
 |---|---|
-| **Dependency Inversion Principle** | A *design rule*: depend on abstractions, and let abstractions be owned by the high-level code |
-| **Dependency Injection** | A *technique*: hand the dependencies to an object from outside (constructor/setter/parameter) instead of letting it create them |
-| **Inversion of Control** | A *broader idea*: the framework or caller controls the flow ("Hollywood principle: don't call us, we'll call you"). DI is one kind |
-| **DI container** | A *tool* that wires objects automatically (Spring, Guice; rare in C++). In C++ we usually do **manual DI in `main`** |
+| **Dependency Inversion (DIP)** | a **rule**: depend on interfaces, not on details |
+| **Dependency Injection (DI)** | a **trick** to follow the rule: pass the helper in from outside |
+| **Inversion of Control (IoC)** | a **big idea**: someone else controls the flow ("don't call us, we will call you") |
+| **DI container** | a **tool** that connects objects for you (common in Java, rare in C++). In C++ we usually connect them by hand in `main` |
 
-## A tiny registry-style factory (still DIP)
+## Choosing the helper from a setting
 
-When the implementation is chosen from configuration, a factory function returns the abstraction:
+Sometimes the helper is chosen from a config value, like "email" or "sms". A small factory function can return the interface.
 
 ```cpp run title="Choosing the implementation from a setting"
 #include <iostream>
@@ -237,38 +262,40 @@ int main() {
 }
 ```
 
-## Pitfalls
+## Mistakes to avoid
 
-- **Service Locator / singletons everywhere**: a global `ServiceLocator::get<Logger>()` hides dependencies (not visible in the constructor) and makes tests brittle. Prefer explicit constructor parameters.
-- **Interfaces with exactly one implementation, and no test or variation need**: abstraction without purpose. Add an interface when there is a second implementation *or* you need a fake for tests.
-- **Leaky abstraction**: an interface that mirrors one implementation's quirks (`sendViaSmtp(host, port)`) is not really abstract. Design the interface from the **client's** point of view: `send(to, text)`.
-- **Too many constructor parameters** (more than 4 or 5): a sign the class has too many responsibilities (SRP).
+- **Hidden helpers (service locator, singletons everywhere).** If a class quietly calls `ServiceLocator::get<Logger>()` inside, nobody can see what it needs. Prefer clear constructor parameters.
+- **An interface with only one class and no test need.** That is extra work for no gain. Add an interface when you have a second class, or when you need a fake for a test.
+- **An interface copied from one detail**, like `sendViaSmtp(host, port)`. Design it from the user's side: `send(to, text)`.
+- **Too many constructor parameters** (more than 4 or 5). The class probably does too much.
 
-:::interview Explain Dependency Inversion with an example
-"High-level business code should not depend on low-level details: both should depend on an abstraction that the high-level code owns. For example, an `OverdueReminder` should depend on a `MessageSender` interface, not on `EmailSender`. I inject the implementation through the constructor from `main`. That lets me switch to SMS without editing the reminder and test it with a fake sender. Dependency injection is the technique; dependency inversion is the principle."
+## Short answer to say in an interview
+
+:::interview Explain Dependency Inversion with an example.
+"The main business code should not depend on small details. Both should depend on an interface. For example, OverdueReminder should use a MessageSender interface and not EmailSender directly. I pass the real sender in through the constructor from main. Then I can switch to SMS without editing the reminder, and I can test it with a fake sender. Dependency inversion is the rule, and dependency injection is the way to follow it."
 :::
 
 ```quiz
 ? What does "inverting" the dependency mean?
-- Reversing the order of function parameters
-+ Making low-level details depend on an abstraction owned by the high-level code
+- Reversing the order of function arguments
++ Making the small details depend on an interface owned by the important code
 - Using virtual inheritance
-> Normally high-level code depends on low-level classes. DIP flips that arrow by introducing an interface.
-? Which is the preferred way to inject a mandatory dependency?
+> Normally the important code depends on the details. An interface flips that arrow.
+? What is the best way to give a class a helper it must have?
 - A global variable
 + Through the constructor
-- Setting it after construction
-> It makes the dependency explicit and impossible to forget.
+- Set it after creating the object
+> The class can never be used without it.
 ? What is the biggest benefit of DIP for testing?
 - Faster compile times
-+ You can substitute fakes for slow or external collaborators
++ You can use a fake instead of a slow or real helper
 - Fewer classes
-> A test passes a fake that records calls instead of sending real messages.
+> A test can pass a fake that records calls instead of sending real messages.
 ```
 
 :::keypoints
-- Depend on abstractions, not concrete details; the high-level code owns the interface.
-- Inject dependencies (constructor first) from a composition root such as `main`; do not `new` collaborators inside the class.
-- DIP is the principle, DI is the technique, IoC the wider idea. A fake implementation makes testing easy.
-- Avoid service locators and speculative interfaces; keep constructor parameter lists short.
+- Depend on an interface, not on a concrete detail. The important code owns the interface.
+- Pass helpers in from outside (constructor first), usually from `main`. Do not create them inside the class.
+- DIP is the rule, DI is the trick, IoC is the wider idea. Fakes make testing easy.
+- Avoid hidden helpers and useless interfaces. Keep constructor parameter lists short.
 :::

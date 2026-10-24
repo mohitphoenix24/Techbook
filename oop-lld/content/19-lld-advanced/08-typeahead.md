@@ -2,31 +2,35 @@
 title: Design Search Autocomplete (Typeahead)
 level: advanced
 time: 65
-summary: A trie that returns the top-k completions for a prefix, precomputed top-k lists at each node for O(prefix length) queries, frequency updates and decay, ranking strategies and personalisation, a thread-safe design with readers-writer locking, and the batch-rebuild approach used at scale.
+summary: The suggestion box that appears while you type. Learn a trie, how to keep the best k suggestions at each node so answers are fast, how to update counts, how to rank in different ways, how to make it safe for many threads, and how it works at a big scale.
 ---
 
 :::problem Design a Typeahead / Search Autocomplete System {level=hard tags="trie,data structures,ranking,top-k,Strategy,concurrency"}
-Design the suggestion box that appears while a user types a search. For a prefix, return the **top k** most relevant completions (for example k = 5) quickly. The ranking is mainly by popularity (how often queries are searched), but must be changeable (recency, personalisation). New searches update the popularity. The design must handle heavy read traffic and concurrent updates.
+Design the suggestion box that appears while a user types a search. For a prefix (the first letters), return the **top k** most useful completions (for example k = 5) very quickly. The ranking is mainly by popularity (how often a query is searched), but it must be changeable (recent searches, personal results). New searches update the popularity. The design must handle a lot of reading and updates at the same time.
 :::
 
 :::hint Hint
-A **trie** maps every prefix to a node. To make queries fast, store at each node the **top-k completions of its subtree** (precomputed), so a query is "walk the prefix, return the node's list". The price is paid at update time: when a query's count changes, refresh the top-k lists along its path.
+A **trie** (a tree of letters) maps every prefix to a node. To make queries fast, store at each node the **top-k completions of everything below it**, worked out in advance. Then a query is just "walk down the prefix and return the list at that node". The cost moves to the update: when a query's count changes, refresh the lists along its path.
 :::
 
-## Step 1: requirements
+## What is a trie?
 
-| Question | Assumption |
+A trie is a tree where each step down is one letter. The words "tea", "tree" and "trie" share the start "t" and some share "tr". The path from the root to a node spells a prefix.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Latency? | a few milliseconds; the prefix walk plus returning k strings |
-| Data? | millions of queries with counts; lowercase ASCII/Unicode letters and spaces (normalised) |
-| Results? | top k (default 5) by score, ties by alphabetical |
-| Updates? | `record(query)` increments the count; suggestions reflect it (immediately, or after a short delay) |
-| Ranking? | popularity; strategy interface for others (recency-weighted, personalised) |
-| Typos? | out of scope (mention edit-distance and phonetic matching as extensions) |
-| Concurrency? | reads dominate; writes occasional |
-| Memory? | trie nodes are expensive; compress (radix tree) or shard by prefix in production |
+| Speed? | a few milliseconds: walk the prefix and return k strings |
+| Data? | millions of queries with counts. Lowercase letters and spaces (cleaned up first) |
+| Results? | the top k (default 5) by score. Ties are broken alphabetically |
+| Updates? | `record(query)` adds to the count. Suggestions show it (at once, or after a short delay) |
+| Ranking? | popularity. A strategy interface for others (recent, personal) |
+| Typos? | not needed (we mention edit distance and sound-alike matching as extensions) |
+| Many threads? | mostly reads, with occasional writes |
+| Memory? | trie nodes are costly. In real use, compress (a radix tree) or split by prefix |
 
-## Step 2: how it works
+## Step 2: How it works
 
 ```text
 queries: "tree"(5)  "trie"(8)  "trip"(3)  "tea"(10)
@@ -47,9 +51,9 @@ queries: "tree"(5)  "trie"(8)  "trip"(3)  "tea"(10)
 autocomplete("tr") → walk t, r → node (tr).top = [trie 8, tree 5]      (no subtree scan!)
 ```
 
-Without the cached lists, the query would have to **scan the whole subtree** and sort: far too slow for popular short prefixes ("a", "s").
+Without the saved lists, a query would have to **scan the whole subtree** and sort it. That is far too slow for popular short prefixes like "a" or "s".
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Typeahead"
 class AutocompleteService
@@ -84,17 +88,17 @@ PersonalisedRanker ..|> Ranker
 AutocompleteService ..> QueryLog
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Trie with cached top-k at each node**. A node's `top` holds up to K suggestions (word, score), sorted by score desc then text asc.
-- **Update path**: `record(word)` increments the word's score, then walks the path **root → word end**, and for every node on the path updates `top`: insert or bump the word and re-sort (K is small, so O(K log K) per node, O(L · K log K) per update, L = word length).
-- **Read path**: normalise the prefix, walk down (O(L)), return `top`. **No locks needed for the walk if the structure is immutable per version** (see "scale" below), otherwise a shared lock.
-- **Ranker as a Strategy**: the cached lists contain *popularity* order. A different ranker (personalised, recency) re-ranks a larger candidate set: fetch the top 3k by popularity from the trie, re-rank with the strategy, cut to k. This keeps the trie simple and the policy replaceable.
-- **Thread-safety**: `shared_mutex` on the trie (many readers, one writer). Better at scale: **batch updates**: collect counts in a log, and periodically build a fresh trie (or apply the batch under one write lock), then swap an immutable snapshot with an atomic pointer swap (readers never block).
-- **Normalisation**: lowercase, collapse spaces, trim.
-- **Memory**: a node's `top` stores words by **id/pointer** into a word table instead of copying strings.
+- **A trie with the top-k saved at each node.** A node's `top` holds up to K suggestions (word, score), sorted by score high first, then text.
+- **Update path:** `record(word)` adds to the word's score. Then it walks the path **from the root to the end of the word**, and at every node on the path it updates `top`: insert or raise the word and sort again (K is small, so O(K log K) for each node, and O(L · K log K) for one update, where L is the word length).
+- **Read path:** clean up the prefix, walk down (O(L)), and return `top`. **No lock is needed for the walk if the structure never changes in a version** (see "scale" below). Otherwise use a shared lock.
+- **The ranker is a Strategy.** The saved lists are in *popularity* order. A different ranker (personal, recent) re-ranks a bigger set of candidates: take the top 3k by popularity from the trie, re-rank with the strategy, and cut to k. This keeps the trie simple and the rule easy to swap.
+- **Threads:** a `shared_mutex` on the trie (many readers, one writer). Better at a big scale: **batch the updates.** Collect counts in a log, and now and then build a fresh trie (or apply the batch under one write lock), and then swap an unchangeable snapshot with an atomic pointer swap, so readers never wait.
+- **Cleaning up input:** lowercase, join repeated spaces, trim.
+- **Memory:** a node's `top` keeps words by **id or pointer** into a word table, instead of copying strings.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Trie with cached top-k, updates and a pluggable ranker"
 #include <algorithm>
@@ -227,66 +231,72 @@ int main() {
 }
 ```
 
-## Complexity
+## Cost
 
-| Operation | Cost |
+| Action | Cost |
 |---|---|
-| `suggest(prefix)` | O(L) to walk + O(k) to copy: independent of how many words share the prefix |
-| `record(word)` (update) | O(L · K log K): refresh the top-K at each node on the path (K small) |
-| Memory | O(total characters · branching) plus K entries per node; compress with a radix tree |
+| `suggest(prefix)` | O(L) to walk, plus O(k) to copy. It does not depend on how many words share the prefix |
+| `record(word)` (update) | O(L · K log K): refresh the top-K at each node on the path (K is small) |
+| Memory | O(total letters × branching), plus K entries for each node. Compress with a radix tree |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Empty prefix | return global top-k (the root's list) |
-| Prefix not present | empty result |
-| Uppercase and extra spaces | normalised before lookup |
-| Ties | broken alphabetically for stable output |
-| A word in the top-K whose score drops (decay) | recompute that node's list from its children when needed |
+| An empty prefix | return the overall top-k (the root's list) |
+| A prefix that does not exist | an empty result |
+| Capital letters and extra spaces | cleaned up before looking up |
+| Ties | broken alphabetically for a steady output |
+| A word in the top-K whose score drops (decay) | work out that node's list again from its children when needed |
 | Very frequent updates | batch them: apply counts in bulk and rebuild offline |
 | Offensive or blocked queries | a filter (Chain of Responsibility) when returning results |
-| Unicode | normalise to NFC and use code points or a byte-wise trie with UTF-8 |
+| Unicode | normalise to NFC and use code points, or a byte-wise trie with UTF-8 |
 
-## Scaling it up (the HLD view)
+## Making it big (the HLD view)
 
-| Concern | Approach |
+| Worry | Approach |
 |---|---|
-| Millions of queries/second | serve from memory; shard the trie by first letters or hash of prefix |
-| Updates | **log queries**, aggregate counts in batches (hourly/daily), build a new trie **offline** and swap it in atomically (immutable snapshots): readers never lock |
-| Freshness | a small "trending" structure for the last few minutes, merged at read time |
-| Caching | cache hot prefixes (`a`, `s`, `th`) at the edge; the answer changes slowly |
-| Personalisation | merge global results with the user's recent searches (a ranker) |
+| Millions of queries every second | serve from memory. Split the trie by first letters or by a hash of the prefix |
+| Updates | **log the queries**, add up counts in batches (every hour or day), build a new trie **offline**, and swap it in at once (snapshots that never change). Readers never lock |
+| Fresh results | a small "trending" structure for the last few minutes, joined when reading |
+| Caching | cache popular prefixes (`a`, `s`, `th`) at the edge. The answer changes slowly |
+| Personal results | join the global results with the user's recent searches (a ranker) |
 | Typos | fuzzy search with edit distance over candidates, or n-gram indexes |
-| Memory | radix tree, store words once in an array, nodes keep indexes |
+| Memory | a radix tree, words stored once in an array, nodes keep indexes |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Time-decayed popularity" | store (score, last update) and decay lazily at read: `score * 2^(-Δt/halfLife)` |
-| "Multi-word queries and mid-word matches" | an inverted index of n-grams or tokens next to the trie |
-| "Language support, emoji" | normalisation and a code-point trie |
-| "Deleting or banning a query" | remove from counts and refresh the path's top-k lists |
-| "Trending now" | a sliding-window counter (count-min sketch) for the last N minutes |
-| "A/B test rankers" | `Ranker` selected per request by an experiment id |
-| "Zero-latency mobile" | ship a compact trie to the client |
+| "Popularity that fades with time" | keep (score, last update time) and fade it when reading: `score * 2^(-Δt/halfLife)` |
+| "Many words and matches in the middle of a word" | an inverted index of n-grams or tokens next to the trie |
+| "Other languages, emoji" | cleaning up input and a trie on code points |
+| "Delete or ban a query" | remove it from the counts and refresh the top-k lists on its path |
+| "Trending now" | a counter over a sliding window (a count-min sketch) for the last N minutes |
+| "Test different rankers" | choose a `Ranker` for each request by an experiment id |
+| "No delay on mobile" | send a small trie to the phone |
+
+## Short answer to say in an interview
+
+:::interview How do you make autocomplete fast?
+"I use a trie, and at every node I save the top k completions of its whole subtree. A query walks down the prefix, which is O(length), and returns that node's list. It does not matter how many words share the prefix. The cost moves to updates: when a count changes, I refresh the lists on the path from the root to that word. At a big scale, I log queries, build a new trie offline in batches, and swap it in as an unchangeable snapshot, so readers never lock. For personal ranking I fetch more candidates than k and re-rank them with a strategy."
+:::
 
 ```quiz
 ? Why store the top-k list at every trie node?
 - To save memory
-+ So a query is answered by walking the prefix and returning a precomputed list, instead of scanning the whole subtree
-- Because tries require it
-> It trades update cost and memory for very fast reads.
-? How do you add personalised ranking without changing the trie?
-- Build a trie per user
++ A query walks the prefix and returns a ready list, instead of scanning the whole subtree
+- Tries require it
+> It trades extra work at update time and more memory for very fast reads.
+? How do you add personal ranking without changing the trie?
+- Build a trie for each user
 + Fetch more candidates than k from the trie and re-rank them with a Ranker strategy
 - Sort the dictionary
-> The trie provides candidates; the strategy decides the final order.
+> The trie gives the candidates. The strategy decides the final order.
 ```
 
 :::keypoints
-- Trie where each node caches its subtree's top-k: reads are O(prefix length), writes refresh the path.
-- Ranking is a strategy applied to an over-fetched candidate list; use a shared lock for readers and one writer.
-- At scale: batch aggregation, immutable snapshots swapped atomically, hot-prefix caches, radix compression.
+- A trie where each node saves the top-k of its subtree. Reads are O(prefix length). Writes refresh the path.
+- Ranking is a strategy applied to a bigger candidate list. Use a shared lock for readers and one writer.
+- At a big scale: batch counting, snapshots swapped at once, caches for popular prefixes, radix compression.
 :::

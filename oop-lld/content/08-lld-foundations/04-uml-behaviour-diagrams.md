@@ -2,26 +2,30 @@
 title: Sequence, state and use-case diagrams
 level: easy
 time: 30
-summary: The behaviour diagrams you actually draw in LLD interviews: use cases to scope a problem, sequence diagrams to prove the objects collaborate correctly, and state diagrams for anything with a lifecycle, each turned into code.
+summary: The three diagrams that show how a design behaves: use cases to decide the scope, sequence diagrams to check who calls whom, and state diagrams for things that change over time. Each one is turned into code.
 ---
 
-A class diagram shows **structure**. Interviewers also want to see **behaviour**: how objects work together, and how an object changes over time. Three more diagrams do this.
+A class diagram shows the **structure** (which classes exist). Interviewers also want to see the **behaviour**: how the objects work together, and how one object changes over time. Three simple diagrams help with that.
 
-## 1. Use cases: scope the problem
+## 1. Use cases: decide the scope
 
-A **use case** is one thing an **actor** (a user or another system) wants to do. Listing them at the start fixes the scope, and every use case becomes a flow you must support.
+A **use case** is one thing that a user (or another system) wants to do. Writing them down at the start tells you exactly what to build.
 
-| Actor | Use cases (ATM example) |
+Example for an ATM:
+
+| Who | What they want to do |
 |---|---|
-| Customer | insert card, enter PIN, check balance, withdraw cash, deposit cash, print mini-statement |
-| Bank (system) | verify PIN, debit/credit account |
-| Technician | refill cash, service machine |
+| Customer | insert card, enter PIN, check balance, withdraw cash, deposit cash |
+| Bank (a system) | check the PIN, update the account |
+| Technician | refill cash, repair the machine |
 
-You rarely draw the stick-figure diagram. A **table or bullet list** like this is enough, and it is quicker. Then mark the ones in scope: "I will design withdraw, balance and deposit; the technician flow is out of scope."
+You do not need to draw stick figures. A **simple list or table** like this is enough, and faster. Then say what is in scope: "I will design withdraw, balance and deposit. The technician part is out of scope."
 
-## 2. Sequence diagrams: prove the collaboration
+## 2. Sequence diagram: who calls whom
 
-A **sequence diagram** shows objects across the top and messages between them, ordered in time. It answers "who calls whom, in what order?" for one use case. Drawing it often **exposes missing methods or responsibilities**, which is why it is worth the time.
+A **sequence diagram** shows the objects across the top and the messages between them, from top to bottom in time order. It answers one question: **"for this use case, who calls whom, and in what order?"**
+
+Drawing it is useful because it often shows **a method you forgot**.
 
 ```viz algo=seq title="Withdraw cash: ATM, Bank, Account"
 participant c Customer [user]
@@ -41,18 +45,29 @@ atm -> atm : dispenseCash(2000) | A self-call: the ATM's cash dispenser counts n
 atm --> c : cash + receipt
 ```
 
-How to read: vertical dashed lines are the lifetimes of the objects; a solid arrow is a call; a dashed arrow is a return; an arrow back to the same object is a self-call. Step through it above to replay the story.
+How to read it:
+
+- Each vertical line belongs to one object.
+- A solid arrow is a call.
+- A dashed arrow is the answer coming back.
+- Use the step buttons above to replay the story one message at a time.
 
 Tips:
 
-- Draw **one sequence per important use case**, not per method.
-- The first arrow is the *trigger* (what the actor does).
-- If you find yourself writing a call to a method that does not exist on your class diagram, **update the class diagram**. That is the point of the exercise.
-- Use notes for `alt`/`loop`: "if PIN wrong, three tries then retain the card".
+- Draw **one sequence diagram per important use case** (not one per method).
+- The first arrow is what starts everything (the user's action).
+- If you need a method that is not in your class diagram, **add it to the class diagram**. That is exactly why we draw this.
+- Use a short note for special cases: "if the PIN is wrong three times, keep the card".
 
-## 3. State diagrams: for anything with a lifecycle
+## 3. State diagram: for things that change over time
 
-Objects like an ATM, a vending machine, an order, an elevator or a traffic signal behave differently depending on their **state**. A **state diagram** shows the states and the **events** that cause **transitions** between them.
+Some objects behave differently depending on **what state they are in**. A vending machine, an ATM, an order, a lift, a traffic light: all of these.
+
+A **state diagram** shows:
+
+- the **states** (boxes),
+- the **events** (things that happen), and
+- the **transitions** (arrows from one state to another).
 
 ```viz algo=state title="Vending machine"
 state Idle "Idle" [initial] @0,1
@@ -69,15 +84,15 @@ OutOfStock -> Idle : restock
 play: select item, insert coin, insert coin, select item, item taken, refund
 ```
 
-Press ▶ to feed events into the machine. Notice the first event, `select item`, is **not allowed** in `Idle` and is rejected. Showing which events are illegal in which state is exactly the value of the diagram: it forces you to list every case.
+Press ▶ to feed events into the machine. Look at the first event: `select item` is **not allowed** in the `Idle` state, so it is rejected. This is the real value of the diagram. It makes you think about **every case**, including the illegal ones.
 
-A state table is the same information as a grid, and is the best checklist to turn into code:
+The same information can be written as a **table**. A table is the best checklist when you write code.
 
 | State \ Event | insert coin | select item | refund | item taken |
 |---|---|---|---|---|
-| **Idle** | → Has money | reject | reject | reject |
-| **Has money** | stay (add credit) | → Dispensing | → Idle | reject |
-| **Dispensing** | reject | reject | reject | → Idle |
+| **Idle** | go to Has money | reject | reject | reject |
+| **Has money** | stay (add credit) | go to Dispensing | go to Idle | reject |
+| **Dispensing** | reject | reject | reject | go to Idle |
 
 ### From the diagram to code (the simple way)
 
@@ -126,11 +141,11 @@ int main() {
 }
 ```
 
-This `switch` version is fine for 3 states. When states grow, or each state has a lot of behaviour, switch to the **State pattern** (module 12), where each state is a class. The diagram stays the same.
+This `switch` version is fine when there are only 3 or 4 states. When states grow, or each state has a lot of its own behaviour, use the **State pattern** (module 12), where each state becomes a class. The diagram stays the same.
 
-## 4. Activity diagrams (optional)
+## 4. Activity diagram (optional)
 
-An **activity diagram** is a flowchart for a process with decisions and parallel steps. It is useful for workflows (checkout, onboarding). A simple `:::flow` is usually quicker to sketch:
+An **activity diagram** is just a flowchart for a process. It is useful for things like checkout or sign-up. A simple flow like this is often enough:
 
 :::flow Checkout process
 Cart | items and quantities
@@ -140,38 +155,44 @@ Place order | stock reserved
 Confirm | email and SMS sent
 :::
 
-## Which diagram when?
+## Which diagram should I draw?
 
 | You want to show | Draw |
 |---|---|
-| Scope and actors | use-case list |
-| Classes, relationships | **class diagram** (always) |
-| How objects cooperate for one scenario | **sequence diagram** (for the 1 or 2 main flows) |
-| An object whose behaviour depends on its history | **state diagram** (for lifecycle objects) |
-| A business process with branches | activity diagram / flowchart |
+| What the system must do | use-case list |
+| The classes and how they connect | **class diagram** (always) |
+| How objects work together in one scenario | **sequence diagram** (for 1 or 2 main flows) |
+| An object that changes over time | **state diagram** |
+| A business process with branches | flowchart |
 
-In a 45-minute round: a class diagram, one sequence diagram, and a state diagram if there is a lifecycle. That is more than enough.
+In a 45-minute round, a class diagram, one sequence diagram and (if needed) one state diagram is plenty.
+
+## Short answer to say in an interview
+
+:::interview Why do you draw a sequence diagram or a state diagram?
+"The class diagram shows what classes exist. A sequence diagram checks that the objects can really work together for a use case, and it often shows a missing method. A state diagram is for objects like an order or a vending machine, where the allowed actions depend on the current state."
+:::
 
 ```quiz
-? What is the best use of a sequence diagram in an LLD interview?
-- To show the database schema
-+ To prove the objects collaborate correctly for a main use case, exposing missing methods
+? What is a sequence diagram best used for in an LLD interview?
+- To show the database tables
++ To check that the objects work together for one use case, and to find missing methods
 - To list all classes
-> Walking through a scenario message by message finds gaps in the class design.
-? Which kind of object most needs a state diagram?
-- A Money value object
-+ A vending machine, order or elevator whose behaviour depends on its current state
-- A utility class with static functions
-> State diagrams capture lifecycle rules: which events are valid in which state.
-? A state table lists, for each state and event, ...
+> Going through a scenario message by message exposes gaps in your classes.
+? Which object most needs a state diagram?
+- A Money value
++ A vending machine, order or lift whose behaviour depends on its current state
+- A helper class with only static functions
+> State diagrams show which events are allowed in which state.
+? What does a state table list for every state and event?
 - The class names
 + The next state (or "reject")
 - The method bodies
-> It is a checklist that turns directly into a switch or into State classes.
+> It is a checklist that turns straight into a switch or into State classes.
 ```
 
 :::keypoints
-- Use cases scope the problem. A sequence diagram per main flow proves the design. A state diagram for lifecycle objects.
-- A state table (state × event → next state) is the best bridge from diagram to code.
-- Update the class diagram whenever a flow reveals a missing method.
+- Use cases decide the scope. A sequence diagram checks one flow. A state diagram is for things with a life cycle.
+- A state table (state and event gives next state) is the easiest bridge from diagram to code.
+- If a flow needs a method you do not have, update the class diagram.
 :::

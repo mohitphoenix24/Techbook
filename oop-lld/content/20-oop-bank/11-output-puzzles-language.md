@@ -2,7 +2,7 @@
 title: "OOP interview: output puzzles on the language and library"
 level: medium
 time: 35
-summary: Twelve more what-does-this-print puzzles on integer promotion, struct size, lambdas and captures, smart pointers, map operator[], exceptions, templates, static initialisation and string behaviour.
+summary: Twelve more "what does this print?" puzzles on integer maths, struct size, lambdas and captures, smart pointers, map operator[], exceptions, templates, static variables and strings.
 ---
 
 Predict first, then press **Run**.
@@ -23,7 +23,7 @@ int main() {
     cout << "7 / 2 = " << 7 / 2 << ", -7 / 2 = " << -7 / 2 << ", -7 % 3 = " << -7 % 3 << ", 7 / 2.0 = " << 7 / 2.0 << "\n";
 }
 ```
-**Why:** in `a < b` the `int` is converted to `unsigned`, so -1 becomes 4294967295. `size()` is unsigned, so `0 - 1` wraps to a huge number. Integer division truncates toward zero and the remainder takes the sign of the dividend.
+**Why:** in `a < b`, the `int` is turned into `unsigned`, so -1 becomes 4294967295. `size()` is unsigned, so `0 - 1` wraps to a huge number. Integer division cuts toward zero, and the remainder has the sign of the left number.
 :::
 
 :::qa Puzzle 2: struct padding and sizeof {level=medium}
@@ -41,7 +41,7 @@ int main() {
          << " E(virtual)=" << sizeof(E) << " Empty=" << sizeof(Empty) << "\n";
 }
 ```
-**Why:** members are aligned to their own size, and the struct is padded to a multiple of its largest alignment. `A` wastes bytes between `a` and `b` and after `c`; ordering from large to small (`B`, `D`) packs better. A virtual function adds a pointer (8 bytes on 64-bit). An empty class has size 1 so each object has a distinct address. (Sizes shown are for a typical 64-bit platform.)
+**Why:** each member sits at an address that fits its own size, and the whole struct is padded to a multiple of its biggest member. `A` wastes bytes between `a` and `b` and after `c`. Putting big members first (`B`, `D`) wastes less. A virtual function adds a pointer (8 bytes on 64-bit). An empty class has size 1, so each object has its own address. (These sizes are for a normal 64-bit computer.)
 :::
 
 :::qa Puzzle 3: lambda captures {level=medium}
@@ -66,7 +66,7 @@ int main() {
     cout << "\n";
 }
 ```
-**Why:** `byVal` froze `x` at 10 when it was created; `byRef` sees the later change. A `mutable` lambda keeps its own state between calls; copying the lambda copies that state, so the two then count independently. The loop captures each `i` by value, so the results are 0, 1, 4.
+**Why:** `byVal` froze `x` at 10 when it was created. `byRef` sees the later change. A `mutable` lambda keeps its own state between calls. Copying the lambda copies that state, so the two then count on their own. The loop copies each `i` into its lambda, so the results are 0, 1, 4.
 :::
 
 :::qa Puzzle 4: shared_ptr reference counts {level=medium}
@@ -91,7 +91,7 @@ int main() {
     cout << "expired after reset: " << boolalpha << watcher.expired() << ", lock() is null: " << (watcher.lock() == nullptr) << "\n";
 }
 ```
-**Why:** each `shared_ptr` copy adds 1; a `weak_ptr` adds none, but `lock()` creates a temporary owner while it is held. When the last owner goes, the object is destroyed and weak pointers see it as expired.
+**Why:** each `shared_ptr` copy adds 1 to the count. A `weak_ptr` adds nothing, but `lock()` makes a temporary owner for as long as you hold it. When the last owner goes away, the object is destroyed, and the weak pointers see it as expired.
 :::
 
 :::qa Puzzle 5: map operator[] inserts {level=medium}
@@ -111,7 +111,7 @@ int main() {
     cout << "\n";
 }
 ```
-**Why:** `operator[]` default-creates the entry (value 0 for `int`). That is a common source of ghost keys. `find` and `at` do not modify the map.
+**Why:** `operator[]` creates the entry if it is missing (with value 0 for an `int`). This is a common cause of "ghost keys". `find` and `at` do not change the map.
 :::
 
 :::qa Puzzle 6: exceptions, catch order and unwinding {level=hard}
@@ -131,7 +131,7 @@ int main() {
     catch (const logic_error& e) { cout << "outer caught " << e.what() << "\n"; }
 }
 ```
-**Why:** destructors of `inner`, `middle` and the try block run in reverse order while unwinding, before the handler runs. The first matching `catch` wins: `AppError` is caught by the `runtime_error` handler because it derives from it. That is why a base-class handler placed before a derived one makes the derived handler unreachable (the compiler warns). `throw;` rethrows the same exception object.
+**Why:** the destructors of `inner`, `middle` and the try block run in reverse order while the error travels up, before the handler runs. The first matching `catch` wins: `AppError` is caught by the `runtime_error` handler because it derives from it. That is why a base-class handler placed before a child handler makes the child handler unreachable (the compiler warns). `throw;` throws the same error again.
 :::
 
 :::qa Puzzle 7: template deduction and auto {level=hard}
@@ -160,7 +160,7 @@ int main() {
     cout << "auto from vector<bool> is bool: " << is_same_v<decltype(first), bool> << "\n";
 }
 ```
-**Why:** plain `auto` strips top-level `const` and references; `auto&` keeps them; `decltype` keeps everything. `auto&&` bound to an lvalue becomes an lvalue reference. `vector<bool>` is a special bit-packed container whose `operator[]` returns a proxy object.
+**Why:** plain `auto` drops top-level `const` and references. `auto&` keeps them. `decltype` keeps everything. `auto&&` bound to an lvalue becomes an lvalue reference. `vector<bool>` is a special bit-packed container, and its `operator[]` returns a small helper object.
 :::
 
 :::qa Puzzle 8: static local and initialisation order {level=hard}
@@ -180,7 +180,7 @@ int main() {
     cout << "end of main\n";
 }
 ```
-**Why:** a `static` local is initialised **once**, the first time control passes through it (thread-safe since C++11), and destroyed at program exit after locals are gone. That makes it the safe "construct on first use" pattern.
+**Why:** a `static` local is built **once**, the first time the code passes through it (thread-safe since C++11), and it is destroyed at program exit after the locals. That makes it the safe "construct on first use" pattern.
 :::
 
 :::qa Puzzle 9: strings and C strings {level=medium}
@@ -204,7 +204,7 @@ int main() {
     cout << u << " " << u.substr(2, 3) << " " << u.find("fg") << " " << (u.find("zz") == string::npos) << "\n";
 }
 ```
-**Why:** comparing an array with a pointer compares **addresses**. `sizeof` of the array includes the terminating `'\0'`, `strlen` does not. `std::string` compares contents.
+**Why:** comparing an array with a pointer compares **addresses**. `sizeof` of the array includes the ending `'\0'`, but `strlen` does not. `std::string` compares the text.
 :::
 
 :::qa Puzzle 10: evaluation and operators {level=medium}
@@ -227,7 +227,7 @@ int main() {
     cout << "j=" << j << " k=" << k << " i=" << i << "\n";
 }
 ```
-**Why:** `&&` and `||` stop as soon as the answer is known, so the second function may never run. The comma operator evaluates left to right and gives the last value. `i++` yields the old value (3 then i is 4), `++i` the new (5).
+**Why:** `&&` and `||` stop as soon as the answer is known, so the second function may never run. The comma operator evaluates left to right and gives the last value. `i++` gives the old value (3, then `i` becomes 4). `++i` gives the new value (5).
 :::
 
 :::qa Puzzle 11: vector growth and invalid iterators {level=hard}
@@ -251,7 +251,7 @@ int main() {
     cout << "\n";
 }
 ```
-**Why:** the capacity grows geometrically (here a small number of reallocations), which makes `push_back` amortised O(1). `reserve` avoids reallocations, so pointers stay valid. `remove` shifts the wanted elements forward and `erase` trims the tail.
+**Why:** the capacity grows by multiplying (here, only a few reallocations), which makes `push_back` O(1) on average. `reserve` avoids the reallocations, so pointers stay valid. `remove` moves the wanted items forward, and `erase` cuts the tail.
 :::
 
 :::qa Puzzle 12: CRTP and static polymorphism {level=hard}
@@ -272,11 +272,11 @@ int main() {
     cout << "sizeof(Sq)=" << sizeof(Sq) << " (no vptr)\n";
 }
 ```
-**Why:** the base class template knows its derived type, so the call is resolved at compile time and can be inlined. There is no vtable and no per-object pointer. The price: no common base type for a heterogeneous `vector`.
+**Why:** the base class template knows its child type, so the call is decided at compile time and can be inlined. There is no vtable and no hidden pointer in each object. The price: there is no common base type for a mixed `vector`.
 :::
 
 ```quiz
-? What does `auto x = ref;` deduce when ref is an `int&`?
+? What does `auto x = ref;` give when ref is an int&?
 - int&
 + int
 - const int&
@@ -284,7 +284,7 @@ int main() {
 ```
 
 :::keypoints
-- Signed/unsigned mixing, narrowing and size_t arithmetic cause quiet bugs.
-- Know padding rules, capture semantics, map `operator[]`, exception unwinding order and `auto` deduction.
-- Static locals initialise once, on first use.
+- Mixing signed and unsigned, narrowing, and `size_t` maths cause quiet bugs.
+- Know padding rules, capture meaning, map `operator[]`, the order of exception unwinding, and `auto` deduction.
+- A static local is built once, on first use.
 :::

@@ -2,36 +2,36 @@
 title: Design a Traffic Signal Controller
 level: easy
 time: 40
-summary: A four-way intersection controlled by timed phases, modelled with a phase state machine, an injectable clock for deterministic simulation, safety rules (never two conflicting greens), emergency override and pedestrian requests.
+summary: A four-way road junction with timed lights. Learn to think in phases instead of single lights, how a table can prove the design is safe, how to control time in a simulation, and how to handle an emergency vehicle.
 ---
 
 :::problem Design a Traffic Signal Controller {level=easy tags="state machine,timing,simulation,safety"}
-Design the software for a four-way intersection (North, East, South, West). Signals cycle through green, yellow and red with configurable durations. Conflicting directions must **never** be green at the same time. Support an emergency vehicle override that gives its direction green.
+Design the software for a four-way junction (North, East, South, West). The lights go through green, yellow and red, with times that can be set. Directions that cross each other must **never** be green at the same time. Support an emergency vehicle: its direction should get green.
 
 :::hint Hint
-Think in **phases**, not in individual lights: a phase says which roads are green together (North and South; then East and West). The controller advances the phase when time runs out. Safety follows from the phase table, because it simply never lists conflicting directions together.
+Think in **phases**, not in single lights. A phase says which roads are green together (for example North and South, then East and West). When time runs out, the controller moves to the next phase. Safety comes from the phase table, because it never lists crossing directions together.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Directions? | N, E, S, W. N/S pair together, E/W pair together |
-| Light colours? | Green, Yellow, Red |
-| Cycle? | NS green → NS yellow → (all red) → EW green → EW yellow → (all red) → repeat |
-| Durations? | configurable per colour |
+| Directions? | N, E, S, W. North and South go together. East and West go together |
+| Colours? | Green, Yellow, Red |
+| The cycle? | NS green, NS yellow, (all red), EW green, EW yellow, (all red), and repeat |
+| Times? | can be set for each colour |
 | Safety? | NS and EW are never both non-red |
-| Emergency? | on request, finish the current yellow safely, then give the emergency direction pair green until cleared |
-| Time? | a simulated clock (`tick`), so the demo is deterministic |
+| Emergency? | when asked, finish the current yellow safely, then give the emergency direction green until it is cleared |
+| Time? | a simulated clock (`tick`), so the demo gives the same result every time |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 - **Direction** (enum) and **Colour** (enum).
-- **Phase**: which direction pair is active and which colour it shows: `NS_GREEN, NS_YELLOW, ALL_RED_1, EW_GREEN, EW_YELLOW, ALL_RED_2`.
-- **PhaseTimings**: duration of each phase (configuration, a plain struct).
-- **Signal**: one per direction, shows a colour (a passive display; **Observer** target).
-- **Controller**: knows the current phase, time left, advances on `tick()`, handles `requestEmergency()`.
+- **Phase**: which pair of directions is active and which colour it shows: `NS_GREEN, NS_YELLOW, ALL_RED_1, EW_GREEN, EW_YELLOW, ALL_RED_2`.
+- **PhaseTimings**: how long each phase lasts (settings, a plain struct).
+- **Signal**: one for each direction. It only shows a colour (a good target for Observer).
+- **Controller**: knows the current phase and the time left. It moves on with `tick()` and handles `requestEmergency()`.
 
 ```viz algo=state title="Intersection phases"
 state NSG "NS green" [initial] @0,0
@@ -49,15 +49,15 @@ AR2 -> NSG : timer
 play: timer, timer, timer, timer, timer, timer
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Phase table drives everything**: `phaseColours(phase)` returns the colour for each of N, E, S, W. Because conflicting greens do not appear in any row, **the table is the safety proof**. A unit test can assert it for every phase.
-- **The all-red gap** gives clearing time between the two axes.
-- **Clock injection**: the controller takes `tick(seconds)`; no real sleeping. Real hardware would call `tick(1)` from a timer.
-- **Emergency override**: set a pending request. At the next safe boundary (after yellow, during all-red) jump to the requested axis green. Never switch green to green directly.
-- **Observer** (here a simple callback): signals/displays/loggers get `onChange` events.
+- **The phase table drives everything.** `phaseColours(phase)` gives the colour of N, E, S and W. No row of the table has crossing directions both green, so **the table itself proves the design is safe**. A unit test can check this for every phase.
+- **The all-red gap** gives vehicles time to clear the junction between the two directions.
+- **Time is passed in.** The controller uses `tick(seconds)` and never really sleeps. Real hardware would call `tick(1)` from a timer.
+- **Emergency override.** We note the request. At the next safe point (after yellow, during all-red) we jump to the green of the requested direction. We never go from one green straight to another.
+- **Observer** (here a simple callback): displays and loggers hear about each change.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Traffic signal controller: complete"
 #include <array>
@@ -170,40 +170,46 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | How to handle |
 |---|---|
-| Emergency during green of the *other* axis | wait for yellow and all-red (no instant switch) then give the emergency axis green |
-| Emergency from the axis already green | extend the green (extension idea) |
-| Two emergencies | queue them; serve in order |
-| Controller reset after a power loss | start in **all-red flash** (safe state) then `start()` |
-| Sensor-driven timing | replace `Timings` by a `TimingPolicy` (Strategy) that reads queue lengths |
+| Emergency while the **other** direction is green | wait for yellow and all-red (no instant switch), then give green to the emergency direction |
+| Emergency from the direction that is already green | make the green longer (an extension) |
+| Two emergencies | put them in a line and serve them in order |
+| Power cut and restart | start in **flashing red** (a safe state), then `start()` |
+| Sensors decide the timing | replace `Timings` with a `TimingPolicy` (Strategy) that reads the queue lengths |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Pedestrian crossing button" | extra phases with `WALK`; a request flag like the emergency one, served at the next all-red |
-| "Left-turn arrows, more roads" | a richer phase table: each row lists all compatible movements; a unit test checks compatibility pairs |
-| "Coordinate a whole street of intersections" | `Corridor` coordinator with offsets (green wave); each controller unchanged |
-| "Adaptive timings" | Strategy for durations (fixed, time-of-day, sensor) |
-| "Monitoring/logging" | listeners already exist: add a `Logger` and a `FaultDetector` |
+| "A button for people crossing" | extra phases with `WALK`. A request flag like the emergency one, served at the next all-red |
+| "Turn arrows, more roads" | a bigger phase table. Each row lists all movements that can go together. A unit test checks the pairs |
+| "Coordinate a whole street" | a `Corridor` coordinator with offsets (a green wave). Each controller stays the same |
+| "Timing that adapts" | Strategy for the times (fixed, time of day, sensors) |
+| "Monitoring and logs" | listeners already exist. Add a `Logger` and a `FaultDetector` |
 | "Hardware failure" | a watchdog: if no tick arrives, switch to flashing red |
 
+## Short answer to say in an interview
+
+:::interview How does your design make sure two crossing directions are never green together?
+"I model phases, not single lights. Each phase lists the colour of every direction, and the table never has crossing directions green at the same time. Every state the controller can reach comes from this table, so it is safe by design, and I can unit test the table. There is also an all-red gap between the phases. An emergency request waits for a safe point before switching."
+:::
+
 ```quiz
-? Where does the design guarantee that conflicting greens never occur?
-- In a unit test only
-+ In the phase table: no row has conflicting directions non-red together
+? Where does the design make sure crossing greens never happen?
+- Only in a unit test
++ In the phase table. No row has crossing directions non-red together
 - In the clock
-> If the table is correct, every state the machine can reach is safe.
-? Why use an all-red phase between axes?
+> If the table is right, every reachable state is safe.
+? Why add an all-red phase between the two directions?
 - To save power
-+ To give vehicles time to clear the intersection before the other axis starts
++ To give vehicles time to clear the junction before the other direction starts
 - Because C++ requires it
-> A safety gap between conflicting movements.
+> It is a safety gap between crossing movements.
 ```
 
 :::keypoints
-- Model phases (compatible movements together), not individual lights. The phase table encodes safety.
-- Inject time (`tick`) for deterministic simulation; use callbacks (Observer) for displays and logs.
-- Emergency override switches only through a safe boundary; the design extends via TimingPolicy and extra phases.
+- Model phases (movements that go together), not single lights. The phase table holds the safety rule.
+- Pass time in (`tick`) for a predictable simulation. Use callbacks (Observer) for displays and logs.
+- An emergency request switches only at a safe point. Extend with a TimingPolicy and extra phases.
 :::

@@ -2,31 +2,31 @@
 title: Design Splitwise (expense sharing)
 level: intermediate
 time: 60
-summary: Users and groups, expenses split equally, by exact amounts or by percentage, exact money arithmetic with remainder distribution, a balance sheet between every pair of users, simplifying debts to the fewest payments, and settlement.
+summary: An app for sharing expenses among friends. Learn equal, exact and percentage splits, exact money handling with a fair way to share the leftover paise, balances between people, how to reduce the number of payments, and settling up.
 ---
 
 :::problem Design Splitwise {level=medium tags="finance,Strategy,graph,money,algorithm"}
-Design an expense-sharing app. Friends add expenses ("Asha paid Rs 900 for dinner, split among four people") using different split types: equal, exact amounts, or percentages. The app tracks who owes whom, shows each user's balances, simplifies debts so that fewer payments are needed, and lets users settle up.
+Design an expense-sharing app. Friends add expenses ("Asha paid Rs 900 for dinner, shared by four people") using different split types: equal, exact amounts, or percentages. The app tracks who owes whom, shows each person's balance, reduces the debts so that fewer payments are needed, and lets people settle up.
 
 :::hint Hint
-Every expense becomes a set of **(debtor, creditor, amount)** pairs. Keep a net balance per user (what they paid minus what they owe). Splitting must be exact in paise: remainders go to specific people so that the shares always sum to the total. Simplifying debts is a greedy match of the biggest creditor with the biggest debtor.
+Every expense becomes a set of **(debtor, creditor, amount)** pairs. Keep a net balance for each person (what they paid minus what they owe). Splitting must be exact in paise: the leftover paise go to specific people, so shares always add up to the total. To reduce debts, repeatedly match the biggest creditor with the biggest debtor.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Users and groups? | users with ids; a group is a set of users; expenses may be outside groups |
-| Expense? | description, total amount, **payer(s)**, participants, split type |
-| Split types? | **Equal**, **Exact** (amounts given), **Percent** (percentages given, must total 100) |
-| Money? | integer paise; shares always sum **exactly** to the total |
-| Balances? | for each pair (A,B): how much A owes B; plus each user's net position |
-| Simplify? | minimise the number of transactions to settle a group |
-| Settle? | a payment between two users reduces their balance |
-| Out of scope | currencies, receipts, UI |
+| Users and groups? | users have ids. A group is a set of users. Expenses can also be outside a group |
+| An expense? | description, total amount, **who paid**, who shares it, the split type |
+| Split types? | **Equal**, **Exact** (amounts given), **Percent** (percentages given, must add up to 100) |
+| Money? | integer paise. Shares add up **exactly** to the total |
+| Balances? | for each pair (A, B): how much A owes B. Plus each person's net position |
+| Reduce debts? | use as few payments as possible to settle a group |
+| Settle up? | a payment between two people reduces their balance |
+| Not needed | currencies, receipts, screen |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Splitwise"
 class ExpenseService
@@ -67,16 +67,16 @@ PercentSplit ..|> SplitStrategy
 Expense *-- Share
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **`SplitStrategy`** (Strategy): each split type validates its input and returns `vector<Share>` summing to the total. Adding "by shares/ratio" is a new class.
-- **Remainder rule**: for an equal split of 100 paise among 3, shares are 34, 33, 33: the first `remainder` people pay one paisa more. This guarantees the sum is exact, and it is **deterministic**.
-- **Ledger keeps net balances** per user: `net[u] = paid - owed`. Positive: others owe u; negative: u owes others. The sum over all users is always **0** (an invariant to test).
-- **Pairwise view** (who owes whom) is also maintained for display, but **simplification works on net balances only**: minimum cash flow, matching the largest debtor with the largest creditor. (The true minimum is NP-hard in general; greedy gives at most n-1 transfers, which is what apps use.)
-- **Settle** is just a negative expense: a payment from A to B adjusts both nets and the pair.
-- **Thread-safety**: one mutex in the ledger (expenses are rare compared with reads).
+- **`SplitStrategy`** (a Strategy). Each split type checks its input and returns a list of shares that add up to the total. A new split ("by shares or ratio") is a new class.
+- **The leftover rule.** Splitting 100 paise equally among 3 gives 34, 33, 33. The first few people pay one paisa more, as many as the leftover. So the sum is always exact, and the result is **the same every time**.
+- **The ledger keeps net balances** for each person: `net[u] = paid - owed`. Positive means others owe this person. Negative means this person owes others. The total over all people is always **0**. This is a rule worth testing.
+- **A pairwise view** (who owes whom) is kept for display. But **reducing debts uses net balances only**: match the biggest debtor with the biggest creditor. (The perfect minimum is a very hard problem. This greedy way gives at most n-1 payments, which is what apps use.)
+- **Settle up** is just a negative expense. A payment from A to B changes both nets and the pair.
+- **Threads:** one mutex in the ledger (adding expenses is rare compared with reading).
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Splits, ledger, simplified debts"
 #include <algorithm>
@@ -231,44 +231,50 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Amount not divisible (Rs 100 among 3) | 34 + 33 + 33 paise-wise; shares always sum exactly |
-| Percentages not summing to 100 | rejected with a message |
-| Exact amounts not matching the total | rejected, nothing recorded |
-| Payer not among participants | allowed (they paid but owe nothing) |
-| Two users owing each other | debts net against each other in `addDebt` |
-| Rounding with floating-point input | convert rupees to paise once at the boundary; all later maths is integer |
-| Multiple payers | record each payer's contribution as paid; shares are unchanged (extension) |
+| The amount does not divide evenly (Rs 100 among 3) | 34, 33 and 33 paise. Shares always add up exactly |
+| Percentages do not add up to 100 | refused with a message |
+| Exact amounts do not match the total | refused, nothing is saved |
+| The person who paid is not among those sharing | allowed. They paid but owe nothing |
+| Two people owe each other | the debts cancel each other in `addDebt` |
+| Rounding with decimal input | convert rupees to paise once at the entrance. All later maths uses integers |
+| More than one payer | record each payer's amount as paid. Shares stay the same (extension) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Split by shares or weights" | a `ShareSplit` strategy (proportional with the same remainder rule) |
-| "Groups with their own balances" | a `Ledger` per group, plus a global one |
-| "Recurring expenses" | scheduled commands that call `add` |
-| "Undo or edit an expense" | keep expenses; **recompute** the ledger from the list (event sourcing) or apply the reverse entries |
-| "Currencies" | `Money` with a currency; convert at expense time and store the rate |
-| "Notifications 'Ravi added an expense'" | Observer events |
-| "Large groups: faster simplification" | the greedy is O(n log n); exact minimisation (subset-sum partitioning) is exponential |
-| "Audit and dispute" | immutable expense log with who/when; balances derived |
+| "Split by shares or weights" | a `ShareSplit` strategy (in proportion, with the same leftover rule) |
+| "Groups with their own balances" | a `Ledger` for each group, and one global ledger |
+| "Repeating expenses" | scheduled commands that call `add` |
+| "Undo or edit an expense" | keep the list of expenses and **recompute** the ledger from it (event sourcing), or apply reverse entries |
+| "Currencies" | `Money` with a currency. Convert at the time of the expense and keep the rate |
+| "Notify 'Ravi added an expense'" | Observer events |
+| "Faster reduction for big groups" | the greedy way is O(n log n). The exact minimum is exponential |
+| "Audit and disputes" | a log of expenses that never changes, with who and when. Balances are worked out from it |
+
+## Short answer to say in an interview
+
+:::interview How do you split money exactly, and how do you reduce the number of payments?
+"I store money as integer paise. For an equal split, I divide, and give the leftover paise one each to the first few people, so the shares always add up to the total. The ledger keeps a net balance for each person, paid minus owed, and these always sum to zero. To reduce payments, I repeatedly match the person who is owed the most with the person who owes the most. That gives at most n minus 1 payments."
+:::
 
 ```quiz
-? Why do the nets always sum to zero?
+? Why do the net balances always add up to zero?
 - By luck
-+ Every expense adds the total to the payer and subtracts the same total across the shares
-- Because balances are positive
-> It is an invariant worth asserting in tests.
++ Each expense adds the total to the payer and takes the same total away across the shares
+- Balances are positive
+> It is a rule worth checking in tests.
 ? How do you split Rs 100 equally among 3 people exactly?
 - 33.33 each
-+ 34, 33, 33 paise-wise: give the remainder one paisa each to the first people
++ 34, 33, 33 paise. The leftover paise go one each to the first people
 - Round up for everyone
-> Integer arithmetic with a defined remainder rule keeps the sum exact.
+> Integer maths with a clear leftover rule keeps the sum exact.
 ```
 
 :::keypoints
-- Strategy for split types; integer paise; a deterministic remainder rule so shares sum exactly.
-- Ledger holds net balances (sum zero) and a pairwise view; simplification matches largest debtor with largest creditor.
-- A settlement is just another entry; events and recomputation give undo and audit.
+- A Strategy for split types, integer paise, and a clear leftover rule so shares add up exactly.
+- The ledger keeps net balances (they sum to zero) and a pairwise view. Reducing debts matches the biggest debtor with the biggest creditor.
+- A settlement is just another entry. Events and recomputing give undo and audit.
 :::

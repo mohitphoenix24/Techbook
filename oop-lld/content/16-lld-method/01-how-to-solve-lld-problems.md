@@ -2,148 +2,152 @@
 title: The routine for any LLD problem
 level: intermediate
 time: 40
-summary: A practical routine with timings for whiteboard and machine-coding rounds, question banks for clarifying requirements by problem type, how to choose entities and patterns quickly, how to handle the extension and concurrency follow-ups, and a scoring rubric to grade yourself.
+summary: A simple step-by-step routine with timings for whiteboard and machine-coding rounds. What to ask first, how to find classes, which pattern fits which hint, how to answer follow-ups, and a score sheet to grade yourself.
 ---
 
-Parts I and II gave you the tools. Part III applies them to **43 problems**. This lesson is the routine you will repeat on each one. The goal: after the third problem, you should not need to think about *how* to start.
+In the earlier parts you learnt the tools. In Part III you will use them on **43 problems**. This lesson is the **routine** you repeat for every problem.
 
-## The routine, with times (45-minute whiteboard round)
+The goal is simple: by the third problem, you should **not have to think about how to start**.
 
-| Minutes | Step | Output |
+## The routine, with timings (a 45-minute whiteboard round)
+
+| Minutes | Step | What you produce |
 |---|---|---|
-| 0 to 5 | **1. Clarify** requirements and scope | 5 to 8 bullets: must-have, nice-to-have, out of scope |
-| 5 to 10 | **2. Entities** and relationships | class diagram: boxes, arrows, multiplicities |
-| 10 to 15 | **3. Flows** | one sequence or state diagram for the main use cases |
-| 15 to 20 | **4. Variation points and patterns** | "pricing varies, so Strategy; lifecycle, so State" |
-| 20 to 40 | **5. Code** the core | interfaces first, then 2 or 3 key classes, then a small driver |
-| 40 to 45 | **6. Extend and harden** | edge cases, "what if we add X", concurrency |
+| 0 to 5 | **1. Ask questions** (requirements) | 5 to 8 short points: must have, nice to have, out of scope |
+| 5 to 10 | **2. Find the classes** and how they connect | a class diagram with boxes and arrows |
+| 10 to 15 | **3. Draw the flow** | one sequence or state diagram for the main use case |
+| 15 to 20 | **4. Find what can change**, and pick patterns | "pricing can change, so Strategy. It has a life cycle, so State." |
+| 20 to 40 | **5. Write the code** for the core | interfaces first, then 2 or 3 key classes, then a small `main` |
+| 40 to 45 | **6. Extend and check** | edge cases, "what if we add X", threads |
 
-For a **machine-coding round** (90 to 120 minutes): spend the first 10 minutes on steps 1 to 4 (written as a short design), then code for 60 to 80 minutes, leaving 10 to 15 for the demo, edge cases and clean-up. **Make the main flow work end to end by minute 40**, and improve from there.
+For a **machine-coding round** (90 to 120 minutes): spend the first 10 minutes on steps 1 to 4 (write a short design), then code for 60 to 80 minutes, and keep the last 10 to 15 minutes for the demo, edge cases and clean-up. **Make the main flow work from start to end by minute 40**, and improve it after that.
 
-## Step 1: clarify requirements
+## Step 1: Ask questions
 
-Good questions are **specific** and **cheap to answer**. Ask in groups, and write the answers down.
+Good questions are **short and specific**. Ask them in groups and write the answers down.
 
-| Group | Questions to ask |
+| Group | What to ask |
 |---|---|
-| **Scope** | Which features are in? Which are out? (payments? reservations? admin?) |
-| **Actors** | Who uses it? (customer, admin, system, driver) |
-| **Scale/concurrency** | One user or many at once? Multiple threads? (decides locking) |
-| **Data & rules** | What are the limits, prices, durations, priorities? Which rules might change? |
-| **Failure** | What if it is full, empty, invalid, or conflicts? |
-| **Extensibility** | Which new types or rules do you expect soon? |
-| **Non-goals** | Persistence? UI? Distributed? (usually no) |
+| **Scope** | Which features are included? Which are not? (payments? reservations? admin?) |
+| **Users** | Who uses it? (customer, admin, system, driver) |
+| **Scale and threads** | One user or many at once? Many threads? (this decides locking) |
+| **Data and rules** | What are the limits, prices, times, priorities? Which rules may change? |
+| **Failure** | What if it is full, empty, invalid, or two users clash? |
+| **Growth** | Which new types or rules do you expect soon? |
+| **Not needed** | Saving to a database? A screen? Many machines? (usually no) |
 
-### Domain-specific question bank
+### Questions by type of problem
 
-| Problem type | Ask about |
+| Type of problem | Ask about |
 |---|---|
-| **Games** (tic-tac-toe, chess, snake) | players, turn order, win/draw rules, undo, board size, AI vs human |
-| **Booking** (movie, hotel, parking) | inventory units, time ranges, overlap rules, cancellation, double-booking, locking a seat while paying |
-| **Money** (ATM, wallet, splitwise) | currency, rounding, negative balances, atomic transfers, audit trail |
-| **Caching/storage** (LRU, KV store) | capacity, eviction policy, TTL, thread-safety, hit/miss metrics |
-| **Scheduling** (elevator, task scheduler) | priorities, fairness, preemption, repeats, time source |
-| **Messaging** (pub/sub, chat, notifications) | delivery guarantees, ordering, retries, offline users, fan-out |
-| **Search/text** (typeahead, editor) | data size, ranking, case rules, update frequency, undo |
-| **Workflow/rules** (workflow, rule engine) | dependencies, failure policy, dynamic rule changes |
-| **Hierarchies** (file system, org chart) | operations on folders vs files, permissions, size, search |
+| **Games** (tic-tac-toe, chess, snake) | players, whose turn, how to win or draw, undo, board size, computer or human player |
+| **Booking** (movie, hotel, parking) | what is booked, time ranges, overlap rules, cancel, double booking, holding a seat while paying |
+| **Money** (ATM, wallet, splitwise) | currency, rounding, negative balance, safe transfers, a record of changes |
+| **Cache and storage** (LRU, key-value) | size limit, which item to remove, expiry time, many threads, hit and miss counts |
+| **Scheduling** (lift, task scheduler) | priorities, fairness, interrupting, repeating, where the time comes from |
+| **Messaging** (pub/sub, chat, notifications) | delivery promises, order, retries, offline users, sending to many |
+| **Search and text** (typeahead, editor) | data size, ranking, upper and lower case, how often it changes, undo |
+| **Workflow and rules** | dependencies, what to do on failure, rules that change while running |
+| **Tree-like data** (file system, org chart) | actions on folders and files, permissions, size, search |
 
-State your **assumptions** explicitly: "I assume single-currency, in-memory, thread-safe operations." The interviewer will correct you if needed.
+Say your **assumptions** out loud: "I assume one currency, everything in memory, and it must be safe for many threads." If you are wrong, the interviewer will tell you.
 
-## Step 2: entities, quickly
+## Step 2: Find the classes, quickly
 
-1. Underline the **nouns**: candidate classes.
-2. Classify each: **entity** (has identity), **value object** (Money, TimeRange), **enum**, **service/coordinator**, **policy/strategy**.
-3. Decide **ownership**: who creates and destroys each? (composition vs reference)
-4. Put each **behaviour** in the class that owns the needed data.
-5. Add **one coordinator** (the facade): `ParkingLot`, `Library`, `ChessGame`, with the public API.
+1. Underline the **nouns**. These are possible classes.
+2. Sort each one: **entity** (has an identity), **value** (like Money or TimeRange), **enum** (a fixed list), **service** (does a job), or **policy / strategy** (a rule that can change).
+3. Decide **who owns what**. Who creates it and who deletes it?
+4. Give each action to the class that has the data for it.
+5. Add **one main class** (the front door) like `ParkingLot`, `Library` or `ChessGame`. It holds the public methods.
 
-## Step 3: flows
+## Step 3: Draw the flow
 
-Draw one **sequence** for the main happy path and one for the most important failure. For anything with a lifecycle, a **state table**. If your flow needs a method that does not exist, fix the class diagram now.
+Draw one **sequence diagram** for the main normal path, and one for the most important failure. If something has a life cycle, write a **state table**. If the flow needs a method that is missing, fix the class diagram now.
 
-## Step 4: patterns by problem type
+## Step 4: Which pattern for which hint?
 
-| Where you see… | Likely pattern |
+| If the problem says... | Think about |
 |---|---|
-| "calculate X differently depending on…" (price, fee, discount, route, eviction) | **Strategy** |
-| "behaves differently depending on its status" (machine, order, elevator, ATM) | **State** |
-| "notify others when…" (events, price alerts, new message) | **Observer** / event bus |
-| "different kinds of Y created from input" (vehicle, piece, payment method) | **Factory** |
-| "step by step creation with many options" | **Builder** |
-| "undo/redo, queue, schedule, log operations" | **Command** (+ Memento) |
+| "calculate X differently depending on..." (price, fee, discount, route, which item to remove) | **Strategy** |
+| "behaves differently depending on its status" (machine, order, lift, ATM) | **State** |
+| "tell others when..." (events, price alerts, new message) | **Observer** / event bus |
+| "different kinds of Y created from input" (vehicle, piece, payment type) | **Factory** |
+| "many options, built step by step" | **Builder** |
+| "undo, redo, queue, schedule, record actions" | **Command** (and Memento) |
 | "add features by wrapping" (toppings, logging, retry) | **Decorator** |
-| "tree of folders/menus/org" | **Composite** (+ Visitor/Iterator) |
-| "one entry point over several subsystems" | **Facade** |
-| "pipeline of checks" | **Chain of Responsibility** |
-| "a global single thing" | inject one instance (Singleton last) |
+| "folders, menus, org chart" | **Composite** (and Visitor or Iterator) |
+| "one entry point over several parts" | **Facade** |
+| "a line of checks" | **Chain of Responsibility** |
+| "one global thing" | pass one object in (Singleton as a last choice) |
 
-Say patterns **with the reason**, never as decoration.
+Always say a pattern **with the reason**. Never use one only for decoration.
 
-## Step 5: coding order
+## Step 5: The order of coding
 
-1. `enum class`es and small value types.
-2. Interfaces (the variation points).
-3. Core entities with their rules and invariants.
-4. Strategy/State implementations.
-5. The coordinator/facade (`ParkingLot`...).
-6. `main()`: a driver that prints **each scenario** clearly.
+1. `enum class` types and small value types.
+2. Interfaces (the places where things can change).
+3. Main entities with their rules.
+4. Strategy and State classes.
+5. The main class (`ParkingLot`, ...).
+6. `main()`: a demo that prints **each scenario** clearly.
 
-If time is short, write the **interfaces and the coordinator fully**, and implement only one or two strategies, noting the others.
+If time is short, write the **interfaces and the main class completely**, implement only one or two strategies, and say what the others would be.
 
-## Step 6: the follow-ups you should expect
+## Step 6: Follow-up questions to expect
 
 | Follow-up | How to answer |
 |---|---|
-| "Add a new type/rule" | Show the exact new class and the (zero or one) line of registration. |
-| "Make it thread-safe" | Name the shared mutable state, choose a lock granularity (per entity / per structure), mention check-then-act, deadlock ordering, and `scoped_lock`. |
-| "Persist it" | Introduce a Repository interface; in-memory fake and SQL implementation. |
-| "Scale it / distribute it" | Say what stays the same (the interfaces) and what changes (storage, partitioning, queues). This leads into HLD. |
-| "How would you test it?" | Inject clocks and fakes; state-based tests; stress tests for concurrency. |
-| "What are the weaknesses of your design?" | Be honest: name one trade-off (for example, the coordinator may become big) and how you would refactor. |
+| "Add a new type or rule" | Show the exact new class, and the zero or one line where you plug it in. |
+| "Make it thread-safe" | Name the shared data that changes. Choose where to lock (per item or per structure). Mention check-then-act, lock order, and `scoped_lock`. |
+| "Save it to storage" | Add a Repository interface, with a memory version and a SQL version. |
+| "Make it big / spread over machines" | Say what stays (the interfaces) and what changes (storage, splitting data, queues). This leads into HLD. |
+| "How will you test it?" | Pass in clocks and fakes. Check results. Stress test for threads. |
+| "What are the weak points?" | Be honest. Name one trade-off (for example, the main class may grow big) and how you would fix it. |
 
-## Self-grading rubric
+## Score sheet (grade yourself)
 
-Score each problem from 0 to 2 on each line (max 20). Below 14 means redo it.
+Give each line 0, 1 or 2 points (maximum 20). Below 14 means redo the problem.
 
-| Criterion | 0 | 1 | 2 |
+| What | 0 | 1 | 2 |
 |---|---|---|---|
-| Requirements clarified, assumptions stated | skipped | some | complete and prioritised |
-| Entities are right, each with one clear job | god class | okay | clean responsibilities |
-| Relationships correct (is-a vs has-a, ownership) | confused | mostly | precise with multiplicities |
-| Variation points isolated (interfaces) | switch/if chains | one | all the likely ones |
-| Patterns used with justification | none or decorative | some | each one earned |
-| Code works end to end with a clear demo | does not run | happy path | edge cases too |
-| C++ quality: const, RAII, smart pointers, override | raw `new`, no const | partly | idiomatic |
-| Edge cases and errors | ignored | few | systematic |
-| Extension drill answered | stuck | with edits | by adding classes |
-| Concurrency and testing discussed | not mentioned | mentioned | designed |
+| Asked questions, said assumptions | skipped | some | complete, in order of importance |
+| Classes are right, each with one job | one giant class | okay | clean jobs |
+| Relationships correct (is-a or has-a, ownership) | confused | mostly | exact, with numbers |
+| Changeable parts behind interfaces | if/switch chains | one | all the likely ones |
+| Patterns used with reasons | none, or decorative | some | each one earned |
+| Code works from start to end, with a clear demo | does not run | normal case works | edge cases too |
+| C++ quality: const, RAII, smart pointers, override | raw `new`, no const | partly | clean |
+| Edge cases and errors | ignored | a few | planned |
+| Extension question answered | stuck | with edits | by adding classes |
+| Threads and testing discussed | not mentioned | mentioned | designed |
+
+## Short answer to say in an interview
 
 :::interview What do you do in the first 5 minutes of an LLD round?
-"I restate the problem, then ask scoped questions: who the actors are, the main use cases, the rules that may change, whether concurrency matters, and what is out of scope. I write the answers as short bullets and state my assumptions. Only then do I draw the entities. This prevents designing the wrong system and shows structure."
+"I repeat the problem in my own words. Then I ask short questions: who the users are, the main use cases, which rules can change, whether many threads are involved, and what is not needed. I write the answers as short points and say my assumptions. Only after that do I draw the classes. This stops me from designing the wrong system, and it shows a clear method."
 :::
 
 ```quiz
 ? When should you start writing code in a 45-minute round?
 - Immediately
-+ After clarifying requirements, listing entities, and outlining the flows (about minute 20)
++ After asking questions, listing the classes and drawing the flow (about minute 20)
 - At the end
-> Design first, but leave about 20 minutes for the core code.
-? In a machine-coding round, what should be working by minute 40?
-- Everything, including all edge cases
-+ The main flow, end to end, with a demo
+> Design first, but keep about 20 minutes for the main code.
+? In a machine-coding round, what should work by minute 40?
+- Everything, with all edge cases
++ The main flow from start to end, with a demo
 - Only the class diagram
-> Get the happy path running first, then harden.
-? What is the best way to handle "now add X"?
+> Get the normal case running first, then improve it.
+? What is the best way to answer "now add X"?
 - Rewrite the design
-+ Show which class you add and what stays unchanged
++ Show which class you add, and what stays the same
 - Say it is out of scope
-> Extensibility is graded by how local the change is.
+> The smaller and more local the change, the better your design.
 ```
 
 :::keypoints
-- Use the same 6 steps every time: clarify, entities, flows, patterns, code, extend and harden, with timings.
-- Ask scoped questions by problem type; state assumptions; keep a one-page checklist of patterns by symptom.
-- Code interfaces and the coordinator first; end with a driver that demonstrates scenarios.
-- Prepare the standard follow-ups: new type, thread-safety, persistence, scaling, testing, weaknesses.
+- Use the same 6 steps every time: ask, find classes, draw the flow, choose patterns, code, then extend and check. Keep to the timings.
+- Ask short questions based on the type of problem. Say your assumptions. Keep the pattern hint table in your head.
+- Code the interfaces and the main class first. End with a demo of each scenario.
+- Prepare the usual follow-ups: new type, threads, storage, scaling, testing, weak points.
 :::

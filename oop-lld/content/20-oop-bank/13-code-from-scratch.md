@@ -2,10 +2,12 @@
 title: "OOP interview: write it from scratch"
 level: hard
 time: 50
-summary: Classic implement-it-yourself exercises with verified code: a String class, a Vector, a unique_ptr and a shared_ptr, a Matrix with operators, a generic Stack, a singly linked list and an observable counter. Each shows what the interviewer checks.
+summary: Classic "implement it yourself" exercises with verified code: a String class, a Vector, a unique_ptr and a shared_ptr, a Matrix with operators, a generic Stack and an observable value. Each one says what the interviewer is checking.
 ---
 
-These are the "implement `std::xxx`" questions. They check the Rule of Five, RAII, `const` correctness and operators. Type them out until they are automatic.
+These are the "implement `std::xxx`" questions. They check that you know the Rule of Five, RAII, `const` and operators. Type them out until it feels easy.
+
+How to practise: read the code once, close the page, and write it again from memory. Then compare. Say aloud **why** each line is there. The "What the interviewer checks" line tells you what to explain.
 
 :::qa Implement a String class with the Rule of Five {level=hard}
 ```cpp run title="A minimal String"
@@ -53,7 +55,7 @@ int main() {
     cout << "\n" << d << " equal to b? " << boolalpha << (d == b) << "\n";
 }
 ```
-**What the interviewer checks:** copy vs move, `noexcept` on move, self-assignment safety, `const` overloads of `operator[]`, no leaks (`delete[]`), moved-from state valid, null-safe `c_str`. Note `operator+` takes its left operand **by value** and reuses `+=`.
+**What the interviewer checks:** copy versus move, `noexcept` on the move, safety when assigning to yourself, `const` versions of `operator[]`, no leaks (`delete[]`), a valid moved-from object, and a safe `c_str`. Note that `operator+` takes its left side **by value** and reuses `+=`.
 :::
 
 :::qa Implement a simplified `vector<T>` {level=hard}
@@ -121,7 +123,7 @@ int main() {
     cout << "\n";
 }
 ```
-**What the interviewer checks:** raw storage plus placement new (elements are constructed only when added), doubling growth, `move_if_noexcept`, destroying elements before freeing, the Rule of Five, `emplace_back` with forwarding, const iterators.
+**What the interviewer checks:** raw memory plus placement new (items are built only when added), growth by doubling, `move_if_noexcept`, destroying the items before freeing the memory, the Rule of Five, `emplace_back` with forwarding, and const iterators.
 :::
 
 :::qa Implement `unique_ptr` {level=hard}
@@ -160,7 +162,7 @@ int main() {
     cout << "end of main\n";
 }
 ```
-**What the interviewer checks:** copy deleted, move implemented with `exchange`, self-move guard, `explicit operator bool`, `release` vs `reset`, forwarding `make`.
+**What the interviewer checks:** copying is deleted, the move uses `exchange`, a guard for moving to yourself, `explicit operator bool`, the difference between `release` and `reset`, and a `make` function that forwards its arguments.
 :::
 
 :::qa Implement `shared_ptr` (reference counting) {level=hard}
@@ -205,7 +207,7 @@ int main() {
     cout << "done\n";
 }
 ```
-**What the interviewer checks:** the shared control block, increment on copy, decrement and delete at zero, move without touching the count. Mention that the real one uses **atomic** counts, a weak count, a deleter and `make_shared` merging the allocations.
+**What the interviewer checks:** the shared control block, adding 1 when copying, subtracting and deleting at zero, and a move that does not touch the count. Say that the real one uses **atomic** counts, a weak count, a deleter, and that `make_shared` joins the two allocations.
 :::
 
 :::qa Implement a generic Matrix class with operators {level=medium}
@@ -248,7 +250,7 @@ int main() {
     try { Matrix bad(2, 3); auto x = bad * bad; } catch (const invalid_argument& e) { cout << "error: " << e.what() << "\n"; }
 }
 ```
-**What the interviewer checks:** `operator()` with const and non-const overloads (not `[][]`), flat storage in a `vector` (Rule of Zero, so no copy code), shape checks with exceptions, symmetric `k * m` as a non-member.
+**What the interviewer checks:** `operator()` with const and non-const versions (not `[][]`), flat storage in a `vector` (Rule of Zero, so no copy code), shape checks with exceptions, and the symmetric `k * m` as a non-member.
 :::
 
 :::qa Implement a generic Stack with a linked list (templates, RAII) {level=medium}
@@ -285,7 +287,7 @@ int main() {
     cout << "built " << big.size() << " nodes and destroyed them without a stack overflow\n";
 }
 ```
-**What the interviewer checks:** ownership via `unique_ptr`, a destructor that does not recurse (a recursive node destructor overflows the call stack with a long list), strong exception behaviour, `top()` const. The class is move-only because `unique_ptr` members block copying; say so, or add a deep-copy constructor.
+**What the interviewer checks:** ownership with `unique_ptr`, a destructor that does not call itself again and again (a recursive destructor overflows the stack on a long list), safe behaviour on errors, and a `const` `top()`. The class can only be moved because `unique_ptr` members stop copying. Say this, or add a deep-copy constructor.
 :::
 
 :::qa Implement an observable value (Observer pattern with std::function) {level=medium}
@@ -325,18 +327,18 @@ int main() {
     cout << "final " << temp.get() << "\n";
 }
 ```
-**What the interviewer checks:** subscription handles, notify-only-on-change, safe iteration when observers unsubscribe, ownership/lifetime of observers (store `weak_ptr`s or return a handle for production code).
+**What the interviewer checks:** subscription handles, telling observers only when the value really changes, safe looping when observers unsubscribe, and who owns the observers (use `weak_ptr` or return a handle in real code).
 :::
 
 ```quiz
 ? Why does MyVector use placement new instead of `new T[n]`?
 - It is faster to type
-+ It allocates raw memory and constructs elements only when they are added, like std::vector
++ It gets raw memory and builds items only when they are added, like std::vector
 - It avoids templates
-> new T[n] would default-construct all n elements up front and require a default constructor.
+> new T[n] would build all n items at once and need a default constructor.
 ```
 
 :::keypoints
-- Practise: String (Rule of Five), vector (raw storage + placement new), unique_ptr and shared_ptr (move, counts), matrix (operators), stack (templates + ownership), observable (callbacks).
-- State your invariants and the `noexcept`/`const` choices aloud: that is what is being graded.
+- Practise: String (Rule of Five), vector (raw memory and placement new), unique_ptr and shared_ptr (move, counts), matrix (operators), stack (templates and ownership), observable (callbacks).
+- Say your rules, and your choices about `noexcept` and `const`, aloud. That is what is being graded.
 :::

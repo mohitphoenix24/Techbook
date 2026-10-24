@@ -2,32 +2,39 @@
 title: Design a Payment Gateway
 level: advanced
 time: 75
-summary: Accepting payments through different methods and providers, an idempotent payment state machine (created, authorised, captured, refunded, failed), a fraud-check chain, provider routing with failover and a circuit breaker, a double-entry ledger, and webhook-style event notifications.
+summary: Accept payments by card, UPI or wallet through different providers. Learn the payment state machine, idempotency keys so nobody is charged twice, a chain of fraud checks, routing with failover and a circuit breaker, a ledger, and notifications to merchants.
 ---
 
 :::problem Design a Payment Gateway (Razorpay/Stripe-like core) {level=hard tags="payments,State,Strategy,idempotency,circuit breaker,ledger,Chain of Responsibility"}
-Design the core of a payment gateway used by merchants. A merchant creates a payment for an amount; the customer pays with a card, UPI or wallet; the gateway checks for fraud, routes the request to an acquirer/bank (with failover), records the result, and notifies the merchant. Merchants can **capture** authorised payments and **refund** captured ones. Network failures and retries must never charge a customer twice.
+Design the core of a payment gateway used by merchants. A merchant creates a payment for an amount. The customer pays by card, UPI or wallet. The gateway checks for fraud, sends the request to a bank or provider (with a backup if one fails), records the result, and tells the merchant. Merchants can **capture** an authorised payment and **refund** a captured one. Network failures and retries must never charge a customer twice.
 :::
 
 :::hint Hint
-Three ideas dominate: (1) a **state machine** for the payment so illegal transitions are impossible, (2) **idempotency keys** so a retried request returns the original result, and (3) **separation of the gateway from providers** through an interface, so routing, failover and circuit breaking are pluggable. Money movement is recorded in a **double-entry ledger**.
+Three ideas matter most. (1) A **state machine** for the payment, so wrong transitions are impossible. (2) **Idempotency keys**, so a repeated request returns the first result. (3) A **separate provider interface**, so routing, failover and the circuit breaker can be swapped. Record the movement of money in a **double-entry ledger**.
 :::
 
-## Step 1: requirements
+## First, some words
 
-| Question | Assumption |
+- **Authorise**: the bank agrees to hold the money (a hold). The money is not yet taken.
+- **Capture**: take the held money for real.
+- **Refund**: give money back after capture.
+- **Idempotent**: doing the same request many times has the same effect as doing it once.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Methods? | card, UPI, wallet (each handled by a method-specific adapter) |
-| Flow? | `create` → `authorize` (hold funds) → `capture` (settle) → optional `refund` (full/partial); or direct `charge` (authorize + capture) |
-| Idempotency? | every mutating call carries an idempotency key; repeats return the stored result without side effects |
-| Fraud checks? | a pipeline: amount limits, velocity (too many attempts), blacklist; can reject or flag |
-| Providers? | several acquirers per method; choose by cost/success rate; **fail over** if one is down |
-| Resilience? | timeouts, retries only when safe, circuit breaker per provider |
-| Ledger? | every capture/refund creates balanced debit/credit entries (customer, merchant, fees) |
-| Notifications? | merchants get events (`payment.captured`, `refund.created`) like webhooks |
-| Out of scope | PCI storage details, settlements to bank accounts, disputes |
+| Methods? | card, UPI, wallet (each has its own adapter) |
+| The flow? | `create`, then `authorize` (hold the money), then `capture` (take it), then optionally `refund` (full or partial). Or a direct `charge` (authorize and capture together) |
+| Idempotency? | every call that changes things carries an idempotency key. A repeat returns the saved result with no new effect |
+| Fraud checks? | a pipeline: amount limits, too many attempts, a blocked list. Can reject or flag |
+| Providers? | several for each method. Pick by cost or success rate. **Fail over** if one is down |
+| Safety against failures? | time limits, retries only when safe, a circuit breaker for each provider |
+| Ledger? | every capture or refund makes balanced debit and credit entries (customer, merchant, fees) |
+| Messages? | merchants get events (`payment.captured`, `refund.created`) like webhooks |
+| Not needed | how card data is stored (PCI), paying out to bank accounts, disputes |
 
-## Step 2: payment lifecycle
+## Step 2: The life cycle of a payment
 
 ```viz algo=state title="Payment states"
 state Created "Created" [initial] @0,1
@@ -45,7 +52,7 @@ Captured -> Captured : partial refund
 play: provider approves, capture, partial refund, refund (full)
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Payment gateway"
 class PaymentGateway
@@ -96,18 +103,18 @@ BlacklistCheck ..|> FraudCheck
 PaymentGateway *-- Payment
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **Payment state machine** enforced in `Payment`: `authorize()`, `capture()`, `refund(m)` check the current state and amounts (`refunded + m ≤ captured`). Illegal moves return an error, never silently succeed.
-- **Idempotency store**: key → stored response. On a repeat the gateway returns the **same response** without calling the provider again. If the first attempt is still running, the second waits or gets "in progress". The key is scoped to (merchant, operation).
-- **Fraud pipeline** (Chain of Responsibility): each check returns Approve / Reject(reason) / Review. The first Reject stops the payment before any provider call.
-- **Provider interface and Router**: the router returns an **ordered list** of providers for the method (by cost, success rate, rules). The gateway tries them in order: **failover** on a *retryable* failure (timeout, 5xx), but **not** on a definitive decline (insufficient funds): retrying a decline elsewhere would double-charge risk and annoy customers.
-- **Circuit breaker per provider** (Closed → Open after N consecutive failures → Half-open after a cool-down → Closed on success). It prevents hammering a failing provider.
-- **Ledger** with **double-entry**: each movement debits one account and credits another for the same amount; the sum of all entries is always zero. Fees are separate entries. The ledger is append-only.
-- **Events** after state changes (Observer) simulate webhooks; delivering them is at-least-once with retries (the merchant must be idempotent too).
-- **Amounts** in minor units (paise) with a currency code.
+- **The payment state machine** is inside `Payment`: `authorize()`, `capture()`, `refund(m)` check the current state and the amounts (`refunded + m ≤ captured`). A wrong action returns an error. It never succeeds silently.
+- **Idempotency store:** key to saved response. On a repeat, the gateway returns the **same response** and does not call the provider again. If the first try is still running, the second one waits or gets "in progress". The key belongs to (merchant, action).
+- **Fraud pipeline** (Chain of Responsibility): each check says Approve, Reject(reason) or Review. The first Reject stops the payment before any provider is called.
+- **Provider interface and Router:** the router gives an **ordered list** of providers for the method (by cost, success rate or rules). The gateway tries them in order. It does a **failover** on a *retryable* failure (timeout, server error), but **not** on a final decline (not enough money). Trying a decline again elsewhere risks a double charge and annoys customers.
+- **A circuit breaker for each provider** (Closed, then Open after N failures in a row, then Half-open after a cool-down, then Closed again on success). It stops us from hammering a provider that is failing.
+- **Ledger with double entry:** each movement takes from one account and gives to another for the same amount. All entries together always add up to zero. Fees are separate entries. The ledger only grows.
+- **Events** after a state change (Observer) act like webhooks. Delivery is at-least-once with retries (the merchant must also handle repeats).
+- **Amounts** are in small units (paise) with a currency code.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Idempotent payments, fraud chain, failover with circuit breaker, ledger"
 #include <functional>
@@ -284,59 +291,65 @@ int main() {
 }
 ```
 
-## Why each safeguard exists
+## Why each safety is there
 
-| Problem | Safeguard |
+| Problem | Safety |
 |---|---|
-| Client retries after a timeout and the customer is charged twice | **idempotency key** returns the stored result |
-| Two concurrent requests with the same key | the store marks the key "in progress"; the second waits or gets a conflict |
-| Provider down | **failover** to the next provider (only for retryable failures) |
-| Provider flapping | **circuit breaker** stops traffic and probes after a cool-down |
-| Refunding more than captured | invariant `refunded + amount ≤ captured` checked in the state machine |
-| Money appears/disappears | **double-entry ledger**: postings must sum to zero |
-| Lost webhooks | at-least-once delivery with retries; events carry ids so merchants can de-duplicate |
-| Card testing and abuse | fraud pipeline with velocity limits and blacklists |
+| The client retries after a timeout, and the customer is charged twice | an **idempotency key** returns the saved result |
+| Two requests with the same key at the same time | the store marks the key "in progress". The second waits or gets a conflict |
+| A provider is down | **failover** to the next provider (only for retryable failures) |
+| A provider that keeps failing and recovering | a **circuit breaker** stops the traffic and tests after a cool-down |
+| Refunding more than was captured | the rule `refunded + amount ≤ captured` is checked in the state machine |
+| Money appears or disappears | a **double-entry ledger**: postings must add up to zero |
+| Lost webhooks | at-least-once delivery with retries. Events have ids so merchants can remove duplicates |
+| Card testing and abuse | a fraud pipeline with limits on attempts and a blocked list |
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Authorised but never captured | auto-void after N days (a scheduled job) |
-| Provider says "timeout" but actually charged | reconcile by querying the provider for the status with the same reference before retrying elsewhere |
-| Capture amount less than authorised | partial capture; the rest is released |
-| Currency mismatch | amounts carry a currency; the gateway rejects or converts |
-| Duplicate refund request | idempotency on the refund key |
-| Clock skew for the circuit breaker | use a monotonic clock |
-| Audit | every state change stored as an immutable event |
+| Authorised but never captured | cancel automatically after N days (a scheduled job) |
+| The provider says "timeout" but really charged | check the provider's status with the same reference before trying elsewhere |
+| Capturing less than was authorised | a partial capture. The rest is released |
+| A different currency | amounts carry a currency. The gateway refuses or converts |
+| A refund request repeated | idempotency on the refund key |
+| Clock differences for the circuit breaker | use a steady clock |
+| Audit | every state change is saved as an event that never changes |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "3-D Secure / OTP step" | an `Authentication` state between Created and Authorized |
-| "Smart routing by success rate and cost" | the router ranks providers using live metrics (Strategy) |
-| "Subscriptions and recurring billing" | a scheduler that creates payments from stored tokens |
-| "Split payments / marketplaces" | ledger entries to several merchant accounts |
-| "Settlements and reconciliation" | a nightly job comparing the ledger with provider reports |
-| "PCI compliance" | tokenise card data in a vault; the gateway sees tokens only |
-| "Multi-region and consistency" | idempotency store and ledger in a strongly consistent database; outbox pattern for events |
-| "Rate limiting per merchant" | the limiter from the earlier lesson in front of the API |
+| "3-D Secure or OTP step" | an `Authentication` state between Created and Authorized |
+| "Smart routing by success rate and cost" | the router ranks providers using live numbers (Strategy) |
+| "Subscriptions and repeat billing" | a scheduler that creates payments from saved tokens |
+| "Split payments, marketplaces" | ledger entries to several merchant accounts |
+| "Settlements and matching records" | a nightly job that compares the ledger with provider reports |
+| "PCI rules" | keep card data in a vault as tokens. The gateway sees only tokens |
+| "Many regions and consistency" | keep the idempotency store and ledger in a strongly consistent database. Use the outbox pattern for events |
+| "Rate limits for each merchant" | the rate limiter from the earlier lesson in front of the API |
+
+## Short answer to say in an interview
+
+:::interview How do you make sure a customer is never charged twice?
+"Every request that changes something carries an idempotency key. The gateway stores the key with the response, so a repeat returns the saved response and does not call the provider again. The payment itself is a state machine, so a wrong action like capturing twice is refused. If a provider times out, I check its status with the same reference before trying another one. I fail over only on retryable errors, never on a final decline, and I record money in a double-entry ledger."
+:::
 
 ```quiz
-? What does an idempotency key guarantee?
+? What does an idempotency key promise?
 - That requests are faster
-+ Repeating a request with the same key returns the original result and causes no new side effects
-- That the payment succeeds
++ Repeating a request with the same key returns the first result and has no new effect
+- That the payment works
 > It makes retries safe.
 ? When should the gateway fail over to another provider?
 - On any failure, including a card decline
-+ Only on retryable failures such as timeouts; a definitive decline is returned to the customer
++ Only on retryable failures like timeouts. A final decline goes back to the customer
 - Never
-> Retrying a decline elsewhere risks double charging and wastes attempts.
+> Retrying a decline elsewhere risks a double charge and wastes tries.
 ```
 
 :::keypoints
-- State machine for the payment, idempotency keys for every mutation, fraud chain before providers.
-- Provider interface + router order + failover on retryable errors + circuit breaker per provider.
-- Double-entry ledger (always sums to zero), events like webhooks, amounts in minor units.
+- A state machine for the payment, idempotency keys for every change, and a fraud chain before the providers.
+- A provider interface, a router order, failover on retryable errors, and a circuit breaker for each provider.
+- A double-entry ledger (always adds to zero), events like webhooks, and amounts in small units.
 :::

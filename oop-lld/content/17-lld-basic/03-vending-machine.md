@@ -2,28 +2,28 @@
 title: Design a Vending Machine
 level: easy
 time: 45
-summary: The classic State-pattern problem: money handling, item selection, dispensing, refunds and change, an inventory of slots, and out-of-stock handling, with one class per state and a complete runnable simulation.
+summary: The classic State pattern problem. Handle coins, choosing an item, dispensing, refunds and change, and out-of-stock items, with one class for each state and a complete running simulation.
 ---
 
 :::problem Design a Vending Machine {level=easy tags="state machine,State pattern,inventory,money"}
-Design a vending machine that sells snacks. A customer inserts coins, selects an item by its code, and receives the item and any change. The machine must handle insufficient money, sold-out items, cancelling (refund) and restocking by an operator.
+Design a vending machine that sells snacks. A customer puts in coins, chooses an item by its code, and gets the item and any change. The machine must handle: not enough money, sold-out items, cancelling (refund), and restocking by the operator.
 
 :::hint Hint
-The machine behaves differently depending on what it is doing right now: waiting, holding money, dispensing. That is a **lifecycle**, so draw the state diagram first, then give each state its own class.
+The machine behaves differently depending on what it is doing right now: waiting, holding money, or dispensing. That is a **life cycle**. Draw the state diagram first, then give each state its own class.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Money? | coins of 1, 2, 5, 10 rupees; amounts in whole rupees; **exact change** is returned with a greedy coin algorithm |
+| Money? | coins of 1, 2, 5 and 10 rupees. Amounts in whole rupees. **Exact change** is given using a greedy method (largest coin first) |
 | Items? | a slot has a code (A1...), an item name, a price and a quantity |
-| Operations? | insert coin, select item, cancel (refund), restock (operator) |
-| Errors? | not enough money (stay in `HasMoney`), sold out (reject), unknown code |
-| Out of scope | card/UPI payment, multiple machines, remote monitoring |
+| Actions? | insert coin, select item, cancel (refund), restock (operator) |
+| Errors? | not enough money (stay in `HasMoney`), sold out (refuse), unknown code |
+| Not needed | card or UPI payment, many machines, remote monitoring |
 
-## Step 2: the lifecycle (state diagram)
+## Step 2: The life cycle (state diagram)
 
 ```viz algo=state title="Vending machine states"
 state Idle "Idle" [initial] @0,1
@@ -38,15 +38,15 @@ Dispensing -> Idle : item and change given
 play: select, insert coin, insert coin, select, insert coin, cancel
 ```
 
-Operations that make no sense in a state (selecting with no money) are **rejected with a message**, not ignored silently.
+Actions that make no sense in a state (like choosing an item with no money) are **refused with a message**. They are not ignored silently.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 - **Coin** (enum with a value): `One, Two, Five, Ten`.
-- **Slot**: code, item name, price, quantity. **Inventory**: slots by code.
-- **ChangeMaker**: computes change from a rupee amount (greedy, largest coin first).
-- **State** (interface): `insertCoin`, `select`, `cancel`. Concrete: `IdleState`, `HasMoneyState`, `DispensingState`.
-- **VendingMachine** (context): holds the inventory, the current credit and the current state; delegates every operation.
+- **Slot**: code, item name, price, quantity. **Inventory**: the slots by code.
+- **ChangeMaker**: works out the change for an amount (largest coin first).
+- **State** (interface): `insertCoin`, `select`, `cancel`. Three versions: `IdleState`, `HasMoneyState`, `DispensingState`.
+- **VendingMachine** (the context): holds the inventory, the current credit and the current state. It passes every action to the state.
 
 ```viz algo=uml title="Vending machine: State pattern"
 class VendingMachine
@@ -81,15 +81,15 @@ Inventory *-- Slot
 VendingMachine ..> ChangeMaker
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **State pattern** (one class per state) instead of a `switch` in every method: adding "OutOfService" later is a new class.
-- States are **stateless and shared** (the credit and inventory live in the machine), so one instance of each is enough.
-- **Dispensing is a state** so that, in a concurrent version, further coins and selections are rejected while the motor runs.
-- **Change** is a separate small class: it is pure logic, easily unit tested.
-- Money is an `int` of rupees (a toy); a real machine would use a `Money` value type.
+- **State pattern**: one class per state, instead of a `switch` in every method. Adding "OutOfService" later is just a new class.
+- The states **hold no data**, so one shared copy of each is enough. The credit and the inventory live in the machine.
+- **Dispensing is its own state.** If many things happen at the same time, new coins and new selections are refused while the motor runs.
+- **Change** is a separate small class. It is simple logic and easy to test.
+- Money is an `int` of rupees here (to keep it simple). A real machine would use a `Money` type.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Vending machine: complete"
 #include <iostream>
@@ -226,40 +226,46 @@ int main() {
 
 ## Edge cases to mention
 
-| Case | Handling |
+| Case | How to handle |
 |---|---|
-| Exact change unavailable | real machines keep a coin float; add `canMakeChange()` and refuse the sale (or show "exact change only") |
-| Power cut during dispensing | persist the transaction before moving the motor, recover on start-up (Memento/log) |
-| Concurrent use (one person at a time physically) | a mutex around the public operations; `DispensingState` already refuses overlapping requests |
-| Two items with the same code | rejected when loading |
-| Price changes | a `PricingPolicy` (Strategy) if prices vary by time or location |
+| The machine cannot make exact change | real machines keep spare coins. Add `canMakeChange()` and refuse the sale (or show "exact change only") |
+| Power cut while dispensing | save the sale before the motor moves, and recover when it starts again |
+| Used by many at once (a real machine has one person at a time) | one mutex around the public actions. `DispensingState` already refuses overlapping requests |
+| Two items with the same code | refuse when loading |
+| Prices change | a `PricingPolicy` (Strategy) if prices depend on time or place |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Add card/UPI" | a `PaymentMethod` interface; `CashPayment` is today's behaviour |
-| "Out of service / maintenance mode" | new `OutOfServiceState`; all operations refused |
-| "Promotions: buy 2 get 1" | a `DiscountPolicy` Strategy applied on `select` |
-| "Remote monitoring" | Observer: the machine publishes `LowStock`, `Fault` events |
-| "Several machines" | `VendingMachine` stays as is; add a `Fleet` that holds many and a `Restocker` that reacts to events |
+| "Add card or UPI" | a `PaymentMethod` interface. `CashPayment` is today's behaviour |
+| "A maintenance mode" | a new `OutOfServiceState`. All actions are refused |
+| "Offers like buy 2 get 1" | a `DiscountPolicy` (Strategy) used inside `select` |
+| "Remote monitoring" | Observer: the machine announces `LowStock` and `Fault` |
+| "Many machines" | keep `VendingMachine` as it is. Add a `Fleet` that holds many, and a `Restocker` that listens for events |
+
+## Short answer to say in an interview
+
+:::interview Why use the State pattern for a vending machine?
+"The machine behaves differently when it is idle, holding money or dispensing. Instead of a switch in every method, each state is a class that decides what each action does in that state, and what the next state is. The machine just passes the call to the current state. A new state, like out of service, is a new class and does not change the others."
+:::
 
 ```quiz
-? Why is Dispensing modelled as its own state?
+? Why is Dispensing its own state?
 - To save memory
-+ Operations during dispensing (coins, selections, cancel) must behave differently, and a state class expresses that
++ Actions during dispensing (coins, choosing, cancel) must behave differently, and a state class shows that clearly
 - Because the motor needs a class
-> The State pattern gives each lifecycle phase its own behaviour.
-? What happens when the customer selects an item that costs more than the credit?
-- The machine takes the money
-+ It tells them the price and stays in HasMoney so they can add coins
+> Each phase of the life cycle gets its own behaviour.
+? What happens if the customer chooses an item that costs more than the credit?
+- The machine keeps the money
++ It shows the price and stays in HasMoney so the customer can add more coins
 - It cancels
-> No transition: only a message.
+> There is no state change. Only a message.
 ```
 
 :::keypoints
-- Draw the state diagram first; one class per state; the machine delegates every operation.
-- Stateless states can be shared; credit and inventory live in the context.
-- Separate pure logic (ChangeMaker) from the lifecycle. Reject invalid operations with clear messages.
+- Draw the state diagram first. One class per state. The machine passes every action to the current state.
+- States without data can be shared. Credit and inventory live in the machine.
+- Keep simple logic (ChangeMaker) apart from the life cycle. Refuse wrong actions with a clear message.
 - Extensions: payment strategy, discount policy, out-of-service state, events for monitoring.
 :::

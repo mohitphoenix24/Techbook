@@ -2,16 +2,20 @@
 title: Factory Method and Simple Factory
 level: intermediate
 time: 35
-summary: Moving object creation out of client code. A simple factory function, the Factory Method pattern with creator and product hierarchies, a self-registering registry factory, and how to choose between them.
+summary: Do not create objects with `new` all over your code. Learn the simple factory function, the Factory Method pattern, and a self-registering factory, and when to use each.
 ---
 
+## What problem does a factory solve?
+
+Imagine your code says `new PdfParser` in ten places. Tomorrow you must also support JSON. Now you must open all ten places and add `if / else`. That is painful and risky.
+
+A **factory** is just **one place that creates the objects for you**. The rest of the code asks the factory: "give me a parser for this format", and does not care which class comes back.
+
 :::def Factory Method
-Define an interface for **creating an object**, but let **subclasses decide which class to instantiate**. Factory Method lets a class defer instantiation to subclasses.
+Define one method for **creating an object**, and let **subclasses decide** which exact class to create.
 :::
 
-The problem it solves: client code that writes `new Concrete...` is welded to that concrete type. When the type to create varies (by input, config, platform), those `if/else` chains spread everywhere.
-
-## The problem
+## The problem in code
 
 ```cpp run title="Creation logic scattered through the client"
 #include <iostream>
@@ -32,9 +36,11 @@ int main() {
 }
 ```
 
-## Step 1: Simple Factory (a function)
+The creation logic is spread everywhere. Every new type means editing all those places.
 
-Move the decision into **one function**. Not a GoF pattern, but the 80% solution.
+## Step 1: Simple Factory (just a function)
+
+Move the decision into **one function**. This is not an official "GoF" pattern, but it solves most real problems.
 
 ```cpp run title="Simple factory function"
 #include <iostream>
@@ -61,11 +67,11 @@ int main() {
 }
 ```
 
-Clients now depend only on `Parser` and `makeParser`. Adding a format means editing the factory function (a small violation of OCP, acceptable for a central switch).
+Now the rest of the code knows only `Parser` and `makeParser`. When we add a new format, we edit only the factory function. That is a small break of the "closed for editing" rule, but it is fine because the change is in one place.
 
-## Step 2: the Factory Method pattern
+## Step 2: The Factory Method pattern
 
-In the real pattern, an abstract **Creator** has a *factory method* that subclasses override to create their own **Product**. The creator's other code uses the product through its interface and never names the concrete class.
+In the real pattern, there is a base class (the **creator**) with a method that creates a product. Each subclass **overrides that method** to create its own kind of product. The base class does the common work and uses the product only through its interface.
 
 ```viz algo=uml title="Factory Method"
 abstract class Application
@@ -141,11 +147,17 @@ int main() {
 }
 ```
 
-`Application::openDocument` contains the shared workflow and has no idea which `Document` it will get. A new `ExcelApplication` plus `ExcelDocument` is two new classes and no edits (OCP). This is also the **Template Method** pattern in disguise: the workflow is a template, and `createDocument` is the hook.
+Read it like this:
 
-## Step 3: a registry factory (open without editing)
+- `Application::openDocument` contains the **steps that are the same for everyone** (create, open, show).
+- It has no idea which `Document` it gets. A subclass decides.
+- To support Excel, add `ExcelApplication` and `ExcelDocument`. **Two new classes, no edits.**
 
-A switch in a factory function still needs editing for every new type. A **registry** lets each class *register itself*, so the factory never changes.
+(If you have seen the Template Method pattern: this is similar. The steps are the template, and `createDocument` is the part that changes.)
+
+## Step 3: A registry (add new types without editing the factory)
+
+A `switch` inside the factory still needs an edit for each new type. A **registry** fixes this. Each class **registers itself** with the factory, so the factory never changes.
 
 ```cpp run title="Registry-based factory"
 #include <functional>
@@ -188,47 +200,49 @@ int main() {
 }
 ```
 
-The names can now come from a file or user input. Plug-in systems work like this.
+Now the names can even come from a file or from the user. Plug-in systems work like this.
 
-## Choosing
+## Which one should I use?
 
-| Approach | Use when | Extension cost |
+| Approach | Use it when | Cost to add a new type |
 |---|---|---|
-| `new` directly | one concrete type, no variation | n/a |
-| **Simple factory function** | a central place picks the type from input/config | edit one function |
-| **Factory Method** (subclass decides) | a framework class has a workflow and defers *what* to create to subclasses | new subclass |
-| **Registry factory** | types are plugged in by name, possibly by other modules | register a creator |
-| **Abstract Factory** (next lesson) | you must create a *family* of related objects consistently | new family class |
+| plain `new` | only one type, nothing varies | none |
+| **Simple factory function** | one place picks the type from input or config | edit one function |
+| **Factory Method** | a base class has the workflow, and subclasses decide the product | add a subclass |
+| **Registry factory** | types are plugged in by name, maybe from other modules | register a creator |
+| **Abstract Factory** (next lesson) | you must create a whole matching set of objects | add a new factory class |
 
-## Factory Method vs Simple Factory vs Abstract Factory (a classic question)
+## A classic interview question: three kinds of factory
 
-- **Simple Factory**: one function/class with a conditional that returns different products.
-- **Factory Method**: **inheritance**. A creator class has a virtual method that subclasses override to create products.
-- **Abstract Factory**: **composition**. An object with *several* creation methods that produces a **family** of related products.
+- **Simple Factory**: one function with an `if / switch` that returns different objects.
+- **Factory Method**: uses **inheritance**. A subclass overrides the method that creates the product.
+- **Abstract Factory**: uses **composition**. One object has *several* create methods and makes a whole **family** of products.
 
-:::interview Why use a factory instead of `new`?
-"Constructors fix the concrete type at the call site. A factory centralises the decision, so clients depend on an interface and never name concrete classes. That lets me add types without changing client code, choose the type from configuration, and substitute fakes in tests. A factory can also return a smart pointer to express ownership, and can hide complex setup."
+## Short answer to say in an interview
+
+:::interview Why use a factory instead of new?
+"With new, the exact class is fixed at the place where I write it. A factory puts the decision in one place, so the rest of the code depends only on an interface. I can add new types without changing the users, choose the type from config, and use fakes in tests. A factory can also return a smart pointer to show who owns the object."
 :::
 
 ```quiz
-? In the Factory Method pattern, who decides which concrete product is created?
+? In the Factory Method pattern, who decides which exact product is created?
 - The client
-+ The creator's subclass, by overriding the factory method
++ A subclass of the creator, by overriding the factory method
 - The product
-> The base creator has a virtual method; each subclass returns its own product type.
-? What advantage does a registry factory have over a switch-based one?
+> The base class has a method, and each subclass returns its own product.
+? What is the advantage of a registry factory over a switch?
 - It is faster
 + New types register themselves, so the factory never needs editing
 - It uses less memory
-> That is OCP applied to the factory itself.
+> This keeps the factory closed for editing.
 ? Which statement is correct?
-- Simple Factory is a GoF pattern
-+ Simple Factory is a common idiom, not one of the 23 GoF patterns; Factory Method is
-> The GoF "Factory Method" involves a creator hierarchy; a simple factory is just a function.
+- Simple Factory is one of the 23 GoF patterns
++ Simple Factory is a common idiom, but not one of the 23 GoF patterns. Factory Method is.
+> The GoF Factory Method needs a creator class hierarchy.
 ```
 
 :::keypoints
-- Move creation out of client code: clients depend on the product interface only.
-- Simple factory: one function. Factory Method: a virtual creation method in a creator, overridden by subclasses. Registry factory: self-registering creators.
-- Return `unique_ptr<Base>` to express ownership. A new product should not require editing clients.
+- Take creation out of the users' code. They depend only on an interface.
+- Simple factory = one function. Factory Method = subclasses override the creation method. Registry = self-registering creators.
+- Return `unique_ptr<Base>` to show ownership. A new product should not need edits in the users.
 :::

@@ -2,18 +2,27 @@
 title: MVC, MVP, MVVM and the event bus
 level: intermediate
 time: 35
-summary: Separating data, display and input with Model-View-Controller and its variants, how MVC is built from Observer and Strategy, a console MVC example, and a typed publish/subscribe event bus for decoupled components.
+summary: Keep data, screen and user input in separate parts (MVC and its cousins), see how MVC is built from patterns you already know, and learn the event bus, where parts talk through events without knowing each other.
 ---
 
-Two architectural ideas appear in many LLD problems (a game, a chat app, a dashboard, a stock tracker): **separate the UI from the data**, and **let components communicate through events**.
+Two big ideas appear in many LLD problems (a game, a chat app, a dashboard, a stock tracker):
+
+1. **Keep the screen separate from the data.**
+2. **Let parts talk through events**, not by calling each other.
 
 ## MVC: Model, View, Controller
 
-| Part | Responsibility | Knows about |
+Don't memorise the names yet. Think of a **restaurant**:
+
+- The **kitchen** (Model) makes the food and holds the stock. It does not care how food is served.
+- The **menu and plates** (View) show things to the customer.
+- The **waiter** (Controller) takes the customer's order and tells the kitchen.
+
+| Part | Its job | What it knows |
 |---|---|---|
-| **Model** | the **data and business rules**; notifies observers when it changes | nothing about the UI |
-| **View** | **displays** the model; renders; knows how to draw | reads the model |
-| **Controller** | handles **user input**, updates the model | model, view |
+| **Model** | holds the **data and the business rules**. Announces when something changes | nothing about the screen |
+| **View** | **shows** the model on screen | reads the model |
+| **Controller** | takes the **user's action** and updates the model | the model and the view |
 
 ```viz algo=seq title="One click through MVC"
 participant u User [user]
@@ -27,9 +36,9 @@ m ->> v : changed(newValue) | The model notifies its observers (the Observer pat
 v -> v : redraw()
 ```
 
-MVC is a composition of patterns you already know: **Observer** (model notifies views), **Strategy** (the controller is the view's strategy for handling input), and **Composite** (views nest).
+MVC is built from patterns you already know: **Observer** (the model announces changes to the views), **Strategy** (the controller is the view's way of handling input), and **Composite** (views can be nested).
 
-## A console MVC counter
+## Example: a console counter in MVC
 
 ```cpp run title="Model notifies views; controller handles input"
 #include <functional>
@@ -79,22 +88,26 @@ int main() {
 }
 ```
 
-Benefits: you can add a `GraphView` without touching the model; test the model without any UI; change input from the keyboard to a network client by writing a new controller.
+What do we gain?
+
+- You can add a `GraphView` without touching the model.
+- You can test the model without any screen.
+- You can change input from the keyboard to the network by writing a new controller.
 
 ## MVC, MVP and MVVM
 
+These three share one aim: **keep logic out of the screen code**.
+
 | | MVC | MVP (Presenter) | MVVM |
 |---|---|---|---|
-| Who handles input? | Controller | **View** forwards to the Presenter | **View** binds to the ViewModel |
-| How does the view get data? | observes the Model directly | the **Presenter** pushes data to a passive View via an interface | **data binding** to the ViewModel's properties |
-| Is the View passive? | partly | **fully passive** (easy to test the Presenter with a fake View) | mostly declarative |
-| Typical home | web frameworks, desktop | Android (older), WinForms | WPF, Angular, SwiftUI |
+| Who handles the user's action? | Controller | the **View** passes it to the Presenter | the View is **linked** to the ViewModel |
+| How does the view get data? | it watches the Model | the **Presenter** pushes data to a simple View | **data binding** to the ViewModel |
+| Is the View passive? | partly | **completely** (the Presenter is easy to test with a fake View) | mostly just a layout |
+| Where it is common | web frameworks, desktop | older Android, WinForms | WPF, Angular, SwiftUI |
 
-All three share the aim: keep logic out of the view.
+## The event bus (publish and subscribe)
 
-## The event bus (publish/subscribe)
-
-Observer needs the observers to know the subject. An **event bus** puts a broker between publishers and subscribers, so components know **only the event types**, not each other. It is the in-process cousin of Kafka or RabbitMQ topics.
+In Observer, observers must know the subject. An **event bus** puts a **middleman** between those who announce and those who listen. Now the parts know only **the kind of event**, not each other. It is like a small, in-program version of Kafka or RabbitMQ.
 
 ```viz algo=uml title="Event bus"
 class EventBus
@@ -154,42 +167,44 @@ int main() {
 }
 ```
 
-Adding a loyalty-points service means subscribing to `OrderPlaced`, with **no change** to `OrderService`. That is Open/Closed at the system level.
+To add a loyalty-points service, it just **subscribes** to `OrderPlaced`. `OrderService` does **not change at all**. That is the "open for adding, closed for editing" idea at the level of the whole system.
 
 ## Observer vs Event Bus vs Message Queue
 
-| | Observer | In-process event bus | Message queue (Kafka, RabbitMQ) |
+| | Observer | Event bus (in one program) | Message queue (Kafka, RabbitMQ) |
 |---|---|---|---|
-| Coupling | subject holds observers | publishers and subscribers know only event types | same, across processes |
-| Delivery | synchronous, same thread | usually synchronous (or queued per thread) | asynchronous, persistent, retries |
-| Failure of a subscriber | affects the caller | affects the caller unless caught | isolated; message redelivered |
-| Scope | one object | one process | many services |
+| Coupling | the subject keeps its observers | parts know only event types | the same, but across programs |
+| Delivery | immediate, same thread | usually immediate | later, saved, with retries |
+| If a listener fails | the caller is affected | the caller is affected unless you catch it | isolated, and the message is delivered again |
+| Scope | one object | one program | many services |
 
-## Design questions to expect
+## Questions to expect
 
-- **Synchronous or asynchronous?** Sync is simple and ordered; async decouples latency but needs a queue and thread-safety.
-- **Ordering and delivery guarantees?** At-most-once, at-least-once? Idempotent subscribers?
-- **Error handling:** isolate a failing subscriber so others still run.
-- **Unsubscribe and lifetime:** RAII tokens (see Observer).
-- **Event design:** small immutable data objects named in the past tense (`OrderPlaced`), carrying ids and the facts needed.
-- **Danger:** "event spaghetti": flows become hard to follow when everything reacts to everything. Document the main flows.
+- **Immediate or later (sync or async)?** Immediate is simple and ordered. Later separates the speed of the parts but needs a queue and thread safety.
+- **Order and delivery promises?** At most once or at least once? Are listeners safe to run twice?
+- **Errors:** one failing listener should not stop the others.
+- **Unsubscribing:** use tokens (see Observer).
+- **Event design:** small, unchangeable data, named in the past tense (`OrderPlaced`), carrying ids and the facts needed.
+- **Danger:** "event spaghetti". If everything reacts to everything, nobody can follow the flow. Write down the main flows.
+
+## Short answer to say in an interview
 
 :::interview Explain MVC. How is it related to Observer?
-"MVC separates data and rules (Model), presentation (View) and input handling (Controller). The model knows nothing of the UI and notifies its observers, the views, when it changes; that is the Observer pattern. The controller turns user input into model operations, which makes it a strategy for the view. This lets me add views, test the model alone, and change input sources independently. MVP makes the view passive and routes everything through a presenter; MVVM uses data binding with a view model."
+"MVC separates the data and rules (Model), the screen (View) and the user's actions (Controller). The model knows nothing about the screen. When it changes, it announces to its observers, which are the views. That is the Observer pattern. The controller turns user actions into model changes. This lets me add views, test the model alone, and change the input source easily. MVP makes the view passive and uses a presenter. MVVM uses data binding with a view model."
 :::
 
 ```quiz
 ? In MVC, who tells the View that the data changed?
 - The Controller
-+ The Model, through notifications (Observer)
++ The Model, by announcing changes (Observer)
 - The user
-> The model publishes changes; views subscribe and redraw.
+> The model announces. The views subscribe and redraw.
 ? What is the main benefit of an event bus?
 - Faster code
-+ Publishers and subscribers are decoupled and know only the event types
++ Those who announce and those who listen are separate and know only the event types
 - Fewer events
-> New subscribers need no change to publishers.
-? Which MVC variant has a fully passive view driven by a presenter through an interface?
+> A new listener needs no change in the announcer.
+? Which version has a completely passive view, controlled by a presenter through an interface?
 - MVVM
 + MVP
 - MVC
@@ -197,7 +212,7 @@ Adding a loyalty-points service means subscribing to `OrderPlaced`, with **no ch
 ```
 
 :::keypoints
-- MVC: Model (data+rules, notifies), View (displays), Controller (input → model). Built from Observer, Strategy and Composite. MVP and MVVM are variants with a passive view or data binding.
-- Event bus: typed publish/subscribe; components know event types, not each other. Events are small immutable facts in the past tense.
-- Decide sync vs async, ordering, error isolation and subscription lifetime.
+- MVC: Model (data and rules, announces changes), View (shows), Controller (user action to model). Built from Observer, Strategy and Composite. MVP and MVVM are cousins.
+- Event bus: publish and subscribe by event type. Parts do not know each other. Events are small facts in the past tense.
+- Decide: immediate or later, order, error handling, unsubscribing.
 :::

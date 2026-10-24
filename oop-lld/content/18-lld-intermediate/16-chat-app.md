@@ -2,33 +2,33 @@
 title: Design a Chat Application (WhatsApp-like)
 level: intermediate
 time: 65
-summary: Users, one-to-one and group chats, message status (sent, delivered, read), offline delivery with a pending queue, presence, message history with pagination, a Mediator-style chat server, and the thread-safety and ordering guarantees.
+summary: Users, one-to-one and group chats, message status (sent, delivered, read), messages kept for offline users, who is online, chat history in pages, a chat server in the middle (Mediator), and how to keep the order of messages right.
 ---
 
 :::problem Design a Chat Application {level=medium tags="Mediator,Observer,messaging,presence,state,groups"}
-Design the core of a chat application. Users send messages to another user or to a group. Messages are delivered in order, show **sent / delivered / read** status, and are stored until the recipient comes online. Show who is online, keep chat history with pagination, and support groups where adding/removing members and admin rights exist.
+Design the core of a chat application. Users send messages to another user or to a group. Messages are delivered in order, show a **sent, delivered, read** status, and are kept until the receiver comes online. Show who is online, keep the chat history in pages, and support groups where members can be added and removed and there are admin rights.
 :::
 
 :::hint Hint
-Users should not talk to each other directly. A **ChatServer** (Mediator) routes messages. A chat (conversation) owns an ordered list of messages; delivery state is tracked per recipient. An offline user's incoming messages wait in a queue and are delivered when they connect.
+Users should not talk to each other directly. A **ChatServer** (the Mediator) carries the messages. A chat (conversation) owns an ordered list of messages. The delivery status is kept for each receiver. If a user is offline, their new messages wait in a queue and are delivered when they connect.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
 | Chats? | one-to-one and group (many members) |
-| Messages? | text with id, sender, time, per-recipient status |
-| Status? | Sent (server has it) → Delivered (recipient device got it) → Read (recipient opened the chat) |
-| Offline users? | messages are stored and delivered on connect, in order |
-| Presence? | online/offline with last-seen time |
-| Groups? | admins can add/remove members; a removed member stops receiving new messages |
-| History? | fetch the last N messages, older pages by cursor |
-| Ordering? | messages in a chat are totally ordered by a server-assigned sequence number |
-| Concurrency? | many users send simultaneously |
-| Out of scope | end-to-end encryption, media, push notifications, multi-device sync |
+| Messages? | text with an id, sender, time, and a status for each receiver |
+| Status? | Sent (the server has it), then Delivered (the receiver's device got it), then Read (the receiver opened the chat) |
+| Offline users? | messages are kept and delivered when they connect, in order |
+| Who is online? | online or offline, with a last-seen time |
+| Groups? | admins can add and remove members. A removed member stops getting new messages |
+| History? | get the last N messages, and older pages by a cursor |
+| Order? | messages in a chat are in a fixed order by a number that the server gives |
+| Many users? | many users send at once |
+| Not needed | end-to-end encryption, pictures, push notifications, many devices for one user |
 
-## Step 2: message status
+## Step 2: The status of a message
 
 ```viz algo=state title="Delivery status of one message to one recipient"
 state Sent "Sent" [initial] @0,1
@@ -39,7 +39,7 @@ Delivered -> Read : recipient opens the chat
 play: recipient online (or comes online), recipient opens the chat
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="Chat application"
 class ChatServer
@@ -83,18 +83,18 @@ ChatServer o-- User
 User ..|> MessageListener
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **`ChatServer` is a Mediator**: users call `send`; the server stores the message in the chat, then **fans out** to each member (except the sender).
-- **Per-chat sequence number** assigned under the chat's lock gives a total order, which every client uses for display and for resuming ("give me everything after seq 42").
-- **Delivery state per recipient** (`map<User, Status>` inside the message): essential for groups ("delivered to 3 of 5").
-- **Offline queue per user**: if the recipient is offline, the delivery task stays in the user's `pending` list. `connect()` flushes it **in sequence order** and marks messages Delivered.
-- **Read receipts**: `markRead(user, chat)` marks everything up to the latest seq as Read for that user and notifies the senders (Observer).
-- **Group rules** in `GroupChat`: only members may send; only admins may add/remove; a removed member sees no new messages (their old history remains).
-- **Locking**: one mutex per chat for sequencing and status; one for user presence/inbox. Listener callbacks happen after releasing locks.
-- **History pagination** by `(chat, beforeSeq, limit)`: stable cursors.
+- **`ChatServer` is the Mediator.** Users call `send`. The server stores the message in the chat, and then **sends a copy to each member** (except the sender).
+- **A sequence number for each chat**, given while holding the chat's lock, gives a total order. Every client uses it to show messages and to continue ("give me everything after number 42").
+- **Delivery status for each receiver** (`map<User, Status>` inside the message). This is needed for groups ("delivered to 3 of 5").
+- **An offline queue for each user.** If the receiver is offline, the delivery waits in the user's `pending` list. `connect()` sends it **in sequence order** and marks the messages Delivered.
+- **Read receipts:** `markRead(user, chat)` marks everything up to the latest number as Read for that user, and tells the senders (Observer).
+- **Group rules** are in `GroupChat`: only members can send, only admins can add or remove, and a removed member sees no new messages (their old history stays).
+- **Locks:** one mutex for each chat for the numbers and statuses, and one for user presence and inbox. Listener calls happen after releasing the locks.
+- **History in pages** by `(chat, beforeSeq, limit)`: steady cursors.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Direct and group chats, offline delivery, receipts, history"
 #include <algorithm>
@@ -259,45 +259,51 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Recipient offline for days | the pending queue (a durable inbox in a real system) delivers on connect |
-| Messages arriving out of order | the sequence number from the chat restores order |
-| Same user on two devices | delivery per device; status = delivered when any device receives (extension) |
-| Duplicate send after a retry | client sends an idempotency id; the server dedups |
-| Member removed while messages are in flight | membership is checked at send time under the chat lock |
-| Read receipts privacy | a per-user setting (a filter on `onStatus`) |
-| Very large groups | fan-out on read (members pull from the chat's log) instead of write |
-| Server crash | persist messages before acknowledging "sent" |
+| The receiver is offline for days | the pending queue (a safe inbox in a real system) delivers when they connect |
+| Messages arrive out of order | the sequence number from the chat puts them back in order |
+| The same user on two devices | delivery for each device. Delivered when any device gets it (extension) |
+| The same message sent twice after a retry | the client sends an idempotency id, and the server removes the duplicate |
+| A member is removed while messages are on the way | membership is checked when sending, under the chat lock |
+| Privacy of read receipts | a setting for each user (a filter on `onStatus`) |
+| Very big groups | copy on read (members pull from the chat's log) instead of copy on write |
+| The server crashes | save messages before saying "sent" |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Typing indicators, presence updates" | ephemeral events through the same listener interface (not stored) |
-| "Media messages" | `Message` has a payload variant (text, image reference); storage in an object store |
-| "Edit/delete for everyone" | message revisions and tombstones; a command with a time limit |
-| "Reply/forward/reactions" | fields on `Message`; reactions as a map user to emoji |
-| "End-to-end encryption" | clients encrypt payloads; the server only routes ciphertext |
-| "Scale to millions" | shard chats by id; the connection gateway layer is stateless; a message queue between layers (HLD) |
-| "Search in chats" | an index per user; privacy constraints |
+| "Typing signs, online updates" | short-lived events through the same listener interface (not stored) |
+| "Pictures and files" | `Message` has a payload with a type (text, image link). Files go in an object store |
+| "Edit or delete for everyone" | message versions and a "deleted" marker. A command with a time limit |
+| "Reply, forward, reactions" | fields on `Message`. Reactions as a map from user to emoji |
+| "End-to-end encryption" | clients encrypt the payload. The server only carries encrypted text |
+| "Millions of users" | split chats by id. The connection layer holds no state. A message queue between layers (HLD) |
+| "Search in chats" | an index for each user, with privacy rules |
 | "Push notifications" | a notification service for offline users (see that lesson) |
 
+## Short answer to say in an interview
+
+:::interview How do you keep messages in order and show delivered and read?
+"Users never talk to each other. A chat server, which is a Mediator, receives a message and stores it in the chat. Each chat gives its messages sequence numbers while holding its lock, so there is one clear order. Each message keeps a status for each receiver: sent, delivered or read, which is needed for groups. If a receiver is offline, the delivery waits in a pending queue, and when they connect it is sent in sequence order. Read receipts travel back to the sender through listeners."
+:::
+
 ```quiz
-? Why does each chat assign its own sequence numbers?
+? Why does each chat give its own sequence numbers?
 - To make ids shorter
-+ A total order within the chat lets every client display and resume messages consistently
++ A fixed order inside the chat lets every client show and continue messages in the same way
 - Because the clock is wrong
-> Sequences are stable cursors for history and delivery.
-? Why track status per recipient?
+> Sequence numbers are steady cursors for history and delivery.
+? Why keep the status for each receiver?
 - Memory is cheap
-+ In a group each member can be at a different stage (delivered to some, read by others)
++ In a group, each member can be at a different stage (delivered to some, read by others)
 - For billing
 > The sender sees "delivered to 3 of 5".
 ```
 
 :::keypoints
-- ChatServer is the Mediator; Chat owns ordered messages with per-chat sequence numbers; status per recipient.
-- Offline users have a pending queue flushed in order on connect; read receipts flow back through listeners.
-- Group rules (admins, membership checked at send time), cursor-based history, and idempotent sends.
+- ChatServer is the Mediator. A chat owns ordered messages with sequence numbers. The status is kept for each receiver.
+- Offline users have a pending queue that is sent in order when they connect. Read receipts go back through listeners.
+- Group rules (admins, membership checked when sending), history in pages by cursor, and sends that are safe to repeat.
 :::

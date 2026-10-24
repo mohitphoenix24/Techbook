@@ -2,14 +2,27 @@
 title: Composition over inheritance
 level: intermediate
 time: 35
-summary: Why "favour composition over inheritance" is the most repeated LLD advice, shown with the Square/Rectangle problem, the flying-bird explosion, and a stack that wrongly extends a vector, plus how to refactor inheritance into composition and when inheritance is still right.
+summary: Why people say "prefer composition over inheritance", explained with three simple examples (Square and Rectangle, flying birds, and a Stack built on a vector), plus when inheritance is still the right choice.
 ---
 
-**Inheritance** couples a child to its parent's *implementation*. **Composition** builds an object from other objects and delegates to them, coupling only to their *interface*. Composition is more flexible, so the advice is: *favour composition over inheritance*.
+You will hear this line in almost every LLD interview: **"Prefer composition over inheritance."**
 
-## Problem 1: inheritance that breaks substitutability (Liskov)
+Let's understand it without any heavy words.
 
-Geometry says a square *is a* rectangle. In code, it is not:
+## First, the two ideas in plain English
+
+- **Inheritance** means "is a". A `Dog` **is an** `Animal`.
+- **Composition** means "has a". A `Car` **has an** `Engine`.
+
+Inheritance is like **being born into a family**. You get everything from your parents, whether you want it or not, and you cannot change it later.
+
+Composition is like **building with Lego**. You pick the pieces you want, and you can swap a piece any time.
+
+That is the whole idea. Lego is more flexible, so people prefer it. Now let's see why, with three small examples.
+
+## Example 1: A Square "is a" Rectangle... or is it?
+
+In maths class, a square **is a** rectangle. So we try this in code:
 
 ```cpp run title="Square inherits Rectangle: the old bug"
 #include <iostream>
@@ -42,11 +55,21 @@ int main() {
 }
 ```
 
-`Square` **cannot be used wherever `Rectangle` is expected** without surprises. That violates the Liskov Substitution Principle (module 9). The fix is not a cleverer override; it is to drop the is-a: both are `Shape`s with an `area()`.
+Don't try to memorise the code. Just see the problem.
 
-## Problem 2: the inheritance explosion
+Code that uses a `Rectangle` expects this: "if I set the width to 5 and the height to 4, the area is 20". But when we give it a `Square`, setting the height also changes the width, and the answer is wrong.
 
-Imagine birds. Some fly, some swim, some do both, some neither.
+So a `Square` **cannot safely replace** a `Rectangle`. (This idea has a name, the Liskov Substitution Principle. We will meet it in module 9.)
+
+The fix is not a clever trick. The fix is to **stop saying "is a"**. Make both of them a `Shape` that can tell its `area()`.
+
+:::note The lesson
+"Is a" in real life is not always "is a" in code. Ask: *can I safely use the child everywhere I use the parent?* If not, do not inherit.
+:::
+
+## Example 2: Birds that fly, swim, or both
+
+Suppose we make a family of birds.
 
 ```text
 Bird
@@ -55,7 +78,9 @@ Bird
  └─ ??? FlyingSwimmingBird ── Duck   (needs BOTH: multiple inheritance, or a new class per combination)
 ```
 
-Every new ability multiplies the hierarchy. The way out is to treat abilities as **parts you plug in** (composition + strategy):
+See the problem? A penguin swims but does not fly. A duck does both. And what about a robot bird that flies but is not a bird? Each new ability makes the family tree bigger and messier. This is called a **class explosion**.
+
+Here is the Lego way. Make each ability a small **piece**, and give each bird the pieces it needs:
 
 ```cpp run title="Behaviours as components"
 #include <iostream>
@@ -93,9 +118,16 @@ int main() {
 }
 ```
 
-Two big wins: **no class explosion** (combinations are assembled, not coded), and **behaviour can change at run time**. This is the Strategy pattern, one of the most useful patterns in LLD.
+Two big benefits:
 
-## Problem 3: inheriting just to reuse code
+1. **No explosion.** We join pieces. We do not write a new class for each combination.
+2. **We can change behaviour while the program runs.** An injured eagle can swap its "fly" piece for "cannot fly".
+
+This trick (many ways to do one thing, and you can swap them) is the **Strategy pattern**. It is one of the most useful patterns in LLD.
+
+## Example 3: Inheriting only to reuse code
+
+Someone says: "I need a stack. A vector already stores items. Let me inherit from vector!"
 
 ```cpp run title="class Stack : public vector<int>: a leaky abstraction"
 #include <iostream>
@@ -128,59 +160,65 @@ int main() {
 }
 ```
 
-`BadStack` publicly **is a** `vector`, so it exposes `insert`, `erase`, `operator[]`... The class cannot protect its own rule (LIFO). Also, `std::vector` has no virtual destructor, so deleting through a `vector*` is undefined. Composition hides what you do not want to promise.
+What went wrong? `BadStack` **is a** `vector`, so it also gives people `insert`, `erase` and `operator[]`. Now anyone can push or remove items from the middle. A stack should only allow "last in, first out", but the class cannot protect that rule.
 
-## Refactoring inheritance into composition: the recipe
+The fix: **put the vector inside** the class (composition) and give out only `push` and `pop`.
 
-1. Replace the base class with a **member** (or `unique_ptr` to an interface).
-2. Add forwarding functions for the operations you **really** want to expose (delegation).
-3. If clients need to treat the class polymorphically, extract an **interface** and have both implement it.
-4. Move the varying behaviour into **strategy objects** you inject.
+## How to change inheritance into composition
+
+Four easy steps:
+
+1. Remove the parent class. Keep it as a **member** instead.
+2. Write small methods that pass the call on to the member, only for the things you want to allow. (This is called **delegation**.)
+3. If other code needs to treat different classes the same way, make a small **interface** and let each class follow it.
+4. Move the parts that change into small objects you pass in (strategies).
 
 ## When is inheritance still the right choice?
 
-Use public inheritance when **all** of these hold:
+Use inheritance only when **all** of these are true:
 
-1. It is a true **is-a** and the derived class honours the **entire** contract of the base (substitutable, Liskov).
-2. You want **polymorphism**: code that works on `Base&` and gets different behaviour.
-3. The base is designed for it: abstract/interface-like, virtual destructor, small and stable.
-4. The hierarchy is **shallow** (1 or 2 levels).
+1. It is a real "is a", and the child works correctly everywhere the parent works.
+2. You want **polymorphism** (one piece of code that works with many types, like a loop over `Shape` objects).
+3. The parent is made for it: an interface or a small, stable base with a virtual destructor.
+4. The family is **shallow** (one or two levels).
 
-The sweet spot: **inherit from interfaces** (pure abstract classes), **compose for implementation**.
+A good rule to remember: **inherit from interfaces, and use composition for everything else.**
 
 | | Inheritance | Composition |
 |---|---|---|
-| Relationship | is-a | has-a / uses-a |
-| Coupling | to the parent's implementation (tight) | to an interface (loose) |
-| Change behaviour at run time | no | yes (swap the part) |
-| Combine many behaviours | multiple inheritance or class explosion | assemble parts |
-| Testing | must build the whole parent | inject fakes |
-| Visibility | exposes the parent's whole interface | exposes only what you forward |
+| Meaning | "is a" | "has a" |
+| How tightly joined? | very tight | loose |
+| Change at run time? | no | yes, swap a piece |
+| Many combinations | class explosion | just join pieces |
+| Testing | need the whole parent | plug in a fake |
+| What others see | everything the parent has | only what you choose |
 
-:::interview Why favour composition over inheritance?
-"Inheritance is the tightest coupling: a derived class depends on its parent's implementation, exposes the parent's whole interface, and is fixed at compile time. Composition depends only on an interface, lets you swap or combine behaviours at run time, and hides what you do not want to promise. I still use inheritance for true is-a relationships, mostly from abstract interfaces, with shallow hierarchies."
+## Short answer to say in an interview
+
+:::interview Why do we prefer composition over inheritance?
+"Inheritance joins the child tightly to the parent. The child gets everything the parent has and cannot change it later. With composition I build a class from small parts, expose only what I want, and swap parts at run time. I still use inheritance for real 'is a' relationships, mostly from interfaces."
 :::
 
 ```quiz
-? What does the Square/Rectangle example show?
+? What does the Square and Rectangle example teach?
 - Squares are not shapes
-+ An is-a in geometry may not be substitutable in code, so inheritance breaks callers' expectations
-- That virtual functions are slow
-> Code written for independent width and height breaks when given a Square.
-? Which design lets a Penguin learn to fly at run time?
-- Subclassing FlyingBird
-+ Composing a FlyBehaviour object that can be replaced
++ "Is a" in maths may not be safe in code, because the child can surprise code written for the parent
+- Virtual functions are slow
+> Code that sets width and height separately breaks with a Square.
+? Which design lets a Penguin change how it moves while the program runs?
+- A subclass of FlyingBird
++ A behaviour object that can be swapped
 - Multiple inheritance
-> Behaviour objects can be swapped, unlike a fixed base class.
-? Why is `class Stack : public vector<int>` poor design?
-- vector is too slow
-+ It exposes all vector operations, so the stack's LIFO invariant cannot be protected
-- Stacks cannot hold ints
-> Composition (a vector member) exposes only push and pop.
+> Pieces can be swapped. A parent class cannot.
+? Why is class Stack : public vector<int> a poor idea?
+- vector is slow
++ It also exposes insert, erase and [], so the stack rule cannot be protected
+- A stack cannot hold ints
+> Put a vector inside and expose only push and pop.
 ```
 
 :::keypoints
-- Composition couples to an interface and can change at run time; inheritance couples to implementation and is fixed.
-- Square/Rectangle, the bird explosion and `Stack : vector` are the classic examples to cite.
-- Inherit from interfaces for polymorphism; compose for reuse. Keep hierarchies shallow.
+- Inheritance means "is a" and is a tight link. Composition means "has a" and is a loose link.
+- Classic examples to remember: Square and Rectangle, the bird class explosion, Stack built on vector.
+- Inherit from interfaces. Use composition to reuse code. Keep families shallow.
 :::

@@ -2,51 +2,58 @@
 title: From requirements to classes
 level: easy
 time: 30
-summary: Turning a problem statement into entities by underlining nouns and verbs, CRC cards, deciding between entity, value object, service and enum, placing behaviour with the information-expert rule, and avoiding god classes, with a library example taken to running code.
+summary: How to turn a problem statement into classes step by step. Underline nouns and verbs, decide what becomes a class, give every class a clear job, and reach working code. The example is a library system.
 ---
 
-The hardest part of LLD is not code. It is deciding **what the classes are** and **who does what**. A repeatable method makes this routine.
+The hardest part of LLD is not writing code. It is deciding **which classes to make** and **who does what**. The good news: there is a simple method for it.
 
-## Step A: write the requirements as short sentences
+## Step A: Write the requirements as short sentences
 
-Take the prompt "Design a library management system" and ask questions until you can write bullets like these:
+The question is "Design a library management system". Ask questions until you can write short points like these:
 
-- A library has many **books**. A book can have many **copies**; each copy is borrowed by one **member** at a time.
-- A **member** can borrow at most 3 copies, for 14 days.
-- Returning late gives a **fine** of 2 rupees per day.
+- A library has many **books**. One book can have many **copies**. A copy is borrowed by one **member** at a time.
+- A member can borrow at most 3 copies, for 14 days.
+- If a copy is returned late, there is a **fine** of 2 rupees per day.
 - A **librarian** can add and remove books. Members can search by title or author.
-- A member can **reserve** a title that has no free copy.
+- If no copy is free, a member can **reserve** the book.
 
-## Step B: underline nouns and verbs
+## Step B: Underline the nouns and the verbs
 
-| Nouns (candidate classes) | Verbs (candidate methods) |
+- **Nouns** (names of things) are *possible classes*.
+- **Verbs** (actions) are *possible methods*.
+
+| Nouns (possible classes) | Verbs (possible methods) |
 |---|---|
-| Library, Book, Copy (BookItem), Member, Librarian, Fine, Reservation | add book, remove book, search, borrow, return, reserve, calculate fine |
+| Library, Book, Copy, Member, Librarian, Fine, Reservation | add book, remove book, search, borrow, return, reserve, calculate fine |
 
-Not every noun becomes a class. Filter them:
+But **not every noun should become a class**. Filter them like this:
 
 | Noun | Decision | Why |
 |---|---|---|
-| Book | **entity** (class) | has identity (ISBN), details |
-| Copy | **entity** | a physical item with its own id and status |
-| Member | **entity** | has an id and borrowing state |
-| Fine | **value object** or computed | just an amount; calculated by a rule |
-| Days (14) | **constant / config** | a number, not a class |
-| Librarian | **role** | maybe a `Member` with a role, or a separate `Staff` type |
-| Library | **service / facade** | the entry point that coordinates the rest |
-| Reservation | **entity** | has a lifecycle (pending, fulfilled) |
-| Status (available, borrowed) | **enum** | a fixed set of values |
+| Book | class | has details and an ISBN number |
+| Copy | class | a real physical item with its own id and status |
+| Member | class | has an id and remembers what they borrowed |
+| Fine | just a number, or a small helper | it is only an amount, worked out by a rule |
+| 14 days | constant | it is a number, not a class |
+| Librarian | a role | maybe a Member with a special role |
+| Library | the main class that coordinates | the entry point for everything |
+| Reservation | class | it has a life: waiting, then done |
+| Status (available, borrowed) | enum | a small fixed list of values |
 
-:::def Entity, value object, service, enum
-- **Entity**: has an **identity** that persists as its data changes (an Account with id 42). Compare by id.
-- **Value object**: defined only by its **values**, immutable, interchangeable (Money 100 INR, a `DateRange`). Compare by content.
-- **Service**: a stateless coordinator of operations that do not belong to one entity (`FineCalculator`, `NotificationService`).
-- **Enum**: a closed set of named constants (`CopyStatus`).
+:::def Four words you will hear again and again
+- **Entity**: a thing with an **identity** that stays the same even when its data changes. Example: Account number 42.
+- **Value object**: a thing defined only by its **value**, like Money 100 rupees or a date range. Two with the same value are the same.
+- **Service**: a helper class that does a job but does not hold much data, like `FineCalculator`.
+- **Enum**: a fixed list of names, like `Available` and `Borrowed`.
 :::
 
-## Step C: CRC cards
+## Step C: Make a small card for each class (CRC card)
 
-A **CRC card** (Class, Responsibility, Collaborators) is a quick way to check each class has a clear job and to see who talks to whom. One card per class:
+CRC stands for **Class, Responsibility, Collaborators**. It is just a small card with three things:
+
+- the **class name**,
+- its **jobs** (what it is responsible for),
+- **who it works with**.
 
 ```text
 ┌──────────────────────────────────────────┐
@@ -59,23 +66,30 @@ A **CRC card** (Class, Responsibility, Collaborators) is a quick way to check ea
 └──────────────────────────────────────────┘
 ```
 
-If a card needs more than 3 or 4 responsibilities, or one with "and" in it, the class is doing too much: split it. If a class has no responsibilities beyond holding data, ask whether it should be a plain `struct`.
+How to use the cards:
 
-## Step D: where does each behaviour go? (the Information Expert rule)
+- If one card has more than 3 or 4 jobs, or a job with the word "and", the class is doing too much. **Split it.**
+- If a class has no job except holding data, it may just be a simple `struct`.
 
-Put each behaviour in the class that **has the data needed to do it**. This single rule (from the GRASP principles) fixes most placement questions.
+## Step D: Which class should do which job?
 
-| Behaviour | Who has the data? | Put it in |
+Use one easy rule: **give the job to the class that already has the data needed for it.**
+
+(This rule is called the *Information Expert* rule. You do not need the name, just the idea.)
+
+| Job | Who has the data? | Put it in |
 |---|---|---|
-| "Can this member borrow more?" | the member's current loans | `Member` |
-| "Is this copy available?" | the copy's status | `Copy` |
-| "How late is this loan?" | the loan's due date | `Loan` |
-| "How much is the fine?" | the days late + a rate that may change | `FinePolicy` (a strategy) |
-| "Find books by author" | the catalogue of all books | `Catalogue` / `Library` |
+| "Can this member borrow one more book?" | the member knows what they borrowed | `Member` |
+| "Is this copy free?" | the copy knows its own status | `Copy` |
+| "How late is this loan?" | the loan knows its due date | `Loan` |
+| "How much is the fine?" | the days late, plus a rate that may change | `FinePolicy` |
+| "Find books by author" | the catalogue holds all books | `Catalogue` / `Library` |
 
-The anti-pattern is a `LibraryManager` that **asks** every object for its data and decides everything (a *god class*). Prefer "tell, don't ask": the member decides if it may borrow; the library just coordinates.
+The wrong way is one giant `LibraryManager` that asks every object for its data and then makes all decisions itself. That is called a **god class**, and it is hard to read and hard to change.
 
-## Step E: from cards to a skeleton, then to running code
+A better habit is **"tell, don't ask"**. Do not ask the member "how many books do you have?" and then decide yourself. Just tell the member "borrow this", and the member decides.
+
+## Step E: From cards to code
 
 ```cpp run title="Library: entities, a policy, and the borrow/return flow"
 #include <iostream>
@@ -191,32 +205,41 @@ int main() {
 }
 ```
 
-Look at the split of responsibilities: `Copy` guards its own status, `Member` knows the loan limit, `FinePolicy` isolates the rule that will change, and `Library` coordinates. No class has more than one reason to change.
+Read the code and notice who does what:
+
+- `Copy` protects its own status.
+- `Member` knows the borrowing limit.
+- `FinePolicy` holds the rule that is most likely to change (the fine amount).
+- `Library` only coordinates between them.
+
+Each class has **one reason to change**. That is the goal.
+
+## Short answer to say in an interview
 
 :::interview How do you find the classes in a problem?
-"I read the requirements and underline the nouns for candidate classes and the verbs for candidate methods. I then filter: which nouns have identity (entities), which are just values, which are enums or constants. I assign each behaviour to the class that owns the data it needs, check each class with a CRC card, and look for variation points that deserve an interface."
+"I write the requirements as short points. I underline the nouns as possible classes and the verbs as possible methods. Then I filter them: which things have an identity, which are just values, and which are small fixed lists. I give each job to the class that owns the needed data, and I put an interface wherever the rule can change."
 :::
 
 ```quiz
-? Which is best modelled as a value object?
+? Which one is best treated as a value object?
 - A Member (has an id)
-+ A `Money` amount or a `DateRange`
-- A Book copy with a status
-> Value objects have no identity: two equal amounts are interchangeable and immutable.
-? What does the Information Expert rule say?
-- Put all logic in a Manager class
-+ Give each behaviour to the class that has the data needed to do it
-- Make every class an interface
-> It keeps behaviour close to data and prevents god classes.
-? A class has six responsibilities on its CRC card. What should you do?
-- Nothing
-+ Split it into smaller classes, each with one clear responsibility
-> Too many responsibilities signal low cohesion.
++ A Money amount, like 100 rupees
+- A book copy with a status
+> A value object has no identity. Two "100 rupees" are the same thing.
+? What does "give the job to the class that has the data" help you avoid?
+- Using interfaces
++ One giant class that does everything
+- Writing tests
+> The job stays close to its data, so classes stay small.
+? A class card has six jobs. What should you do?
+- Keep it as it is
++ Split it into smaller classes with one clear job each
+> Too many jobs means the class is doing too much.
 ```
 
 :::keypoints
-- Underline nouns (classes) and verbs (methods), then filter: entity, value object, service, enum, constant.
-- CRC cards check each class has one clear job and show collaborators.
-- Place behaviour where the data lives (Information Expert); avoid god classes and "Manager" dumping grounds.
-- Isolate the rules most likely to change behind a small interface (a policy).
+- Underline nouns (possible classes) and verbs (possible methods), then filter them.
+- Make a small card for each class: name, jobs, who it works with.
+- Give each job to the class that has the data for it. Avoid one giant manager class.
+- Put the rules that can change (like fines) behind a small interface.
 :::

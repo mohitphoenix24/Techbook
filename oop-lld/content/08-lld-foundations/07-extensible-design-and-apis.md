@@ -2,41 +2,45 @@
 title: Designing for change: variation points and clean APIs
 level: intermediate
 time: 35
-summary: How to find what is likely to change and isolate it, the extension mechanisms in C++ (interface, strategy, callback, registry, configuration), enums versus strings and ids, designing public APIs that are hard to misuse, and a before-and-after example.
+summary: How to find the parts of a design that will change and keep them flexible, how to choose the right tool for it, how to avoid strings and loose ints, and how to write methods that are hard to use wrongly.
 ---
 
-Interviewers end almost every LLD round with "now add X". A design is good if X is a **small, local change**. Planning for that has a method.
+Almost every LLD interview ends with the same sentence: **"Now, what if we add X?"**
 
-## Step 1: find the variation points
+A good design handles X with a **small change in one place**. Let's learn how to build that.
 
-A **variation point** is something that **differs between cases** or is **likely to change**. Ask of each requirement: "what could they ask me to change?"
+## Step 1: Find what can change (variation points)
 
-| Requirement | Variation points |
+A **variation point** is just a place where "things can be different". The way to find it is to read each requirement and ask: *"What could they ask me to change later?"*
+
+| Requirement | What can change (variation point) |
 |---|---|
-| Parking lot: "fee depends on duration" | the **pricing rule** (hourly, flat, per vehicle type, weekend rates) |
-| Cab booking: "match nearest driver" | the **matching strategy** (nearest, highest rated, least idle) |
+| Parking lot: "fee depends on time" | the **pricing rule** (per hour, flat, weekend rate) |
+| Cab booking: "find the nearest driver" | how we **match** (nearest, best rated, least busy) |
 | Notifications: "email, SMS" | the **channel** |
-| Cache: "evict old entries" | the **eviction policy** (LRU, LFU, FIFO) |
-| Payment: "pay by card" | the **payment method**; the **fraud rules** |
-| Game: "chess pieces move differently" | the **movement rule** per piece |
+| Cache: "remove old entries" | the **eviction rule** (LRU, LFU, FIFO) |
+| Payment: "pay by card" | the **payment method** |
+| Chess: "each piece moves differently" | the **move rule** of each piece |
 
-Everything that is *not* a variation point should stay simple. This is the discipline that separates a clear design from an over-engineered one.
+Everything that is **not** a variation point should stay simple. This is what separates a clean design from an over-engineered one.
 
-## Step 2: pick the right extension mechanism
+## Step 2: Pick the right tool
 
-| Mechanism | When | Example in C++ |
+| Tool | Use it when | Example |
 |---|---|---|
-| **Interface + implementations** (Strategy) | a family of interchangeable behaviours | `PricingStrategy`, `EvictionPolicy` |
-| **Factory / registry** | create the right object from a name or config | `map<string, function<unique_ptr<Shape>()>>` |
-| **Callback / `std::function`** | one small behaviour, set by the user | `onComplete(function<void()>)` |
-| **Observer / events** | many parties react to something | `subscribe(listener)` |
-| **Template parameter (policy)** | known at compile time, speed matters | `Cache<Key, Value, LruPolicy>` |
-| **Data/config** | the difference is only values | a table of rates, a JSON file |
-| **Chain** | an ordered list of independent steps | validation rules, middleware |
+| **Interface + several classes** (Strategy) | there are many ways to do the same job | `PricingStrategy`, `EvictionPolicy` |
+| **Factory / registry** | you must create the right object from a name | a map from name to "how to create it" |
+| **Callback** (`std::function`) | one small action is decided by the user | `onComplete(callback)` |
+| **Observer** | many others want to know when something happens | `subscribe(listener)` |
+| **Template parameter** | the choice is known at compile time and speed matters | `Cache<Key, Value, LruPolicy>` |
+| **Plain data / config** | only a value differs | a table of rates |
+| **Chain** | a list of independent steps | validation rules |
 
-Rule: **prefer data over code, and code over inheritance**. If the difference is a number, make it a constant or config, not a class.
+A simple rule to remember: **use data before code, and code before inheritance.** If only a number is different, make it a constant or a setting, not a new class.
 
-## Step 3: use types, not strings, for closed sets
+## Step 3: Use real types, not strings
+
+If there is a fixed list of choices, use an `enum class`. Do not use plain strings or numbers.
 
 ```cpp run title="enum class beats strings and ints"
 #include <iostream>
@@ -67,20 +71,22 @@ int main() {
 }
 ```
 
-For *open* sets that grow (many tiers added by configuration), use a registry or a class per tier. For *closed* sets, `enum class` is perfect. Do not use bare strings or ints as types ("stringly typed" code).
+Why? With a string like `"gold"` you can make a typo (`"golld"`) and the compiler will not notice. With an enum, a typo does not compile.
 
-## Step 4: design APIs that are hard to misuse
+If the list keeps growing (new tiers added from config), use a registry or one class per tier. For a **fixed** list, `enum class` is perfect.
 
-Good public interfaces make correct use easy and incorrect use difficult or impossible.
+## Step 4: Make your methods hard to use wrongly
 
-| Technique | Bad | Good |
+A good method makes the **right** use easy and the **wrong** use difficult.
+
+| Idea | Weak | Better |
 |---|---|---|
-| Strong types for ids/units | `void move(int from, int to, int amount)` | `void move(AccountId from, AccountId to, Money amount)` |
-| Make invalid states unrepresentable | `Rect(int w, int h)` where negative is allowed | a constructor that rejects it, or `Width` type |
-| Hide sequencing rules | `open(); write(); close();` callers forget `close` | RAII: `File f(path); f.write(...)` |
-| Small interfaces | a 25-method `IService` | several focused interfaces |
-| Return meaningful results | `int` that might be an error code | `optional`, an enum result, or `[[nodiscard]]` |
-| Immutable where possible | setters everywhere | construct once, never change |
+| Give ids and units their own type | `move(int from, int to, int amount)` | `move(AccountId from, AccountId to, Money amount)` |
+| Do not allow bad values | `Rect(int w, int h)` accepts negatives | the constructor rejects them |
+| Do not depend on the caller's memory | `open(); write(); close();` and people forget `close` | RAII: the object closes itself |
+| Keep interfaces small | one `IService` with 25 methods | a few small interfaces |
+| Return a clear result | an `int` that might be an error code | `optional`, an enum, or `[[nodiscard]]` |
+| Do not change things after creation | setters everywhere | create once, never change |
 
 ```cpp run title="Strong types prevent argument mix-ups"
 #include <iostream>
@@ -101,9 +107,12 @@ int main() {
 }
 ```
 
-## A before/after: adding a requirement
+In the code above, the strong types mean that swapping `from` and `to` by mistake will not even compile.
 
-**Original requirement:** shipping cost = flat 50. **New requirement:** "express costs double, and international adds 300".
+## Before and after: a new requirement arrives
+
+**First requirement:** shipping costs a flat 50 rupees.
+**New requirement:** "Express is double. International adds 300."
 
 ```cpp run title="Open for extension: ShippingRule as a variation point"
 #include <iostream>
@@ -144,39 +153,41 @@ int main() {
 }
 ```
 
-The calculator never changes when a rule is added. The order of the chain is explicit, and each rule is tested alone. This combines **Strategy**, **chain** and the **Open/Closed Principle**.
+Look at the result: the calculator never changes when we add a rule. Each rule is a small class that can be tested alone. The idea behind it is called the **Open/Closed Principle**: *open to add new things, closed to editing old working code.*
 
-## Answering "what if we add X?"
+## How to answer "what if we add X?"
 
-1. Say **where** the change goes: "a new `ShippingRule` class".
-2. Say what is **not** touched: "the calculator and the other rules".
-3. If the design cannot absorb it, say so honestly and describe the **refactoring** you would do. Do not pretend.
+1. Say **where** the change goes: "I add a new `ShippingRule` class."
+2. Say what you **do not touch**: "The calculator and the other rules stay the same."
+3. If your design cannot handle it, say so honestly. Explain how you would **refactor**. Do not pretend.
 
-:::interview How do you design for extensibility without over-engineering?
-"I list the requirements and ask what is likely to vary: algorithms, rates, channels, types. I put interfaces only at those variation points, and keep everything else concrete and simple. I prefer data to code and composition to inheritance, use enums for closed sets and strong types in APIs, and I can show exactly which classes a new requirement touches."
+## Short answer to say in an interview
+
+:::interview How do you make a design easy to extend without over-engineering it?
+"I first list what is likely to change, like pricing rules, channels or types. I put an interface only at those places and keep the rest simple. I use enums for fixed lists and strong types in methods. Then when a new requirement comes, I can name the one class I add and say that nothing else changes."
 :::
 
 ```quiz
 ? What is a variation point?
 - A loop in the code
-+ A place where behaviour differs between cases or is likely to change
++ A place where behaviour can differ or is likely to change
 - A virtual function with a body
-> Isolating variation points behind interfaces lets new cases be added without editing working code.
-? When is `enum class` better than a string?
+> Put an interface there so new cases need new classes, not edits.
+? When is an enum class better than a string?
 - Never
-+ For a closed, known set of values, because the compiler checks it
-- When the set changes at run time
-> Strings allow typos and silently invalid values.
-? In the shipping example, how is a new "heavy parcel" rule added?
++ When the choices are a fixed, known list, because the compiler checks them
+- When the list changes while the program runs
+> Strings allow typos and silent mistakes.
+? In the shipping example, how do you add a "heavy parcel" rule?
 - Edit ShippingCalculator
-+ Write a new ShippingRule class and add it to the chain
++ Write a new ShippingRule class and add it to the list
 - Add a bool to Parcel
-> The calculator is closed for modification and open for extension.
+> The calculator stays closed to changes and open to new rules.
 ```
 
 :::keypoints
-- First identify variation points, then choose a mechanism: interface/strategy, factory/registry, callback, observer, policy, data, chain.
-- Prefer data over code, composition over inheritance; use `enum class` for closed sets.
-- Strong types, RAII and `[[nodiscard]]` make APIs hard to misuse.
-- Know exactly which classes a new requirement touches. Do not build extension points you do not need.
+- First find what can change. Then pick a tool: interface, factory, callback, observer, data or chain.
+- Use data before code, and composition before inheritance. Use `enum class` for fixed lists.
+- Strong types, RAII and `[[nodiscard]]` make methods hard to misuse.
+- Always be able to say which class you add, and what you do not touch.
 :::

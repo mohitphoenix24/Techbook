@@ -2,30 +2,35 @@
 title: Design Chess
 level: advanced
 time: 75
-summary: Pieces with polymorphic move generation, pseudo-legal versus legal moves, check, checkmate and stalemate detection, a Command-style move with undo, pawn promotion, and a complete runnable game (the shortest checkmate) with the extensions for castling, en passant and engines.
+summary: Chess with a class for each piece that knows how it moves, the difference between possible moves and legal moves, check, checkmate and stalemate, moves as objects that can be undone, pawn promotion, and a complete game that ends in the shortest checkmate.
 ---
 
 :::problem Design Chess {level=hard tags="games,polymorphism,Command,undo,rules engine,classic"}
-Design a two-player chess game. The board has 8x8 squares and 32 pieces. Each piece type moves differently. The game enforces turns, rejects illegal moves (including moves that leave your own king in check), detects check, checkmate and stalemate, supports undo, and handles pawn promotion. Make it easy to add rules (castling, en passant) and different player types (human, engine).
+Design a two-player chess game. The board has 8×8 squares and 32 pieces. Each kind of piece moves differently. The game enforces turns, refuses illegal moves (including moves that leave your own king in check), finds check, checkmate and stalemate, supports undo, and handles pawn promotion. Make it easy to add rules (castling, en passant) and different kinds of players (human, computer).
 :::
 
 :::hint Hint
-Separate **how a piece moves** (each piece generates candidate moves from its position) from **what is legal** (a move is legal only if, after making it, your own king is not attacked). A move should be an object that can be applied and **undone**, which also gives you a cheap way to test legality: make the move, check for check, undo it.
+Keep **how a piece moves** (each piece makes a list of possible moves from its square) separate from **what is legal** (a move is legal only if, after making it, your own king is not under attack). Make a move an object that can be **applied and undone**. This also gives a cheap way to test legality: make the move, check for check, undo it.
 :::
 
-## Step 1: requirements
+## First, two words you need
 
-| Question | Assumption |
+- A **pseudo-legal move** is a move that follows how the piece moves, but we have not yet checked if it leaves our own king in danger.
+- A **legal move** is a pseudo-legal move that does **not** leave our own king in check.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Rules in scope? | piece movement, captures, turn order, check/checkmate/stalemate, pawn promotion (to queen by default) |
-| Out of scope (extensions) | castling, en passant, 50-move rule, threefold repetition, clocks |
-| Input? | moves as coordinates (`e2e4`), parsed by the game |
-| Players? | an interface `Player` returning moves: human (scripted), engine (random legal move) |
-| Undo? | unlimited, by popping the move history |
-| Display? | text board |
-| Concurrency? | a game is a single serial state machine; one lock per game if shared |
+| Which rules are included? | how pieces move, captures, whose turn it is, check, checkmate, stalemate, pawn promotion (to a queen by default) |
+| Not included (extensions) | castling, en passant, the 50-move rule, repeating positions, clocks |
+| Input? | moves as coordinates (`e2e4`), read by the game |
+| Players? | an interface `Player` that returns moves: a human (scripted) or a computer (a random legal move) |
+| Undo? | as many times as you want, by taking moves off the history |
+| Display? | a text board |
+| Many threads? | a game is one step-by-step process. Use one lock for each game if it is shared |
 
-## Step 2: entities
+## Step 2: Find the classes
 
 ```viz algo=uml title="Chess"
 class Game
@@ -74,17 +79,17 @@ Game o-- Move
 Game --> Player
 ```
 
-## Step 3: design decisions
+## Step 3: Design decisions
 
-- **Each piece generates its own pseudo-legal moves** (polymorphism, the Strategy of movement). Sliding pieces (rook, bishop, queen) share a helper `slide(directions)`; knight and king use fixed offsets; pawn has direction, double step, diagonal captures, promotion.
-- **Legality = pseudo-legal moves minus those that leave your king attacked.** Implemented by **apply → test → undo** on the real board: simple and correct. This is why `Move` records the captured piece (and promotion) and `Board::undo` restores it exactly.
-- **`isAttacked(square, byColor)`**: generate pseudo-legal moves for all enemy pieces and look for a capture of that square (pawns need care: they attack diagonally, not where they move). Reusing `pseudoMoves` keeps the rules in one place.
-- **Game status**: after each move, the side to move has legal moves? If none: in check → **checkmate**, otherwise **stalemate**.
-- **Pieces on the board are owned by the board** (`unique_ptr` in the grid). A move **moves ownership** of the piece pointer; the captured piece is kept in the `Move` so undo can put it back (**Command + Memento** ideas).
+- **Each piece makes its own pseudo-legal moves** (polymorphism, a Strategy for movement). Rook, bishop and queen share a helper `slide(directions)`. Knight and king use fixed steps. The pawn has its direction, double step, diagonal captures and promotion.
+- **Legal = pseudo-legal moves, except those that leave your king attacked.** We do this by **apply, test, undo** on the real board. It is simple and correct. That is why `Move` remembers the captured piece (and promotion), and `Board::undo` puts everything back exactly.
+- **`isAttacked(square, byColor)`:** make the pseudo-legal moves for all enemy pieces and look for one that captures that square. (Pawns need care: they attack diagonally, not where they move.) Reusing `pseudoMoves` keeps the rules in one place.
+- **Game status:** after each move, does the side to move have any legal move? If not: if in check it is **checkmate**, otherwise **stalemate**.
+- **The board owns the pieces** (`unique_ptr` in the grid). A move **moves the pointer**. The captured piece is kept inside the `Move`, so undo can put it back (ideas from **Command and Memento**).
 - **Square and Move are small value types.**
-- **Extensions** fit as extra move generators (castling in `King::pseudoMoves`, en passant in `Pawn`) because moves carry extra data (`rookFrom/rookTo`, `capturedSquare`). A `Rules` strategy could vary variants (Chess960).
+- **Extensions** fit as extra move makers (castling in `King::pseudoMoves`, en passant in `Pawn`), because moves can carry extra data (`rookFrom/rookTo`, `capturedSquare`). A `Rules` strategy could change variants (Chess960).
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Chess: legal moves, check, checkmate (fool's mate) and undo"
 #include <algorithm>
@@ -306,50 +311,56 @@ int main() {
 
 ## Why undo-based legality is a good design
 
-- **One source of truth**: movement rules live only in `pseudoMoves`; legality is a generic test on top.
-- **Same mechanism as the game's undo**: the engine's search (minimax) uses `apply/undo` thousands of times per second.
-- **Cost**: for each candidate move you attack-check the king, O(pieces x moves). Fine for a UI; engines use bitboards and incremental attack maps.
+- **One source of truth:** the movement rules live only in `pseudoMoves`. Legality is a general test on top.
+- **The same tool as the game's undo:** a chess engine's search uses `apply` and `undo` thousands of times each second.
+- **Cost:** for each candidate move you check whether the king is attacked, so the time is about (pieces × moves). That is fine for a screen. Engines use bitboards and attack maps that update step by step.
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Moving a pinned piece | `apply → isAttacked(king) → undo` rejects it |
-| Capturing the king | impossible: a position with the king attacked is "check", and the move that leaves it there is illegal |
-| Pawn forward capture / diagonal move without capture | `Pawn::pseudoMoves` encodes both rules; `isAttacked` uses diagonals separately |
-| Promotion | handled in `apply`; the original pawn is stored for `undo` |
-| Stalemate | no legal moves, not in check |
-| Insufficient material, 50-move, repetition | extra termination rules (`Rule` objects in a chain evaluated after each move) |
+| Moving a pinned piece | `apply`, then `isAttacked(king)`, then `undo`, so the move is refused |
+| Capturing the king | impossible. A position where the king is attacked is "check", and a move that leaves it there is illegal |
+| A pawn capturing straight, or moving diagonally without a capture | `Pawn::pseudoMoves` has both rules. `isAttacked` uses the diagonals separately |
+| Promotion | done in `apply`. The original pawn is kept for `undo` |
+| Stalemate | no legal moves, and not in check |
+| Not enough pieces, 50 moves, repeating | extra end rules (`Rule` objects in a chain checked after each move) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Castling" | `King::pseudoMoves` adds the two-square moves when unmoved and the path is safe; `Move` gains `rookFrom/rookTo`; pieces track `hasMoved` |
-| "En passant" | the game stores the last pawn double-step; `Pawn` adds the capture; `Move` records the captured square |
-| "Promotion choice" | `Move.promotion` piece type chosen by the player |
-| "Chess engine / AI" | a `Player` using minimax with alpha-beta over `legalMoves`, `apply/undo` and an evaluation function (Strategy) |
-| "Move notation (SAN), PGN import/export" | a `Notation` service over the move list |
-| "Clocks and time controls" | a `Clock` observing turns; flag-fall ends the game |
-| "Network play, spectators" | an event stream of moves (Observer) |
+| "Castling" | `King::pseudoMoves` adds the two-square moves when the king and rook have not moved and the path is safe. `Move` gets `rookFrom/rookTo`. Pieces remember `hasMoved` |
+| "En passant" | the game remembers the last pawn double step. `Pawn` adds the capture. `Move` records the captured square |
+| "Choose what to promote to" | `Move.promotion` holds the chosen piece type |
+| "A chess engine or AI" | a `Player` that uses minimax with alpha-beta over `legalMoves`, `apply/undo` and a score function (Strategy) |
+| "Move notation (SAN), PGN files" | a `Notation` service over the list of moves |
+| "Clocks and time" | a `Clock` that watches turns. When time runs out, the game ends |
+| "Online play and watchers" | a stream of moves (Observer) |
 | "Variants (Chess960, three-check)" | a `Rules` strategy that sets up the board and adds win conditions |
-| "Performance" | bitboards, incremental attack tables, move ordering |
+| "Speed" | bitboards, attack tables that update step by step, move ordering |
+
+## Short answer to say in an interview
+
+:::interview How do you check that a chess move is legal?
+"Each piece class makes its pseudo-legal moves, which just follow how that piece moves. To find the legal ones, I apply each move on the board, check whether my own king is attacked, and then undo the move. If the king is attacked, the move is illegal. This reuses the movement rules and the undo mechanism, so pins and discovered checks need no special code. After a move, if the next player has no legal move, it is checkmate if they are in check, and stalemate if not."
+:::
 
 ```quiz
 ? Why is legality tested by applying the move and undoing it?
-- It is the fastest known method
-+ It reuses the movement rules and the undo mechanism, so legality needs no extra special cases
+- It is the fastest known way
++ It reuses the movement rules and the undo tool, so legality needs no special cases
 - Pieces cannot know about check
-> One generic test handles pins, discovered checks and king safety.
+> One general test handles pins, discovered checks and king safety.
 ? Why does Move store the captured piece?
-- For the move list display
-+ So that undo can put the captured piece back exactly
-- To award points
-> Undo must restore the previous state.
+- To show the move list
++ So undo can put the captured piece back exactly
+- To give points
+> Undo must bring back the earlier state.
 ```
 
 :::keypoints
-- Piece subclasses generate pseudo-legal moves; the game filters by king safety using apply → test → undo.
-- Move = value object with from/to/captured/promotion; the board owns pieces by `unique_ptr`.
-- Status: no legal moves → checkmate (in check) or stalemate. Extensions: castling, en passant, engines via Player, rules via Strategy.
+- Piece classes make pseudo-legal moves. The game filters them by king safety using apply, test, undo.
+- Move is a small value with from, to, captured and promotion. The board owns pieces with `unique_ptr`.
+- Status: no legal moves means checkmate (if in check) or stalemate. Extensions: castling, en passant, engines through Player, rules through Strategy.
 :::

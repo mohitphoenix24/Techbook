@@ -2,143 +2,191 @@
 title: "OOP interview: C++ basics"
 level: easy
 time: 30
-summary: References and pointers, const, static, inline, storage duration, namespaces, enums, strings, initialisation and the small details that interviewers love to probe.
+summary: Simple answers about references and pointers, const, static, inline, where variables live, namespaces, enums, strings, starting values, and small details interviewers like to ask.
 ---
 
 ## References and pointers
 
 :::qa What is the difference between a pointer and a reference? {level=easy}
+**Say this:** "A pointer can be null and can point somewhere else later. A reference must refer to an object and cannot be changed to refer to another."
+
 | | Pointer | Reference |
 |---|---|---|
-| Can be null | yes | no (must refer to an object) |
-| Can be reseated | yes | no (bound once) |
-| Syntax | `*p`, `p->x` | used like the object itself |
-| Needs initialisation | no (but should) | yes |
-| Arithmetic | yes | no |
+| Can be null | yes | no |
+| Can point elsewhere later | yes | no |
+| Written as | `*p`, `p->x` | used like the object |
+| Must be set at the start | no (but should) | yes |
 
-A reference is an alias. Use references for parameters that must exist; use pointers when "no object" is a valid answer (or use `std::optional`).
+**In simple words:** A reference is another name for an object. Use references when the object must exist. Use a pointer when "no object" is a normal case (or use `std::optional`).
 :::
 
-:::qa What is the difference between `const int*`, `int* const` and `const int* const`? {level=medium}
-Read right to left.
-- `const int* p`: pointer to a **constant int** (cannot change `*p`, can change `p`).
-- `int* const p`: **constant pointer** to int (can change `*p`, cannot change `p`).
-- `const int* const p`: neither can change.
+:::qa What is the difference between const int*, int* const and const int* const? {level=medium}
+**Say this:** "Read from right to left. `const int*`: pointer to a constant int. `int* const`: constant pointer to an int. The last one: both are constant."
+
+**In simple words:**
+- `const int* p`: you cannot change `*p`, but you can point `p` elsewhere.
+- `int* const p`: you can change `*p`, but `p` always points to the same place.
+- `const int* const p`: you can change neither.
 :::
 
-:::qa What does `const` after a member function mean? {level=easy}
-`int get() const;` promises not to modify the object's (non-`mutable`) members. It makes `this` a `const T*`, so the function can be called on const objects. Mark every function that only reads state as `const`.
+:::qa What does const after a member function mean? {level=easy}
+**Say this:** "`int get() const;` promises that the function does not change the object."
+
+**In simple words:** Then you can call it on a `const` object. Mark every function that only reads with `const`.
 :::
 
-:::qa What is `mutable`? {level=medium}
-A member marked `mutable` can be changed inside `const` member functions. Use it for things that are not part of the logical state: caches, lazy values, mutexes, counters.
+:::qa What is mutable? {level=medium}
+**Say this:** "A `mutable` member can change even inside a `const` function."
+
+**In simple words:** Use it for things that are not part of the real state: caches, mutexes, counters.
 :::
 
 :::qa Pass by value, by reference, by const reference, by pointer: when do you use each? {level=easy}
-- **const T&** for read-only access to anything bigger than a few bytes (strings, vectors, objects).
-- **T&** when the function must modify the caller's object (an out parameter).
-- **T** (by value) for small types (`int`, `double`), or when you need your own copy anyway (then `move` it in).
-- **T*** when null is meaningful, or for C APIs.
-- **T&&** / by value + `std::move` for sink parameters that take ownership.
+**Say this:** "`const T&` to read anything big. `T&` to change the caller's object. By value for small types, or when I need my own copy. A pointer when null is meaningful."
+
+**In simple words:** Also: to take ownership of something, pass by value and `std::move` it in.
 :::
 
 :::qa What is a dangling reference or pointer? Give an example. {level=medium}
-One that refers to an object that no longer exists. Classic: returning a reference to a local variable, keeping a pointer into a `vector` after it reallocates, or holding `string_view` of a temporary string. Using it is undefined behaviour.
+**Say this:** "One that refers to an object that no longer exists."
+
+**In simple words:** Examples: returning a reference to a local variable, keeping a pointer into a `vector` after it grows, or a `string_view` of a temporary string. Using it is undefined behaviour.
 :::
 
-:::qa What is the difference between `NULL`, `0` and `nullptr`? {level=easy}
-`NULL` is a macro (usually `0`), so `f(NULL)` may call `f(int)` instead of `f(char*)`. `nullptr` has its own type `std::nullptr_t`, converts to any pointer type and never to an integer. Always use `nullptr`.
+:::qa What is the difference between NULL, 0 and nullptr? {level=easy}
+**Say this:** "`NULL` is a macro for 0. `nullptr` has its own type and is safe. Always use `nullptr`."
+
+**In simple words:** With `NULL`, a call `f(NULL)` may pick `f(int)` instead of `f(char*)`. `nullptr` never turns into an integer.
 :::
 
 :::qa What is the difference between stack and heap memory? {level=easy}
-The **stack** holds local variables: allocation is just moving a pointer, freed automatically at scope end, size is limited (a few MB). The **heap** (free store) holds objects created with `new`/`make_unique`: flexible size and lifetime, slower, and must be released (RAII). Prefer the stack; use the heap when the size or lifetime is dynamic.
+**Say this:** "The stack holds local variables and is automatic and fast. The heap is for objects with a size or life that is decided while running, and must be released."
+
+**In simple words:** The stack is small (a few MB) and cleans itself when a scope ends. The heap (`new`, `make_unique`) is flexible but slower. Prefer the stack. Use smart pointers for the heap.
 :::
 
 :::qa What are the storage durations in C++? {level=medium}
-**Automatic** (locals, destroyed at scope end), **static** (globals, `static` locals, live for the whole program), **dynamic** (created with `new`, live until deleted) and **thread** (`thread_local`, one per thread).
+**Say this:** "Automatic (locals), static (globals and static locals), dynamic (`new`) and thread (`thread_local`)."
+
+**In simple words:** How long a variable lives: until the scope ends, until the program ends, until you delete it, or until the thread ends.
 :::
 
 ## Keywords and declarations
 
-:::qa What does `static` mean in C++? It has several uses. {level=medium}
-1. Local variable: initialised once, keeps its value between calls.
-2. Class member: shared by all objects.
-3. Free function or global at file scope: **internal linkage** (not visible in other files).
-4. Static member function: no `this`.
+:::qa What does static mean in C++? It has several uses. {level=medium}
+**Say this:** "A static local keeps its value between calls. A static member is shared by all objects. A static global is private to its file."
+
+**In simple words:** Four uses: (1) a local variable that keeps its value, (2) a class member shared by all objects, (3) a file-private function or variable, (4) a member function without `this`.
 :::
 
-:::qa What does `inline` really mean today? {level=medium}
-It is mostly about the **one definition rule**: an `inline` function or variable may be defined in several translation units (it must be identical), which is why header-only functions are `inline`. Whether the compiler actually expands it is its own decision.
+:::qa What does inline really mean today? {level=medium}
+**Say this:** "It mostly allows the same definition in many files. It does not force the compiler to expand the code."
+
+**In simple words:** That is why functions in header files are `inline`. The compiler decides by itself whether to really inline them.
 :::
 
-:::qa What is `constexpr`? How is it different from `const`? {level=medium}
-`const` means "cannot change after initialisation" (the value may be known only at run time). `constexpr` means "can be evaluated at compile time" and is usable in constant expressions (array sizes, template arguments). A `constexpr` function may also run at run time.
+:::qa What is constexpr? How is it different from const? {level=medium}
+**Say this:** "`const` means 'cannot change after it is set'. `constexpr` means 'can be calculated at compile time'."
+
+**In simple words:** Use `constexpr` for array sizes and template arguments. A `constexpr` function can also run at run time.
 :::
 
-:::qa What is `auto` and when should you use it? {level=easy}
-`auto` deduces the type from the initialiser. Use it for long or obvious types (iterators, `make_unique`, lambdas). Do not hide information: `auto x = 5;` is fine, `auto r = compute();` when the type matters for the reader is not. Remember `auto` drops `const` and references; use `const auto&` when you mean it.
+:::qa What is auto and when should you use it? {level=easy}
+**Say this:** "`auto` lets the compiler work out the type from the value. Use it when the type is long or obvious."
+
+**In simple words:** Good: iterators, `make_unique`, lambdas. Not good: hiding a type that the reader needs to know. `auto` drops `const` and `&`, so write `const auto&` when you mean it.
 :::
 
-:::qa What is `explicit` for? {level=medium}
-It stops a constructor (or conversion operator) from being used for **implicit conversions**. Without it, `void f(Buffer b); f(10);` may silently build a `Buffer` from `10`. Mark single-argument constructors `explicit` by default.
+:::qa What is explicit for? {level=medium}
+**Say this:** "It stops a constructor from being used for hidden conversions."
+
+**In simple words:** Without it, `void f(Buffer b); f(10);` quietly builds a `Buffer` from 10. Mark single-argument constructors `explicit`.
 :::
 
 :::qa What is a namespace and why use one? {level=easy}
-A named scope that prevents name clashes between libraries. Avoid `using namespace std;` in headers (it pollutes everyone who includes the file). In `.cpp` files it is acceptable in small programs.
+**Say this:** "A named area that prevents name clashes between libraries."
+
+**In simple words:** Do not write `using namespace std;` in headers. It affects everyone who includes the file.
 :::
 
-:::qa What is the difference between `enum` and `enum class`? {level=easy}
-Plain `enum` values leak into the enclosing scope and convert implicitly to `int`. `enum class` is scoped (`Color::Red`) and does not convert implicitly, which prevents mistakes. Prefer `enum class`; you can choose the underlying type: `enum class Level : uint8_t`.
+:::qa What is the difference between enum and enum class? {level=easy}
+**Say this:** "`enum class` is scoped and does not turn into an int by itself. Prefer it."
+
+**In simple words:** A plain `enum` leaks its names into the surrounding scope. With `enum class` you write `Color::Red`. You can also choose the type: `enum class Level : uint8_t`.
 :::
 
-:::qa What is the difference between `#define` and `const`/`constexpr`? {level=easy}
-`#define` is text replacement by the preprocessor: no type, no scope, surprising with expressions (`#define SQ(x) x*x` breaks on `SQ(a+1)`). `constexpr` values and functions are typed, scoped and debuggable. Use macros only for conditional compilation and include guards.
+:::qa What is the difference between #define and const/constexpr? {level=easy}
+**Say this:** "`#define` is plain text replacement with no type and no scope. `constexpr` is typed and safe."
+
+**In simple words:** `#define SQ(x) x*x` breaks for `SQ(a+1)`. Use macros only for conditional compilation and include guards.
 :::
 
-:::qa What are include guards and `#pragma once`? {level=easy}
-They stop a header from being included twice in one translation unit, which would redefine classes. Classic guard: `#ifndef X_H / #define X_H / ... / #endif`. `#pragma once` does the same in one line and is supported by all major compilers.
+:::qa What are include guards and #pragma once? {level=easy}
+**Say this:** "They stop a header from being included twice in one file."
+
+**In simple words:** Without them, a class could be defined twice. `#pragma once` does the same in one line.
 :::
 
 :::qa What is the difference between declaration and definition? {level=easy}
-A declaration introduces a name and its type (`int f(int);`, `extern int x;`, `class A;`). A definition also creates the entity (the function body, the variable's storage, the class members). You may declare many times but define once (the One Definition Rule).
+**Say this:** "A declaration says a name exists. A definition creates it."
+
+**In simple words:** `int f(int);` is a declaration. The function with a body is the definition. You can declare many times, but define only once (the One Definition Rule).
 :::
 
 :::qa What is a translation unit and what does the linker do? {level=medium}
-A translation unit is one `.cpp` file after the preprocessor has pasted its includes. Each is compiled separately into an object file. The **linker** joins object files, matches declarations with definitions and reports "undefined reference" or "multiple definition" errors.
+**Say this:** "A translation unit is one `.cpp` file with its includes pasted in. The linker joins all compiled files into one program."
+
+**In simple words:** The linker reports "undefined reference" (a function is declared but never defined) or "multiple definition" errors.
 :::
 
 ## Initialisation and strings
 
 :::qa What are the different ways to initialise a variable? Which is safest? {level=medium}
-`int a = 5;` (copy), `int b(5);` (direct), `int c{5};` (brace/uniform), `int d = {5};`. **Brace initialisation** is safest because it forbids narrowing (`int x{3.5};` is an error) and works everywhere. Caveat: `vector<int> v{5, 1}` picks the initializer-list constructor (two elements), not "5 copies of 1".
+**Say this:** "`int a = 5;`, `int b(5);`, and `int c{5};`. Brace initialisation is the safest because it forbids narrowing."
+
+**In simple words:** `int x{3.5};` is an error, which saves you from silent loss. One catch: `vector<int> v{5, 1}` makes a vector with two items (5 and 1), not five copies of 1.
 :::
 
-:::qa What is the difference between `std::string`, `const char*` and `std::string_view`? {level=medium}
-`const char*` is a raw pointer to characters, with no length or ownership. `std::string` owns and manages its buffer. `std::string_view` is a **non-owning** pointer plus length: cheap to pass, but it must not outlive the text it views.
+:::qa What is the difference between std::string, const char* and std::string_view? {level=medium}
+**Say this:** "`const char*` is just a pointer. `std::string` owns its text. `std::string_view` only looks at text it does not own."
+
+**In simple words:** A `string_view` is cheap to pass, but the owner of the text must stay alive longer than the view.
 :::
 
 :::qa What is the Small String Optimisation (SSO)? {level=hard}
-Most `std::string` implementations store short strings (about 15 to 22 characters) inside the string object itself, with no heap allocation. It makes short strings fast, and is why moving a short string is really a copy of its bytes.
+**Say this:** "Short strings (about 15 to 22 characters) are stored inside the string object itself, with no heap allocation."
+
+**In simple words:** That makes short strings fast.
 :::
 
 :::qa What are uninitialised variables and why are they dangerous? {level=easy}
-A local `int x;` has an **indeterminate** value; reading it is undefined behaviour. Globals and statics are zero-initialised. Always initialise: `int x{};` gives zero.
+**Say this:** "A local `int x;` has a random value. Reading it is undefined behaviour. Always set a value: `int x{};`."
+
+**In simple words:** Globals and statics start at zero. Locals do not.
 :::
 
 :::qa What is undefined behaviour? Give three examples. {level=medium}
-The standard places no requirements on what happens: the program may crash, give wrong answers, or seem fine. Examples: out-of-bounds access, dereferencing null or a dangling pointer, signed integer overflow, reading an uninitialised variable, data races, deleting twice. The compiler may assume UB never happens and optimise accordingly.
+**Say this:** "The standard does not say what happens. The program may crash, give wrong results, or seem fine."
+
+**In simple words:** Examples: reading past the end of an array, using a null or dangling pointer, signed integer overflow, reading an uninitialised variable, a data race, deleting twice. The compiler may assume it never happens and optimise in surprising ways.
 :::
 
-:::qa What is the difference between `++i` and `i++`? Which is faster? {level=easy}
-`++i` increments and returns the **new** value (by reference); `i++` returns the **old** value (a copy). For ints the compiler makes them equal, but for iterators and class types, prefer `++i` to avoid the copy.
+:::qa What is the difference between ++i and i++? Which is faster? {level=easy}
+**Say this:** "`++i` adds one and gives the new value. `i++` gives the old value (a copy). Prefer `++i`."
+
+**In simple words:** For `int` they are the same speed. For iterators and classes, `i++` makes an extra copy.
 :::
 
-:::qa What is the difference between `==` on `const char*` and on `std::string`? {level=easy}
-On `const char*` it compares **addresses**, not text (use `strcmp`). On `std::string` it compares the contents.
+:::qa What is the difference between == on const char* and on std::string? {level=easy}
+**Say this:** "On `const char*` it compares addresses. On `std::string` it compares the text."
+
+**In simple words:** Use `strcmp` for C strings.
 :::
 
-:::qa What is `size_t` and what is the classic pitfall with it? {level=medium}
-`size_t` is an unsigned type for sizes and indexes. `for (size_t i = n - 1; i >= 0; --i)` never ends because an unsigned value cannot be negative, and `v.size() - 1` wraps around to a huge number for an empty vector. Compare carefully, or use signed `ptrdiff_t`/`ssize` where subtraction occurs.
+:::qa What is size_t and what is the classic pitfall with it? {level=medium}
+**Say this:** "`size_t` is an unsigned type for sizes. It can never be negative, so loops like `for (size_t i = n - 1; i >= 0; --i)` never end."
+
+**In simple words:** Also `v.size() - 1` becomes a huge number for an empty vector. Be careful when subtracting.
 :::
 
 ```quiz
@@ -146,16 +194,16 @@ On `const char*` it compares **addresses**, not text (use `strcmp`). On `std::st
 - const int* p
 + int* const p
 - const int* const p
-> `int* const` is a constant pointer to a modifiable int.
-? What does `explicit` on a constructor prevent?
+> `int* const` is a constant pointer to an int that can change.
+? What does explicit on a constructor prevent?
 - Copying
-+ Implicit conversions from the argument type
++ Hidden conversions from the argument type
 - Inheritance
-> It stops `f(10)` from silently creating an object.
+> It stops `f(10)` from quietly creating an object.
 ```
 
 :::keypoints
-- References are non-null aliases; pointers can be null and reseated.
-- `const` everywhere it applies; `constexpr` for compile-time; `explicit` for single-argument constructors.
-- Know UB, dangling references and the unsigned-size pitfall.
+- References are never null. Pointers can be null and can move.
+- Use `const` everywhere it fits, `constexpr` for compile time, and `explicit` for single-argument constructors.
+- Know undefined behaviour, dangling references and the unsigned size trap.
 :::

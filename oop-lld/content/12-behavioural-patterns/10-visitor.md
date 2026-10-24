@@ -2,22 +2,38 @@
 title: Visitor
 level: advanced
 time: 40
-summary: Adding new operations to a class hierarchy without modifying it, using double dispatch: why overloading alone is not enough, a shopping-cart tax and export example, an expression tree with several visitors, the expression problem, and std::variant with std::visit as the modern alternative.
+summary: Add new operations to a set of classes without editing them. Learn why overloading alone is not enough, what double dispatch means in simple words, a shopping tax example, an expression tree, the main trade-off, and the modern std::variant alternative.
 ---
 
-:::def Visitor
-Represent an **operation to be performed on the elements of an object structure**. Visitor lets you define a **new operation without changing the classes of the elements** on which it operates.
+:::note This one is a bit harder
+Visitor is the trickiest pattern in this module. Read it slowly. If you are short on time, remember the **short answer** at the bottom. That is enough for most interviews.
 :::
 
-## The problem: a stable hierarchy, a growing list of operations
+## What is the Visitor pattern?
 
-You have `Book`, `Food` and `Electronics` item classes that rarely change. But the business keeps asking for new *operations* over them: compute tax, print an invoice line, export to JSON, check shipping eligibility. Adding each operation as a virtual method means **editing every item class** every time (an OCP and SRP problem: items get polluted with tax, JSON and shipping code).
+Don't memorise the definition yet. Think of it like this:
 
-Visitor moves each operation into its **own class**, so a new operation is a new class and the items stay untouched.
+> "I have a few kinds of objects that never change (Book, Food, Electronics). But I keep getting **new jobs** to do on them: calculate tax, print an invoice, export to JSON. I don't want to open the item classes every time."
 
-## Why not just overload?
+:::analogy Think of a tax officer visiting shops
+The officer (visitor) visits a bookshop, a restaurant and an electronics shop. At each one, the officer applies **the rule for that kind of shop**. The shops do not change when a new officer type comes (say a fire inspector). A new officer simply visits the same shops.
+:::
 
-A first idea: a `TaxCalculator` with `tax(Book&)`, `tax(Food&)`, `tax(Electronics&)`. Overloads are chosen at **compile time** from the **static** type. With a vector of base pointers, that fails:
+:::def Visitor
+Put a new **operation** in its **own class** (the visitor), and let it **visit** each kind of object. You can add new operations **without changing** the object classes.
+:::
+
+## The problem: stable classes, growing list of jobs
+
+`Book`, `Food` and `Electronics` rarely change. But the business keeps asking for new jobs: tax, invoice line, JSON export, shipping check.
+
+If we add each job as a method inside every item class, we must **edit every class** for every new job. The item classes become messy, full of tax code, JSON code, shipping code.
+
+With Visitor, each job gets **its own class**. A new job means a new class. The items stay the same.
+
+## Why not just use overloading?
+
+You might say: "Write `tax(Book&)`, `tax(Food&)` and `tax(Electronics&)`, and let C++ pick." The problem is that C++ picks an overload by the type **written in the code** (the static type), not the real type at run time. With a list of base pointers, it fails:
 
 ```cpp run title="Overloading does not see the dynamic type"
 #include <iostream>
@@ -44,12 +60,12 @@ int main() {
 }
 ```
 
-We need the call to depend on **two** dynamic types: the **item** and the **operation**. That is **double dispatch**, and Visitor implements it with two virtual calls.
+We need the choice to depend on **two things at run time**: which item it is, and which job we are doing. This is called **double dispatch**. ("Dispatch" just means "decide which function to call".)
 
-## How double dispatch works
+## How double dispatch works (two steps)
 
-1. The client calls `item.accept(visitor)`. This is a **virtual** call, so it reaches the real item class (first dispatch: on the element's type).
-2. Inside, the item calls `visitor.visit(*this)`. Here `*this` has the item's **exact static type**, so the compiler picks the right `visit` overload (second dispatch: on the visitor's type, because `visit` is virtual).
+1. The user calls `item.accept(visitor)`. This is a **virtual** call, so it reaches the **real** item class (for example `Book`). *First decision: by the item's type.*
+2. Inside `Book::accept`, the code calls `visitor.visit(*this)`. Here `*this` is known to be a `Book`, so the right `visit(Book&)` is chosen. *Second decision: by the visitor's type.*
 
 ```viz algo=seq title="Double dispatch"
 participant c Client [user]
@@ -61,7 +77,7 @@ v --> b : adds 5% tax for books
 b --> c : done
 ```
 
-## Implementation
+## The implementation
 
 ```viz algo=uml title="Visitor"
 interface ItemVisitor
@@ -155,11 +171,11 @@ int main() {
 }
 ```
 
-A third operation (`ExportJsonVisitor`, `ShippingVisitor`) is **one new class** and no change to `Book`, `Food` or `Electronics`. Related code (everything about tax) sits in one place instead of being scattered across three item classes. A visitor can also **accumulate state** while walking (like `total_`).
+To add a new job (like `ExportJsonVisitor` or `ShippingVisitor`), you write **one new class**. `Book`, `Food` and `Electronics` do not change. All the tax code is in one place, and a visitor can keep a running total while it walks (like `total_`).
 
 ## A visitor over an expression tree
 
-Visitors suit **tree structures** (ASTs, documents, file systems) with many operations: evaluate, print, type-check, optimise, compile.
+Visitors are great for **trees** (maths expressions, documents, file systems) where you need many jobs: calculate, print, check types, optimise.
 
 ```cpp run title="Evaluate and print the same tree with different visitors"
 #include <iostream>
@@ -211,25 +227,23 @@ int main() {
 }
 ```
 
-## The trade-off: the expression problem
+## The main trade-off
 
-| You want to add... | With virtual methods in the classes | With Visitor |
+| You want to add... | With normal virtual methods | With Visitor |
 |---|---|---|
-| a new **operation** | edit **every** class | **easy**: write a new visitor |
-| a new **element type** | **easy**: add a class | **hard**: edit the visitor interface and **every** visitor |
+| a new **job** (operation) | edit **every** class | **easy**: one new visitor |
+| a new **kind of item** | **easy**: one new class | **hard**: edit the visitor interface and **every** visitor |
 
-So: use **Visitor when the element hierarchy is stable** and operations vary and grow (AST nodes, document types, tax categories). Use **plain virtual methods** when new types are more likely than new operations.
+So the rule is:
 
-Other costs:
+- **Visitor** is good when the **item classes are stable** and the **jobs keep growing** (syntax trees, document types, tax categories).
+- **Normal virtual methods** are better when **new item types** come more often than new jobs.
 
-- Elements must expose enough of their state for visitors to work (weakens encapsulation).
-- The `accept`/`visit` boilerplate in every class.
-- Circular dependency between the element and visitor headers (use forward declarations as above).
-- Return values need a stateful visitor or a template (`visit` returns `void` above).
+Other costs: items must show enough of their data for visitors to work, and every class needs the `accept` boilerplate.
 
-## The modern alternative: std::variant and std::visit
+## The modern way: `std::variant` and `std::visit`
 
-In C++17, for a **closed** set of types, `std::variant` + `std::visit` gives you the same capability with no `accept`, no class hierarchy, and a **compile error** if a visitor forgets a case.
+In C++17, if the set of types is **fixed**, `std::variant` with `std::visit` does the same job. It needs no `accept`, no class family, and you get a **compile error** if you forget a case.
 
 ```cpp run title="The same idea with variant and visit"
 #include <iostream>
@@ -262,32 +276,35 @@ int main() {
 }
 ```
 
-Choose classic Visitor when elements are **polymorphic objects** in an open-ended framework or live behind pointers; choose `variant` when the set of types is **fixed and known**.
+- Use the classic Visitor when the items are objects behind pointers in a big, open framework.
+- Use `variant` when the set of types is **fixed and known**.
 
-:::interview Explain Visitor and double dispatch. When is it a bad idea?
-"Visitor lets you add operations to a hierarchy without editing it. Each element has `accept(Visitor&)` that calls `visitor.visit(*this)`; the first virtual call dispatches on the element's type, and the second, on the visitor, picks the right `visit` overload, which is double dispatch. It is great when the element types are stable and operations keep growing, such as an AST. It is bad when new element types are added often, because every visitor must change. In modern C++, `std::variant` with `std::visit` often replaces it for closed sets."
+## Short answer to say in an interview
+
+:::interview What is Visitor and double dispatch? When is it a bad idea?
+"Visitor lets me add new operations to a group of classes without editing them. Each item has accept(visitor), which calls visitor.visit(*this). The first virtual call picks the item type, and the second picks the right visit function. That is double dispatch. It is good when the item types are stable and the jobs keep growing, like a syntax tree. It is a bad idea when new item types come often, because every visitor must change. In modern C++, std::variant with std::visit often replaces it."
 :::
 
 ```quiz
-? Why do we need `accept()` instead of just overloading `visit()`?
+? Why do we need accept() instead of just overloading visit()?
 - To save memory
-+ Overloads are resolved by static type; accept() uses a virtual call to recover the element's real type first
++ Overloads are chosen by the written type. accept() uses a virtual call to find the real type first
 - It is a C++ rule
-> That is double dispatch: virtual accept, then a statically chosen visit(*this).
-? What becomes hard when using Visitor?
-- Adding a new operation
-+ Adding a new element type (every visitor must change)
-- Traversing a tree
-> New operations are easy; new element types are expensive.
-? What modern C++ feature often replaces Visitor for a closed set of types?
+> That is double dispatch: a virtual accept, then visit(*this).
+? What becomes hard with Visitor?
+- Adding a new job
++ Adding a new kind of item, because every visitor must change
+- Walking a tree
+> New jobs are easy. New item types are costly.
+? Which modern C++ feature often replaces Visitor for a fixed set of types?
 - Macros
 + std::variant with std::visit
 - Templates only
-> It gives type-safe dispatch with a compile-time check that all cases are handled.
+> It gives safe dispatch and checks at compile time that every case is handled.
 ```
 
 :::keypoints
-- Visitor adds new operations to a stable class hierarchy without editing it, via double dispatch (`accept` then `visit(*this)`).
-- Great for ASTs, documents, file systems; keeps each operation's code together and lets visitors accumulate state.
-- Trade-off: adding a new element type is costly (the expression problem). `std::variant` + `std::visit` is the modern alternative for closed sets.
+- Visitor adds new operations to stable classes without editing them. It uses double dispatch: `accept`, then `visit(*this)`.
+- It is great for syntax trees, documents and file systems. Each job's code stays in one place.
+- Trade-off: adding a new item type is costly. `std::variant` with `std::visit` is the modern choice for a fixed set.
 :::

@@ -1,15 +1,15 @@
 ---
-title: Designing thread-safe classes: patterns and a checklist
-level: advanced
+title: "Designing thread-safe classes: patterns and a checklist"
+level: intermediate
 time: 40
-summary: The strategies for making a class safe under concurrency (immutability, confinement, locking, lock-free handoff), the monitor object, read-copy-update with shared_ptr, thread-safe singleton and lazy initialisation with call_once, active object, a thread-safe LRU cache, and a checklist for interview answers.
+summary: The main ways to make a class safe when many threads use it: unchangeable objects, keeping data in one thread, a class with its own lock, copy-on-write snapshots, call_once, an active object, a thread-safe LRU cache, and a checklist to use in interviews.
 ---
 
-When an LLD problem says "many users" or "concurrent requests", you are expected to **say how the design stays correct**. This lesson collects the strategies and the checklist.
+When an LLD problem says "many users" or "concurrent requests", the interviewer expects you to **explain how your design stays correct**. This lesson gives you the ways to do that, and a checklist to speak from.
 
-## Strategy 1: make the shared thing immutable
+## Way 1: make the shared thing unchangeable (immutable)
 
-An object that **never changes after construction** can be read by any number of threads with no locks. This is the best option.
+If an object **never changes after it is created**, any number of threads can read it **without any lock**. This is the best option when you can use it.
 
 ```cpp run title="Immutable value objects need no locking"
 #include <iostream>
@@ -39,9 +39,9 @@ int main() {
 }
 ```
 
-## Strategy 2: thread confinement (don't share)
+## Way 2: don't share (thread confinement)
 
-If each piece of data is touched by **exactly one thread**, there is no race. Examples: per-request objects, thread-local caches, the "actor" model where one thread owns an object and others send it messages.
+If each piece of data is used by **only one thread**, there is nothing to race on. Examples: a new object for each request, a per-thread cache, or an "actor" where one thread owns the object and others send it messages.
 
 ```cpp run title="thread_local: each thread has its own copy"
 #include <iostream>
@@ -61,16 +61,16 @@ int main() {
 }
 ```
 
-## Strategy 3: the monitor object (lock inside the class)
+## Way 3: a class that protects itself (monitor)
 
-Every public method locks one internal mutex, so the object **protects itself**. Callers need no knowledge of locking. This is the default for shared mutable objects (the `Account` of the earlier lesson).
+Every public method locks **one internal mutex**. The object looks after itself, and callers do not need to know about locks. This is the default for shared objects that change (like the `Account` from the earlier lesson).
 
-Design rules for a monitor class:
+Rules for such a class:
 
-1. **All** accesses to the shared state (including `const` readers) lock the same mutex.
-2. Make operations **coarse enough** that callers never need to combine two calls atomically (offer `transfer`, `withdrawIfEnough`, `putIfAbsent`, not `get` + `put`).
-3. **Never return references to internal data** (callers would use them without the lock). Return copies or snapshots.
-4. **Do not call out** (virtual functions, callbacks) while holding the lock.
+1. **Every** access to the shared data (even a read-only method) locks the **same** mutex.
+2. Make operations **big enough** that callers never need to join two calls into one step. Offer `transfer`, `withdrawIfEnough`, `putIfAbsent`. Do not make callers do `get` and then `put`.
+3. **Never give out references to the inside.** Callers could use them without the lock. Return copies.
+4. **Do not call outside code** (virtual functions, callbacks) while holding the lock.
 
 ```cpp run title="A thread-safe inventory with atomic compound operations"
 #include <iostream>
@@ -109,9 +109,9 @@ int main() {
 }
 ```
 
-## Strategy 4: copy-on-write snapshot (read-mostly data)
+## Way 4: copy-on-write snapshot (for data that is read often and changed rarely)
 
-For configuration read constantly and rarely changed, keep the data in an **immutable object behind a `shared_ptr`**. Readers grab the pointer (a quick, brief lock or atomic) and then read **without any lock**. A writer builds a **new** object and swaps the pointer.
+For settings that are read all the time and changed rarely, keep the data in an **unchangeable object behind a `shared_ptr`**. A reader takes the pointer (a very short step) and then reads **with no lock**. A writer builds a **new** object and swaps the pointer.
 
 ```cpp run title="Readers never block writers (and vice versa)"
 #include <iostream>
@@ -148,13 +148,13 @@ int main() {
 
 This is the idea behind **RCU** (read-copy-update) and persistent data structures.
 
-## Thread-safe lazy initialisation
+## Creating something once, safely (lazy initialisation)
 
-| Need | Use |
+| You need | Use |
 |---|---|
-| One global instance | function-local `static` (Meyers Singleton): initialisation is thread-safe |
-| Lazy member initialised once | `std::call_once(flag, init)` |
-| Racy "check, then create" | **never** `if (!p) p = new T;` without protection |
+| One global object | a function-local `static` (Meyers Singleton). Its creation is thread-safe |
+| A member that is created once, later | `std::call_once(flag, init)` |
+| A check-then-create | **never** write `if (!p) p = new T;` without protection |
 
 ```cpp run title="std::call_once for a lazy member"
 #include <iostream>
@@ -181,11 +181,11 @@ int main() {
 }
 ```
 
-The famous bug is **double-checked locking** done with a plain pointer: `if (!p) { lock; if (!p) p = new T; }`. It is broken without atomics/acquire-release because another thread may see the pointer before the object is fully constructed. Use `call_once` or a static local instead.
+A famous bug is **double-checked locking** with a plain pointer: `if (!p) { lock; if (!p) p = new T; }`. It is broken, because another thread may see the pointer before the object is fully built. Use `call_once` or a static local instead.
 
-## Strategy 5: the active object (one owner thread)
+## Way 5: the active object (one owner thread)
 
-Instead of locking, give the object **its own thread and queue**. Callers post requests (commands) and get futures; the single worker runs them one by one, so the object's state is touched by **one thread only**.
+Instead of locking, give the object **its own thread and its own queue**. Callers **post requests** and get futures. One worker runs them one by one, so the object's data is touched by **only one thread**.
 
 ```cpp run title="An active object: a counter owned by one thread"
 #include <condition_variable>
@@ -232,9 +232,9 @@ int main() {
 }
 ```
 
-## A thread-safe LRU cache (a common interview question)
+## A thread-safe LRU cache (a very common question)
 
-An LRU cache needs a map for lookup and a list for recency. A single mutex protects both, and every operation is one critical section.
+An LRU cache needs a map (to find items fast) and a list (to remember which was used last). One mutex protects both, and every operation is one locked step.
 
 ```cpp run title="Thread-safe LRU cache with one mutex"
 #include <iostream>
@@ -282,45 +282,47 @@ int main() {
 }
 ```
 
-With very high contention, split the cache into **N shards** by `hash(key) % N`, each with its own lock and LRU list (lock striping).
+If many threads fight for this one lock, split the cache into **N parts (shards)** using `hash(key) % N`. Each part has its own lock and its own LRU list.
 
 ## The thread-safety checklist
 
-When you finish a design in an interview, say:
+At the end of an interview design, say these eight things:
 
-1. **What is shared and mutable?** Name it (the balance, the seat map, the cache).
-2. **Which strategy protects each piece?** Immutable, confined, monitor (mutex), atomic, copy-on-write, or active object.
-3. **What are the invariants**, and which operations must be atomic together? (check-then-act, transfers)
-4. **Lock order and granularity**: one lock per structure? If several, a global order or `scoped_lock`.
-5. **No calls to unknown code under a lock**; no references to internals leaking out.
-6. **Waiting without spinning**: condition variables; **shutdown** path.
-7. **Failure and fairness**: exceptions leave locks released (RAII); avoid starvation.
-8. **How I would test it**: stress tests, ThreadSanitizer, deterministic tests with injected schedulers.
+1. **What is shared and can change?** Name it (the balance, the seat map, the cache).
+2. **How is each piece protected?** Immutable, one-thread only, own lock (monitor), atomic, copy-on-write, or active object.
+3. **What rules must hold**, and which steps must happen together? (check then act, transfers)
+4. **Locks:** one lock per structure? If several, a fixed order or `scoped_lock`.
+5. **No outside code under a lock**, and no references to the inside given out.
+6. **Waiting without spinning:** condition variables. And the **shutdown** path.
+7. **Errors and fairness:** RAII releases locks when errors happen. Avoid starving a thread.
+8. **How I would test it:** stress tests, ThreadSanitizer, and tests with a controlled scheduler.
+
+## Short answer to say in an interview
 
 :::interview How do you make a class thread-safe?
-"First I ask whether it needs to be shared and mutable at all: immutable objects and thread-confined data need no locks. Otherwise I make it a monitor: one mutex protects its invariants, every public method locks it with RAII, compound operations like check-and-reserve or transfer are single methods so there is no gap, and I never return references to internals or call out while holding the lock. For read-mostly data I use copy-on-write snapshots or a shared_mutex. I name the lock order if several locks exist, and I verify with stress tests and ThreadSanitizer."
+"First I ask whether it really needs to be shared and changeable. Unchangeable objects and data kept in one thread need no locks. Otherwise I give the class one internal mutex that protects its rules. Every public method locks it with RAII, steps like check-and-reserve or transfer are single methods so nothing can slip in between, and I never give out references to the inside or call outside code under the lock. For data that is read often and changed rarely, I use copy-on-write snapshots or shared_mutex. If there are several locks, I name the order. Then I verify with stress tests and ThreadSanitizer."
 :::
 
 ```quiz
-? Why is `if (!ptr) ptr = new T;` unsafe in multithreaded code?
+? Why is if (!ptr) ptr = new T; unsafe with many threads?
 - It leaks memory
-+ Two threads can both see null and both create an object (and a thread may see a half-built one)
++ Two threads can both see null and both create an object (and one may see a half-built one)
 - It is slow
 > Use a function-local static or std::call_once.
-? Why return a copy (snapshot) rather than a reference from a monitor's getter?
+? Why return a copy instead of a reference from a getter in a self-protecting class?
 - Copies are faster
 + A reference would let callers read or write the data without the lock
 - References cannot be returned
-> The lock protects only while inside the method.
+> The lock protects only while you are inside the method.
 ? What is the main idea of an active object?
 - Using atomics
-+ One owner thread executes all operations posted to a queue, so the state needs no lock
++ One owner thread runs all the requests from a queue, so the data needs no lock
 - Using more threads
-> Sharing is replaced by messaging.
+> Sharing is replaced by sending messages.
 ```
 
 :::keypoints
-- Prefer immutability and thread confinement; otherwise a monitor class with one internal mutex and atomic compound operations.
-- Copy-on-write snapshots for read-mostly data; `call_once` or a static local for lazy init; an active object to avoid locks.
-- Never leak references or call out under a lock. State your shared data, strategy, invariants, lock order and test plan.
+- Prefer unchangeable objects and data kept in one thread. Otherwise use a class with one internal mutex and single-step compound operations.
+- Copy-on-write snapshots for read-heavy data, `call_once` or a static local for lazy creation, and an active object to avoid locks.
+- Never leak references or call outside code under a lock. Always say what is shared, how it is protected, the rules, the lock order and how you test.
 :::

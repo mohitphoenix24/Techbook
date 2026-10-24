@@ -2,30 +2,30 @@
 title: Design an ATM
 level: easy
 time: 50
-summary: Card insertion, PIN verification with a retry limit, balance, withdrawal and deposit, a State-pattern lifecycle, a Chain of Responsibility that dispenses notes by denomination, and a bank interface the ATM depends on instead of a concrete database.
+summary: Insert a card, check the PIN (with a retry limit), see the balance, withdraw and deposit. Learn the State pattern for the session, a chain of handlers that gives out notes, and why the ATM should use a bank interface and not a database directly.
 ---
 
 :::problem Design an ATM {level=easy tags="state machine,State pattern,Chain of Responsibility,banking"}
-Design the software of an ATM. A customer inserts a card, enters a PIN (three attempts allowed), then can check the balance, withdraw cash or deposit cash. The ATM dispenses notes of different denominations and must never dispense more cash than it has. It talks to a bank to verify the PIN and update balances.
+Design the software of an ATM. A customer inserts a card and enters a PIN (three tries are allowed). Then they can check the balance, withdraw cash or deposit cash. The ATM gives out notes of different values and must never give out more cash than it holds. It talks to a bank to check the PIN and to update balances.
 
 :::hint Hint
-The ATM is a state machine (no card, card inserted, authenticated). Dispensing the right notes is a chain: each handler gives as many of its denomination as it can and passes the remainder on. Keep the **bank** behind an interface.
+The ATM is a state machine (no card, card inserted, logged in). Giving out the right notes is a chain: each handler gives as many notes of its value as it can, and passes the rest to the next handler. Keep the **bank** behind an interface.
 :::
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Operations? | insert card, enter PIN, balance, withdraw, deposit, eject card |
-| PIN rules? | 3 attempts, then the card is retained |
-| Notes? | Rs 2000, 500, 100; the ATM holds a count of each |
-| Withdrawal rules? | positive multiple of 100; within account balance; within ATM cash; notes by greedy largest-first |
-| Bank? | a separate system behind an interface (verify PIN, get balance, debit, credit) |
-| Concurrency? | one customer at a time physically (a lock still guards the ATM's cash) |
-| Out of scope | receipts, card readers, networking |
+| Actions? | insert card, enter PIN, balance, withdraw, deposit, eject card |
+| PIN rule? | 3 tries, then the card is kept by the machine |
+| Notes? | Rs 2000, 500, 100. The ATM keeps a count of each |
+| Withdrawal rules? | a positive multiple of 100, not more than the account balance, not more than the ATM's cash, and notes are chosen largest first (greedy) |
+| The bank? | a separate system behind an interface (check PIN, get balance, debit, credit) |
+| Threads? | one customer at a time in real life (a lock still protects the ATM's cash) |
+| Not needed | receipts, card reader hardware, networking |
 
-## Step 2: states
+## Step 2: The states
 
 ```viz algo=state title="ATM lifecycle"
 state NoCard "No card" [initial] @0,1
@@ -40,7 +40,7 @@ Authenticated -> Authenticated : balance / withdraw / deposit
 play: withdraw, insert card, enter wrong pin, enter correct pin, withdraw, eject card
 ```
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="ATM: class diagram"
 class ATM
@@ -77,14 +77,14 @@ CashDispenser *-- NoteHandler
 FakeBank ..|> Bank
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **State pattern** for the lifecycle; operations invalid in a state print a clear message.
-- **Bank is an interface** (DIP): tests use a `FakeBank`; production uses a network client.
-- **Cash dispensing as a chain**: `Handler(2000) → Handler(500) → Handler(100)`. **Plan first, then commit**: compute the note counts without removing cash; only after the bank **debit** succeeds do we subtract the notes. That order avoids losing money or notes on a failure.
-- **Order of side effects in withdraw**: check amount → check ATM cash → debit the bank → dispense. If debiting fails, no notes leave. (A production ATM also handles "debit succeeded but the motor failed" with a reversal.)
+- **State pattern** for the session. If an action is not allowed in a state, we print a clear message.
+- **The bank is an interface** (Dependency Inversion). Tests use a `FakeBank`. Real use has a network client.
+- **Giving out notes is a chain:** `Handler(2000) → Handler(500) → Handler(100)`. **Plan first, then do it.** We first work out how many notes of each kind are needed, without taking any cash out. Only after the bank **debit** works do we take the notes from the machine. This order means a failure never loses money or notes.
+- **Order of steps in withdraw:** check the amount, check the ATM's cash, debit the bank, then give out the notes. If the debit fails, no notes come out. (A real ATM also handles "debit worked but the motor jammed" by reversing the debit.)
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="ATM: states, chain of notes, fake bank"
 #include <iostream>
@@ -232,42 +232,48 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Amount not representable with the notes left (Rs 300 when only 500s remain) | `plan` fails: "cannot dispense", the account is **not** debited |
-| ATM has less cash than the account balance | the plan checks the machine's notes first |
-| Debit fails after planning | nothing was removed from the machine |
-| Debit succeeds but the motor jams | a reversal call to the bank (extension: Command/Saga) |
-| PIN retry limit | attempts counted per card insertion; at 3, the card is retained |
-| Two ATMs, one account | the bank must make `debit` atomic (a server-side concern) |
+| The amount cannot be made with the notes left (Rs 300 when only 500s remain) | `plan` fails with "cannot dispense", and the account is **not** debited |
+| The ATM has less cash than the account balance | the plan checks the machine's notes first |
+| The debit fails after planning | nothing was taken from the machine |
+| The debit works but the motor jams | ask the bank to reverse it (extension: Command or Saga) |
+| PIN retry limit | tries are counted for each card insertion. At 3, the card is kept |
+| Two ATMs, one account | the bank must make `debit` safe (the bank's job) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Daily withdrawal limit" | the bank or a `LimitPolicy` strategy |
-| "Greedy fails (e.g. 2 notes types)" | replace `plan` with a DP/backtracking planner behind the same interface |
-| "Different note sets per country" | build the chain from configuration |
-| "Mini-statement, PIN change, transfers" | new operations on `Authenticated` state; a `Transaction` command log |
-| "Cash refill by technicians" | a `Maintenance` state; refill API with an audit log |
-| "Receipts and notifications" | Observer events after each transaction |
-| "Timeout after 30 seconds idle" | a clock injected into the ATM; `tick()` ejects the card |
+| "A daily withdrawal limit" | the bank, or a `LimitPolicy` strategy |
+| "Greedy does not always work" | swap `plan` for a smarter planner (DP or backtracking) behind the same interface |
+| "Different notes in different countries" | build the chain from settings |
+| "Mini statement, PIN change, transfers" | new actions in the `Authenticated` state, and a log of transactions (Command) |
+| "A technician refills cash" | a `Maintenance` state, and a refill method with a log |
+| "Receipts and messages" | Observer events after each transaction |
+| "Time out after 30 seconds idle" | pass a clock into the ATM. `tick()` ejects the card |
+
+## Short answer to say in an interview
+
+:::interview Why do you plan the notes before debiting the account?
+"If the ATM cannot give out the exact amount, the customer's account must not be charged. So I first plan the notes without changing anything. Only after the bank debit works do I take the notes out. That way every failure leaves the system unchanged. I also keep the bank behind an interface, so tests use a fake bank."
+:::
 
 ```quiz
 ? Why plan the notes before debiting the account?
 - It is faster
-+ If the ATM cannot dispense the amount, the customer's account must not be charged
++ If the ATM cannot give the amount, the customer's account must not be charged
 - Banks require it
-> Side effects (debit, removal of notes) happen only after all checks pass.
+> Side effects happen only after all checks pass.
 ? Why is the bank an interface?
 - To hide the PIN
-+ Tests use a fake, production uses a real client, and the ATM does not depend on a database (DIP)
++ Tests use a fake, real use has a real client, and the ATM does not depend on a database
 - Because ATMs have many banks
-> Dependency inversion keeps the ATM logic independent of the bank implementation.
+> Dependency inversion keeps the ATM independent of how the bank works.
 ```
 
 :::keypoints
-- State pattern for the session lifecycle; the bank is an interface; the chain plans note counts.
-- Order of side effects: validate, plan, debit, then dispense, so failures leave no partial effect.
-- Extensions: limits as strategies, a better change-making planner, maintenance state, events, idle timeout.
+- State pattern for the session. The bank is an interface. A chain plans the notes.
+- Order of side effects: check, plan, debit, then give out the notes. A failure leaves no half-done work.
+- Extensions: limits as strategies, a better change-making planner, a maintenance state, events, idle time-out.
 :::

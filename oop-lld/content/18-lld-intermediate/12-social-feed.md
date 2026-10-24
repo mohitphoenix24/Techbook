@@ -2,43 +2,43 @@
 title: Design a Social Media News Feed
 level: intermediate
 time: 60
-summary: Users, follow relationships, posts and likes, building a feed with pull and push (fan-out) strategies, ranking as a strategy, cursor pagination, and the trade-offs between fan-out on write and fan-out on read.
+summary: Users who follow each other, posts and likes, and how to build a feed. Learn pull and push (fan-out) strategies, ranking as a strategy, pagination with a cursor, and the trade-off between work at write time and work at read time.
 ---
 
 :::problem Design a Social Media News Feed (Twitter/Instagram) {level=medium tags="feed,fan-out,Strategy,Observer,pagination,graph"}
-Design the core of a social network feed. Users follow other users and publish posts. A user's feed shows recent posts from the people they follow, newest first (or ranked). Support likes and comments, paginated feeds, and follow/unfollow. Think about what happens when someone has millions of followers.
+Design the core of a social network feed. Users follow other users and publish posts. A user's feed shows recent posts from the people they follow, newest first (or ranked). Support likes and comments, a feed that is split into pages, and follow and unfollow. Think about what happens when someone has millions of followers.
 :::
 
 :::hint Hint
-Two ways to build a feed: **pull** (at read time, gather recent posts of everyone you follow and merge) and **push** (at write time, copy each new post id into each follower's feed list). Make the feed builder a **strategy** so both fit behind one interface. Use a stable **cursor** for pagination.
+There are two ways to build a feed. **Pull:** when the user opens the feed, collect the recent posts of everyone they follow and merge them. **Push:** when someone posts, copy the post id into the feed list of each follower. Make the feed builder a **strategy**, so both fit behind one interface. Use a stable **cursor** for the pages.
 :::
 
-## Step 1: requirements
+## Step 1: Ask questions (requirements)
 
-| Question | Assumption |
+| Question | Our assumption |
 |---|---|
-| Entities? | User, Post (author, text, time), Follow, Like, Comment |
-| Feed? | posts from followed users, newest first; own posts included |
-| Pagination? | page size N with a cursor (the last seen post), not an offset |
-| Ranking? | default chronological; ranking strategy pluggable (engagement-weighted) |
-| Operations? | follow, unfollow, post, like/unlike, comment, getFeed(user, cursor, limit) |
-| Celebrities? | users with huge follower counts must not make posting slow |
-| Consistency? | eventual for feeds is fine; likes counted atomically |
-| Out of scope | media, search, notifications UI, ads |
+| Main things? | User, Post (author, text, time), Follow, Like, Comment |
+| The feed? | posts from the people you follow, newest first. Your own posts are included |
+| Pages? | a page of N posts with a cursor (the last post seen), not a page number |
+| Ranking? | normally by time. The ranking can be swapped (a score that uses likes) |
+| Actions? | follow, unfollow, post, like and unlike, comment, getFeed(user, cursor, limit) |
+| Celebrities? | users with huge numbers of followers must not make posting slow |
+| Consistency? | feeds can be a little late (eventual). Likes are counted safely |
+| Not needed | pictures, search, notification screens, ads |
 
-## Step 2: the two feed strategies
+## Step 2: The two ways to build a feed
 
-| | Pull (fan-out on read) | Push (fan-out on write) |
+| | Pull (work when reading) | Push (work when posting) |
 |---|---|---|
-| Post time | O(1): store the post | O(followers): insert the post id into every follower's feed |
-| Read time | O(following x recent posts): query + merge + sort | O(1): read a precomputed list |
-| Storage | small | duplicates ids per follower |
-| Good for | users following few; celebrities | most users; read-heavy systems |
-| Problem | slow reads for heavy followers | **celebrity write storm**: 10M inserts per post |
+| When posting | O(1): just store the post | O(followers): add the post id to every follower's feed |
+| When reading | O(people you follow × recent posts): fetch, merge, sort | O(1): read a ready list |
+| Storage | small | the same ids are copied for each follower |
+| Good for | users who follow few people, and for celebrities | most users, when there are many more reads than writes |
+| Problem | slow reads for people who follow many | **a storm for celebrities**: 10 million inserts for one post |
 
-Real systems use a **hybrid**: push for normal users, pull for celebrities, merged at read time.
+Real systems use a **mix**: push for normal users, pull for celebrities, and merge the two when reading.
 
-## Step 3: entities
+## Step 3: Find the classes
 
 ```viz algo=uml title="News feed"
 class FeedService
@@ -77,17 +77,17 @@ ChronologicalRanker ..|> Ranker
 EngagementRanker ..|> Ranker
 ```
 
-## Step 4: design decisions
+## Step 4: Design decisions
 
-- **`FeedStrategy`** interface with `onPost` (called when a post is created) and `build` (called when a feed is requested). `PullFeed.onPost` does nothing; `PushFeed.onPost` fans out ids; `HybridFeed` pushes unless the author has more than a threshold of followers.
-- **Cursor pagination** uses the post id (monotonic, time-ordered): "give me N posts with id < cursor". It stays stable when new posts arrive, unlike offsets.
-- **`PostStore`** is the single owner of posts (id → Post). Feeds store **ids only**.
-- **Ranker** orders candidates; chronological is just `score = id`. An engagement ranker mixes likes and recency.
-- **SocialGraph** holds both `following` and `followers` maps for fast fan-out and reads.
-- **Likes** use a set of user ids (idempotent like/unlike); counts are the set size.
-- **Thread-safety**: one mutex per structure in this sketch; a real system shards by user id.
+- **`FeedStrategy`** is an interface with `onPost` (called when a post is made) and `build` (called when a feed is asked for). `PullFeed.onPost` does nothing. `PushFeed.onPost` copies ids to followers. `HybridFeed` pushes, unless the author has more followers than a limit.
+- **Cursor pages** use the post id (it only grows with time): "give me N posts with id less than the cursor". It stays steady when new posts arrive, unlike page numbers.
+- **`PostStore`** is the only owner of posts (id to Post). Feeds keep **ids only**.
+- **Ranker** orders the candidates. Time order is just `score = id`. A ranker that uses likes mixes likes and age.
+- **SocialGraph** keeps both `following` and `followers` maps, for fast copying to followers and fast reads.
+- **Likes** use a set of user ids (liking twice does nothing new). The count is the size of the set.
+- **Threads:** one mutex for each structure in this sketch. A real system splits by user id.
 
-## Step 5: the code
+## Step 5: The code
 
 ```cpp run title="Pull, push and hybrid feeds with cursor pagination"
 #include <algorithm>
@@ -236,44 +236,50 @@ int main() {
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Unfollow | pull sees it immediately; a push feed keeps old posts (filter by current follows at read time, or remove lazily) |
-| Deleted post | feeds hold ids only; `find` returns null and the id is skipped |
-| User with no follows | feed shows only their own posts |
-| Pagination during new posts | cursor by id: newer posts appear on page 1 next time, not shifted into page 2 |
-| Duplicate ids in hybrid merge | `unique` after sorting |
-| Rapid like/unlike | set semantics make them idempotent |
-| Celebrity posts | not pushed in hybrid; merged on read |
+| Unfollow | pull sees it at once. A push feed keeps old posts (filter by who you follow now when reading, or remove slowly) |
+| A deleted post | feeds hold ids only, so `find` returns null and the id is skipped |
+| A user who follows nobody | the feed shows only their own posts |
+| New posts while paging | a cursor by id: newer posts show on page 1 next time, and do not shift into page 2 |
+| Repeated ids when merging in the mix | `unique` after sorting |
+| Quick like and unlike | set rules make them safe to repeat |
+| Celebrity posts | not pushed in the mix. They are merged when reading |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "Real ranking (ML score, affinity)" | a `Ranker` using features (affinity with the author, age, engagement); candidates still come from the feed strategy |
+| "Real ranking (a learned score, closeness)" | a `Ranker` that uses features (closeness to the author, age, likes). Candidates still come from the feed strategy |
 | "Notifications for likes and follows" | Observer events |
-| "Mute, block, private accounts" | filters applied when building the feed (Chain of Responsibility) |
-| "Trending topics" | an aggregator listening to post events with sliding-window counts |
-| "Stories (expiring posts)" | a TTL on posts; lazy filtering |
-| "Scale" | shard feeds by user id; a cache (Redis list per user) for push inboxes; async fan-out workers on a queue |
-| "Media and large objects" | store references; a CDN (HLD) |
-| "Consistency" | feeds are eventually consistent; reads can merge in the user's own latest posts to avoid "my post is missing" |
+| "Mute, block, private accounts" | filters when building the feed (Chain of Responsibility) |
+| "Trending topics" | an aggregator that listens to post events and counts in a sliding window |
+| "Stories that expire" | a time to live on posts, filtered when read |
+| "Scale" | split feeds by user id, keep push inboxes in a cache (a Redis list for each user), and copy to followers in the background through a queue |
+| "Pictures and big files" | store references, and use a CDN (HLD) |
+| "Consistency" | feeds can be late. When reading, also merge the user's own latest posts so "my post is missing" does not happen |
+
+## Short answer to say in an interview
+
+:::interview What is the difference between fan-out on write and fan-out on read?
+"With fan-out on write (push), when someone posts, I copy the post id into every follower's feed list. Reading is then very fast, but a celebrity with millions of followers causes millions of inserts for one post. With fan-out on read (pull), I only store the post, and when a user opens the feed, I collect and merge the recent posts of everyone they follow. Writes are cheap, but reads are slower. Real systems mix them: push for normal users, pull for celebrities, merged when reading."
+:::
 
 ```quiz
 ? Why is fan-out on write a problem for celebrities?
 - It is not
-+ One post by an account with millions of followers causes millions of inserts
++ One post from an account with millions of followers causes millions of inserts
 - Because feeds are sorted
-> Hybrid designs pull celebrities' posts at read time instead.
-? Why paginate with a cursor instead of an offset?
+> A mixed design pulls celebrities' posts when reading.
+? Why use a cursor instead of a page number?
 - Cursors are shorter
-+ New posts do not shift items between pages, so users do not see duplicates or skip posts
-- Offsets are unsupported in C++
-> A cursor is a stable position in a time-ordered list.
++ New posts do not shift items between pages, so users do not see repeats or miss posts
+- Page numbers are not supported in C++
+> A cursor is a steady position in a list ordered by time.
 ```
 
 :::keypoints
-- Feed building is a strategy: pull (read-time merge), push (write-time fan-out), hybrid (push normal users, pull celebrities).
-- Posts live in one store; feeds hold ids; cursor pagination; ranking is a separate strategy.
-- Scale with sharding, caches and asynchronous fan-out workers.
+- Building a feed is a strategy: pull (merge when reading), push (copy when posting), or a mix (push for normal users, pull for celebrities).
+- Posts live in one store. Feeds hold ids. Cursor pages. Ranking is a separate strategy.
+- To scale: split by user, use caches, and copy to followers in the background.
 :::

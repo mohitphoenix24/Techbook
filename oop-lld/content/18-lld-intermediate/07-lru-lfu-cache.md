@@ -2,31 +2,38 @@
 title: Design LRU and LFU Caches (generic, thread-safe)
 level: intermediate
 time: 60
-summary: A generic cache with O(1) get and put, an eviction policy abstraction with LRU (list plus hash map) and LFU (frequency buckets), time-to-live support through an injected clock, hit/miss statistics and a thread-safe wrapper, with the reasoning interviewers expect about complexity.
+summary: A cache that works for any key and value type, with O(1) get and put. Learn how LRU uses a list and a hash map, how LFU uses frequency buckets, how to plug in different eviction rules, expiry with a clock, hit and miss counts, and thread safety.
 ---
 
 :::problem Design an LRU Cache (then LFU) {level=medium tags="caching,data structures,Strategy,generic,thread-safe,classic"}
-Design an in-memory cache with fixed capacity supporting `get(key)` and `put(key, value)` in O(1). When full, evict according to a policy: **LRU** (least recently used) or **LFU** (least frequently used, ties broken by recency). Make the policy pluggable, support optional per-entry expiry, report hit/miss statistics, and make it thread-safe.
+Design an in-memory cache with a fixed size. It supports `get(key)` and `put(key, value)` in O(1). When it is full, it removes an item by a rule: **LRU** (least recently used) or **LFU** (least frequently used, and if tied, the one used least recently). Make the rule pluggable, support an optional expiry for each entry, report hit and miss counts, and make it safe for many threads.
 :::
 
 :::hint Hint
-LRU = a hash map from key to a node in a **doubly linked list** ordered by recency; moving a node to the front is O(1) with `list::splice`. LFU = a map from key to its frequency plus a list of keys per frequency, and a tracked minimum frequency. Hide both behind one `EvictionPolicy` interface so the cache itself does not care.
+LRU = a hash map from key to a node in a **doubly linked list** that is ordered by how recently each item was used. Moving a node to the front takes O(1) with `list::splice`. LFU = a map from key to its use count, plus a list of keys for each count, and a note of the smallest count. Hide both behind one `EvictionPolicy` interface, so the cache itself does not care which one is used.
 :::
 
-## Step 1: requirements
+## First, what is a cache?
 
-| Question | Assumption |
+A cache is a small, fast store that keeps **recently needed data close**, so you do not have to fetch it again from a slow place (like a database). But it has a limited size. When it is full and a new item arrives, the cache must **throw one item away**. The rule for choosing which item to throw away is the **eviction policy**.
+
+- **LRU**: throw away the item that was **used the longest time ago**. (Like a desk: the paper you have not touched for ages goes back in the drawer.)
+- **LFU**: throw away the item that has been **used the fewest times**.
+
+## Step 1: Ask questions (requirements)
+
+| Question | Our assumption |
 |---|---|
-| Operations? | `get`, `put`, `erase`, `size`, `stats` |
-| Complexity? | O(1) average for get/put |
-| Eviction? | pluggable policy: LRU, LFU (ties: least recently used) |
-| Types? | generic `Cache<K, V>` |
-| Expiry? | optional TTL per `put`, checked lazily with an injected clock |
-| Thread-safety? | a mutex (or sharded caches for scale) |
+| Actions? | `get`, `put`, `erase`, `size`, `stats` |
+| Speed? | O(1) on average for get and put |
+| Eviction? | pluggable: LRU, LFU (ties: least recently used) |
+| Types? | works for any types: `Cache<K, V>` |
+| Expiry? | optional time to live for each `put`, checked only when the item is read, using a clock that we pass in |
+| Threads? | a mutex (or several smaller caches for more speed) |
 | Stats? | hits, misses, evictions |
-| Out of scope | persistence, distributed caching |
+| Not needed | saving to disk, a cache on many machines |
 
-## Step 2: how the data structures work
+## Step 2: How the data structures work
 
 ```text
 LRU                                         LFU
@@ -36,7 +43,13 @@ LRU                                         LFU
  get/put: splice the node to the front       get/put: move key from bucket c to c+1; fix minFreq
 ```
 
-## Step 3: design
+In words, for LRU:
+
+- The **map** finds any key in O(1) and gives its place in the list.
+- The **list** keeps keys in order: front is the most recently used, back is the least recently used.
+- On a read, move that key to the front. When full, remove the key at the back.
+
+## Step 3: The design
 
 ```viz algo=uml title="Generic cache with eviction policy"
 class Cache
@@ -70,11 +83,11 @@ Cache *-- Entry
 Cache ..> Stats
 ```
 
-- **Separation of concerns**: `Cache` owns values, capacity, TTL and locking. The **policy only tracks keys** and answers "who is the victim?". That is the Strategy pattern, and it is why LFU is a new class and nothing else.
-- **TTL** checks happen on `get` (lazy). An expired entry counts as a miss and is erased. (A background sweeper is an extension.)
-- **One mutex** around every public method: policy and map must change together. For high contention, **shard**: N independent caches chosen by `hash(key) % N`.
+- **Each class has one job.** `Cache` owns the values, the size limit, the expiry and the lock. The **policy only tracks keys** and answers "which one should go?". That is the Strategy pattern, and it is why LFU is just a new class and nothing else changes.
+- **Expiry** is checked when you call `get` (lazily). An expired entry counts as a miss and is removed. (A background cleaner is an extension.)
+- **One mutex** around every public method, because the policy and the map must change together. For heavy traffic, **split into N smaller caches** chosen by `hash(key) % N`.
 
-## Step 4: the code
+## Step 4: The code
 
 ```cpp run title="Cache<K,V> with LRU and LFU policies, TTL and statistics"
 #include <iostream>
@@ -223,54 +236,60 @@ int main() {
 
 ## Complexity table (say this in the interview)
 
-| Operation | LRU | LFU (bucket version) |
+| Action | LRU | LFU (bucket version) |
 |---|---|---|
-| `get` | O(1) | O(1) (`std::map` for buckets makes `victim` O(log F); keep `minFreq` for strict O(1)) |
-| `put` | O(1) | O(1) / O(log F) |
+| `get` | O(1) | O(1) (using `std::map` for the buckets makes `victim` O(log F). Keep a `minFreq` number for a strict O(1)) |
+| `put` | O(1) | O(1) or O(log F) |
 | Space | O(capacity) | O(capacity) |
 
-The strictly O(1) LFU keeps an integer `minFreq` (reset to 1 on insert, incremented when the min bucket empties on access) and uses `unordered_map<int, list<K>>`. The `std::map` used here is simpler and still fast because the number of distinct frequencies is small.
+A strict O(1) LFU keeps a number `minFreq` (set to 1 on insert, and increased when the smallest bucket becomes empty) and uses `unordered_map<int, list<K>>`. The `std::map` used here is simpler, and still fast, because the number of different counts is small.
 
 ## Edge cases
 
-| Case | Handling |
+| Case | What happens |
 |---|---|
-| Capacity 0 | `put` does nothing |
-| `put` on an existing key | updates value and counts as an access |
-| Expired entries | counted as misses and erased on access; sweep occasionally |
-| Reading a value while another thread evicts it | `get` returns a **copy** under the lock |
-| Large values | store `shared_ptr<const V>` to avoid copies |
-| Recency bumped by `get` on a missing key | no effect |
-| Thundering herd (many misses for the same key) | a "load through" cache with per-key in-flight futures (extension) |
+| Size 0 | `put` does nothing |
+| `put` on a key that already exists | the value is updated, and it counts as a use |
+| Expired entries | counted as misses and removed when read. Clean up now and then |
+| Reading while another thread removes it | `get` gives a **copy** while holding the lock |
+| Very big values | keep `shared_ptr<const V>` to avoid copies |
+| `get` on a missing key | does not change the order |
+| Many misses for the same key at once | a "load through" cache with one pending load for each key (extension) |
 
-## Extensions and follow-ups
+## What if the interviewer asks for more?
 
-| Follow-up | Design response |
+| Follow-up | Our answer |
 |---|---|
-| "More policies: FIFO, MRU, ARC, TinyLFU, random" | new `EvictionPolicy` classes |
-| "Higher concurrency" | shard into N caches by key hash; each with its own lock |
-| "Write-through / write-back with a database" | a `Backend` interface; `put` writes through or marks dirty |
+| "More rules: FIFO, MRU, ARC, TinyLFU, random" | new `EvictionPolicy` classes |
+| "More speed with many threads" | split into N caches by key hash, each with its own lock |
+| "Write to a database too" | a `Backend` interface. `put` writes through, or marks the entry dirty |
 | "Cache-aside vs read-through" | `getOrLoad(key, loader)` |
-| "Size-based capacity (bytes)" | weigh entries; evict until total weight fits |
-| "Metrics" | observer for hit/miss/evict to a monitoring system |
-| "Distributed cache" | consistent hashing of keys over nodes (HLD) |
-| "Persistence" | snapshot (Memento) and reload at start-up |
+| "Size in bytes, not items" | give each entry a weight, and remove until the total fits |
+| "Metrics" | an observer for hit, miss and evict that sends to monitoring |
+| "A cache over many machines" | consistent hashing of keys over nodes (HLD) |
+| "Keep it after restart" | save a snapshot (Memento) and load it at start |
+
+## Short answer to say in an interview
+
+:::interview How do you build an LRU cache with O(1) get and put?
+"I use a hash map from key to a node in a doubly linked list. The list is ordered by recent use. On get or put, I move the node to the front with splice, which is O(1). When the cache is full, I remove the node at the back and erase its key from the map. To make the rule pluggable, I put it behind an eviction policy interface that only tracks keys, so LFU is a new class. A mutex protects the cache, or I split it into shards."
+:::
 
 ```quiz
-? What makes LRU `get` and `put` O(1)?
+? What makes LRU get and put O(1)?
 - Sorting on every call
-+ A hash map to list nodes plus a doubly linked list: relinking a node to the front is O(1)
++ A hash map to list nodes, plus a doubly linked list. Moving a node to the front is O(1)
 - Using a vector
-> `list::splice` moves a node without copying or searching.
-? Why does the policy store only keys, not values?
+> list::splice moves a node without copying or searching.
+? Why does the policy store only keys and not values?
 - Values are big
-+ The cache owns values; the policy's single job is to decide the victim (Strategy)
++ The cache owns the values. The policy has one job: decide the victim (Strategy)
 - Keys are smaller
-> Separation of concerns makes policies interchangeable.
+> Separate jobs make policies easy to swap.
 ```
 
 :::keypoints
-- `Cache<K,V>` owns data, TTL, stats and the lock; `EvictionPolicy<K>` decides victims.
-- LRU: list + map of iterators. LFU: frequency buckets (min frequency), ties by recency.
-- Lazy expiry via an injected clock; shard for concurrency; add policies without touching the cache.
+- `Cache<K,V>` owns the data, expiry, stats and lock. `EvictionPolicy<K>` decides which key to remove.
+- LRU: a list plus a map of iterators. LFU: buckets by use count with the smallest count noted, ties by recency.
+- Lazy expiry with a clock passed in. Split into shards for threads. Add policies without touching the cache.
 :::

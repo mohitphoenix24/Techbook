@@ -1,13 +1,13 @@
 ---
 title: A full SOLID refactoring, step by step
-level: advanced
+level: intermediate
 time: 40
-summary: One messy OrderService that breaks all five principles, refactored in five clear steps (SRP, OCP, LSP, ISP, DIP) into a design that is easy to extend and test, with the code running at every stage.
+summary: One messy OrderService that breaks all five SOLID rules, cleaned up in five easy steps. The code runs after every stage.
 ---
 
-The principles are easiest to learn on a real mess. Here is an `OrderService` that a junior wrote in a hurry. We will fix it one principle at a time.
+SOLID is easiest to learn on a real mess. Below is an `OrderService` written in a hurry by a beginner. We will clean it up **one rule at a time**.
 
-## The starting point
+## Where we start
 
 ```cpp run title="Step 0: the messy version"
 #include <iostream>
@@ -53,29 +53,40 @@ int main() {
 }
 ```
 
-Problems: **SRP** (six responsibilities), **OCP** (three `if/else` chains on strings that grow with every new type), **DIP** (SQL, payment and email all concrete and hard-wired), no way to test without side effects. We refactor in order.
+What is wrong? Let's list it in simple words:
 
-## Step 1: SRP: split the responsibilities
+- **SRP**: one class does six jobs (checks the order, calculates the price, takes payment, saves, sends email, prints).
+- **OCP**: there are `if / else` chains on strings. Every new discount or payment type means editing this class.
+- **DIP**: the database, payment and email are all fixed inside. They cannot be replaced.
+- It is **impossible to test** without really charging and emailing.
 
-One class per reason to change: `OrderValidator`, `PriceCalculator`, `PaymentProcessor`, `OrderRepository`, `Notifier`. `OrderService` becomes a short **coordinator**.
+Now we fix it step by step.
 
-## Step 2: OCP: replace the type switches with polymorphism
+## Step 1 (SRP): give each job its own class
 
-Discounts and payment methods are variation points: make each a small class behind an interface. `enum class`/types replace strings.
+We make one class per job: `OrderValidator`, `PriceCalculator`, `PaymentProcessor`, `OrderRepository`, `Notifier`.
 
-## Step 3: LSP: make sure every implementation honours the contract
+`OrderService` becomes short. It just **coordinates**: it calls the others in order.
 
-`PaymentMethod::pay` returns a `bool` (success). **No** implementation may throw "not supported" or return success without paying. We keep the contract simple and identical for all.
+## Step 2 (OCP): replace the `if` chains with classes
 
-## Step 4: ISP: small interfaces
+Discounts and payment methods are things that **change**. So each one becomes a small class behind an interface. We also use an `enum class` instead of strings.
 
-`OrderRepository` only has `save`. `Notifier` only has `notify`. The coordinator that only needs to save depends on the narrow `OrderRepository`, not on a giant "Database" interface.
+Now a new discount is a **new class**, not an edit.
 
-## Step 5: DIP: inject everything from `main`
+## Step 3 (LSP): every class must keep the same promise
 
-`OrderService` takes its collaborators in its constructor as interfaces. `main` is the composition root.
+`PaymentMethod::pay` returns `true` or `false`. **No** payment class is allowed to throw "not supported" or to say "success" without really paying. Everyone follows the same simple promise, so any of them can replace any other.
 
-## The result
+## Step 4 (ISP): keep interfaces small
+
+`OrderRepository` has only `save`. `Notifier` has only `notify`. The coordinator asks only for what it needs. It does not ask for a giant "Database" interface with 30 methods.
+
+## Step 5 (DIP): pass everything in from `main`
+
+`OrderService` gets its helpers through the constructor, as interfaces. `main` is the only place that knows the real classes.
+
+## The final result
 
 ```cpp run title="Step 5: the SOLID version"
 #include <iostream>
@@ -153,13 +164,13 @@ int main() {
 
 ## What did we gain?
 
-| Change request | Before | After |
+| If someone asks for... | Before | After |
 |---|---|---|
-| Add a "platinum" discount | edit `placeOrder`'s if-chain | add `PlatinumDiscount` |
-| Add wallet payments | edit the payment chain | add `WalletPayment` |
-| Switch SQL to a REST API | edit and risk the whole method | add `RestOrderRepository`, change one line in `main` |
-| Test the order flow | impossible without side effects | pass fakes for `OrderRepository`, `Notifier`, `PaymentMethod` |
-| Change the validation rule | scroll through 40 lines | edit `OrderValidator` |
+| A "platinum" discount | edit the `if` chain in `placeOrder` | add a `PlatinumDiscount` class |
+| Wallet payment | edit the payment chain | add a `WalletPayment` class |
+| Switch from SQL to a web API | edit the big method and risk breaking it | add a `RestOrderRepository` and change one line in `main` |
+| Test the order flow | impossible without side effects | pass fakes |
+| Change the validation rule | search in 40 lines | edit `OrderValidator` |
 
 ## A test for the new design
 
@@ -216,27 +227,29 @@ int main() {
 }
 ```
 
-No real database, no real email, and the test runs in microseconds. That is the combined payoff of SOLID.
+No real database, no real email, and the test is very fast. This is the real reward of SOLID.
 
-:::interview Walk me through refactoring a messy class
-"I first list the responsibilities (SRP) and split them. I look for type switches and extract interfaces (OCP), making sure each implementation keeps the same contract (LSP). I keep interfaces narrow (ISP) and inject them through the constructor so the high-level class depends only on abstractions (DIP). Finally I show how a new requirement and a unit test each touch only one small class."
+## Short answer to say in an interview
+
+:::interview How would you refactor a messy class?
+"First I list its jobs and split them (SRP). Then I look for if-else chains on a type and turn them into an interface with one class per case (OCP). I make sure every class keeps the same promise (LSP), keep interfaces small (ISP), and pass the helpers in through the constructor (DIP). At the end I can show that a new feature adds one class, and a test uses simple fakes."
 :::
 
 ```quiz
-? In the refactoring, which principle removed the `if (paymentType == "card")` chains?
+? Which rule removed the if (paymentType == "card") chains?
 - SRP
-+ OCP (polymorphism: one class per payment method)
++ OCP, by making one class per payment method
 - ISP
 > A new payment method becomes a new class, not an edit.
-? Why does `OrderService` take `OrderRepository&` rather than `SqlOrderRepository&`?
+? Why does OrderService take OrderRepository& and not SqlOrderRepository&?
 - To save memory
-+ DIP: depend on the abstraction so the implementation can change and be faked
-- Because references are faster
-> The high-level class should not know the concrete low-level detail.
++ DIP: depend on the interface, so the real thing can be replaced or faked
+- References are faster
+> The coordinator should not know the real detail.
 ```
 
 :::keypoints
-- Refactor in order: split responsibilities, replace type switches with polymorphism, keep contracts honest, keep interfaces small, inject dependencies from `main`.
-- The payoff: new requirements are new classes, and tests use fakes.
-- A coordinator class (`OrderService`) stays short and depends only on abstractions.
+- Refactor in this order: split the jobs, replace type switches with classes, keep promises equal, keep interfaces small, pass helpers in.
+- The reward: new features are new classes, and tests use fakes.
+- Keep the coordinator class short. It should depend only on interfaces.
 :::

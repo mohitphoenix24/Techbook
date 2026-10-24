@@ -2,12 +2,16 @@
 title: UML class diagrams, and how they map to C++
 level: easy
 time: 30
-summary: Reading and drawing class diagrams: class boxes, visibility, the six relationships with their arrows and multiplicities, and the exact C++ code that each arrow stands for.
+summary: How to read and draw a class diagram in simple steps: the class box, the six kinds of arrows, how many objects are linked, and the C++ code each arrow stands for.
 ---
 
-A **class diagram** is the main picture of an LLD answer. You draw it on the whiteboard in the first 10 minutes. It must be quick to draw, and the code must follow it. You need only a small part of UML.
+A **class diagram** is a picture of your classes and how they are connected. In an LLD interview you draw it on the whiteboard in the first 10 minutes, and your code should follow it.
+
+Good news: you only need a small part of UML (the drawing language). This lesson covers exactly that part.
 
 ## The class box
+
+Every class is drawn as a box with three parts.
 
 ```viz algo=uml title="One class box"
 class Account
@@ -19,30 +23,39 @@ class Account
   # audit(): void
 ```
 
-| Part | Meaning |
+| Part | What it holds |
 |---|---|
-| Top: **name** | nouns, singular: `Account` |
-| Middle: **attributes** | `visibility name: Type` |
-| Bottom: **operations** | `visibility name(params): ReturnType` |
-| `+` / `-` / `#` | public / private / protected |
-| *italic* name or `«abstract»` | abstract class |
-| `«interface»` | an interface (all pure virtual) |
-| underlined member | `static` |
+| Top | the class **name**, like `Account` |
+| Middle | the **data** it keeps: `visibility name: Type` |
+| Bottom | the **actions** it can do: `visibility name(params): ReturnType` |
 
-In an interview, you may skip getters and trivial members. Show the **key** data and the **important** operations only.
+The small signs in front of each line:
 
-## The relationships
+| Sign | Meaning |
+|---|---|
+| `+` | public (anyone can use it) |
+| `-` | private (only this class can use it) |
+| `#` | protected (this class and its children) |
 
-Six arrows cover almost everything. From weakest to strongest coupling:
+Two more labels you will see:
 
-| Arrow | Name | Reads as | Strength |
+- `«interface»` means a class that only says *what* to do, with no code inside.
+- *Italic name* or `«abstract»` means a class you cannot create objects from directly.
+
+In an interview, **skip the boring getters and setters**. Show only the important data and the important methods.
+
+## The six arrows
+
+Six arrows cover almost everything. Here they are, from the loosest link to the tightest.
+
+| Arrow | Name | Say it like this | Example |
 |---|---|---|---|
-| `A ..> B` dashed, open head | **Dependency** | "A uses B temporarily" | weakest |
-| `A --> B` solid, open head | **Association** | "A knows B" | |
-| `A o-- B` hollow diamond at A | **Aggregation** | "A has B (B lives independently)" | |
-| `A *-- B` filled diamond at A | **Composition** | "A owns B (B dies with A)" | |
-| `A ..|> B` dashed, hollow triangle | **Realisation** | "A implements interface B" | |
-| `A --|> B` solid, hollow triangle | **Generalisation** | "A is a kind of B" (inheritance) | strongest |
+| `A ..> B` (dashed, open head) | **Dependency** | "A just uses B for a moment" | a method takes B as a parameter |
+| `A --> B` (solid, open head) | **Association** | "A knows B" | A keeps a pointer to B |
+| `A o-- B` (hollow diamond on A) | **Aggregation** | "A has B, but B can live without A" | a Team has Players |
+| `A *-- B` (filled diamond on A) | **Composition** | "A owns B, and B dies when A dies" | a House has Rooms |
+| `A ..|> B` (dashed, hollow triangle) | **Realisation** | "A follows the rules of interface B" | `Card` implements `Payable` |
+| `A --|> B` (solid, hollow triangle) | **Inheritance** | "A is a kind of B" | `Dog` is an `Animal` |
 
 ```viz algo=uml title="All six relationships in one diagram"
 interface Payable
@@ -67,23 +80,29 @@ Employee --> Office : worksIn
 Printer ..> Document
 ```
 
-## Multiplicity
+:::tip A easy way to remember
+- Dashed line = weak link ("uses" or "follows rules").
+- Solid line = stronger link ("knows" or "is a").
+- Filled diamond = "owns it completely".
+:::
 
-Numbers on an arrow end say how many objects take part:
+## How many? (multiplicity)
 
-| Notation | Meaning |
+Small numbers at the end of an arrow say **how many objects** are involved.
+
+| Written | Means |
 |---|---|
 | `1` | exactly one |
 | `0..1` | zero or one (optional) |
-| `*` or `0..*` | zero or more |
-| `1..*` | one or more |
+| `*` or `0..*` | zero or many |
+| `1..*` | at least one |
 | `3` | exactly three |
 
-"A `Member` borrows `0..3` `Copy` objects; a `Copy` is borrowed by `0..1` `Member`."
+Example in words: "A `Member` borrows `0..3` `Copy` objects. A `Copy` is borrowed by `0..1` `Member`."
 
-## Each arrow in C++ code
+## What each arrow looks like in C++
 
-This single program shows the C++ spelling of every relationship. Match each comment to the diagram above.
+This one program shows the C++ code for every arrow. Read the comments and match each one with the diagram above.
 
 ```cpp run title="UML arrow to C++ code"
 #include <iostream>
@@ -167,44 +186,50 @@ int main() {
 
 ## Drawing tips for the whiteboard
 
-1. **Interfaces and abstract classes at the top**, concrete classes below, owners above the parts they own. Arrows read naturally top-down.
-2. **Name the role** on an association when it helps: `Order --> Customer : placedBy`.
-3. **Do not draw every getter.** Show what proves the design: data that matters, public operations, interfaces.
-4. **Mark multiplicities** on composition and association. They show you thought about cardinality.
-5. **Show the pattern** by labelling: `«strategy»`, `«factory»`.
-6. Keep it to **8 to 12 classes**. If you need more, group them or draw it in two parts.
+1. Put **interfaces at the top**, normal classes below, and owners above the things they own.
+2. Write a **name on the arrow** if it helps: `Order --> Customer : placedBy`.
+3. **Do not draw every getter.** Show only what proves your design.
+4. Write the **numbers** (multiplicity) on the important arrows. It shows you thought about "how many".
+5. Label the pattern if you used one: `«strategy»`, `«factory»`.
+6. Keep it to **8 to 12 classes**. If you need more, split it into two pictures.
 
-:::warn Frequent mistakes
-- Using inheritance arrows for "has-a" (a `Car` is not an `Engine`).
-- Drawing a diamond but meaning a plain reference. Diamonds claim *ownership* or *part-of*; if unsure, use a plain arrow.
-- Both classes pointing to each other with no reason (a cycle). One direction is usually enough.
-- Putting `getX`/`setX` pairs for every field: it signals poor encapsulation.
+:::warn Common mistakes
+- Using an inheritance arrow for "has-a". A `Car` is not an `Engine`; a `Car` *has* an `Engine`.
+- Drawing a diamond when you only mean "knows". A diamond says "owns" or "is a part of". If unsure, use a plain arrow.
+- Making two classes point at each other for no reason. One direction is usually enough.
+- Writing `getX`/`setX` for every field. It makes the design look weak.
 :::
 
 ## Tools
 
-On a whiteboard, boxes and arrows suffice. In a take-home or document use **PlantUML**, **Mermaid** (`classDiagram`), or draw.io. The diagrams in this course are generated from a tiny text language like PlantUML's.
+On a whiteboard, boxes and arrows are enough. For documents you can use PlantUML, Mermaid or draw.io. The diagrams in this course are drawn from a small text language, a bit like PlantUML.
+
+## Short answer to say in an interview
+
+:::interview What is the difference between aggregation and composition?
+"Both mean 'has-a'. In composition the whole owns the part, so when the whole is destroyed the part is destroyed too, like a House and its Rooms. In aggregation the part can live on its own, like a Team and its Players."
+:::
 
 ```quiz
 ? What does a filled diamond on a line mean?
 - Inheritance
 + Composition: the whole owns the part, and the part dies with it
 - A dependency
-> Filled = strong ownership. Hollow diamond = aggregation (independent lifetimes).
+> Filled diamond = strong ownership. Hollow diamond = the part can live alone.
 ? Which arrow means "implements an interface"?
 - Solid line with a hollow triangle
 + Dashed line with a hollow triangle
 - Dashed line with an open arrowhead
-> Dashed + triangle is realisation; solid + triangle is inheritance; dashed + open arrow is dependency.
+> Dashed + triangle = implements. Solid + triangle = inheritance. Dashed + open arrow = uses.
 ? How is composition usually written in C++?
-- A raw pointer to an object owned elsewhere
-+ A member by value, or a unique_ptr or vector owned by the whole
+- A raw pointer to something owned elsewhere
++ A member by value, or a unique_ptr or vector owned by the class
 - A friend declaration
-> Owning the part and controlling its lifetime maps to value members and unique_ptr.
+> If the class owns the part, it holds the part directly.
 ```
 
 :::keypoints
-- Class box: name, attributes, operations; `+ - #` for visibility; `«interface»` and abstract in italics.
-- Six arrows: dependency, association, aggregation, composition, realisation, generalisation. Each has a clear C++ spelling.
-- Draw interfaces on top, 8 to 12 classes, multiplicities on associations, and make the code match the diagram.
+- A class box has a name, data and methods. `+` is public, `-` is private, `#` is protected.
+- Six arrows: dependency, association, aggregation, composition, implements, inherits. Each one maps to simple C++ code.
+- Put interfaces on top, keep to 8 to 12 classes, write numbers on important arrows, and make your code match the picture.
 :::
