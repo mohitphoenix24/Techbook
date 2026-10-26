@@ -313,6 +313,7 @@
     js: "javascript", javascript: "javascript", jsx: "jsx", ts: "text/typescript", typescript: "text/typescript",
     tsx: "text/typescript-jsx", json: "application/json", html: "xml", xml: "xml", css: "css", toml: null, text: null, output: null,
   };
+  Object.assign(MODES, SITE.modes || {});          // a course can override editor modes, e.g. { html: "htmlmixed" }
   const LANG_LABEL = { cpp: "C++", "c++": "C++", c: "C", stdin: "Input", pseudo: "Pseudocode", python: "Python", py: "Python", bash: "Terminal", sh: "Terminal", shell: "Terminal", js: "JavaScript", javascript: "JavaScript", jsx: "JSX", tsx: "TSX", ts: "TypeScript", typescript: "TypeScript", json: "JSON", html: "HTML", css: "CSS", text: "Text", output: "Output", toml: "TOML", env: ".env", glsl: "GLSL", wgsl: "WGSL" };
 
   function highlight(code, lang) {
