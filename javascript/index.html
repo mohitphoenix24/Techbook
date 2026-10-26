@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSLab — JavaScript mastery for senior interviews</title>
+  <meta name="description" content="JavaScript for senior full-stack interviews: execution context, closures, this, prototypes, the event loop, promises, Node.js internals and streams, memory, browser fundamentals, security and React — with runnable examples, coding challenges and a topic-wise interview question bank.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23f59e0b'/%3E%3Cstop offset='1' stop-color='%23dc2626'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='url(%23g)'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='800' font-size='16' fill='white'%3EJS%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/vendor/cm/codemirror.min.css">
+  <link rel="stylesheet" href="../shared/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../shared/css/style.css">
+  <link rel="stylesheet" href="assets/css/js.css">
+  <style>
+    :root { --accent: #b45309; --accent-2: #dc2626; --accent-3: #7c3aed; }
+    :root[data-theme="dark"] { --accent: #fbbf24; --accent-2: #fb7185; --accent-3: #a78bfa; }
+  </style>
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("techcontent:theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" data-icon="menu"></button>
+    <a class="brand" href="#/"><span class="brand-logo" data-icon="zap" style="font-size:19px"></span><span class="brand-text">JSLab<small>JavaScript for senior interviews</small></span></a>
+    <button class="search-trigger" id="search-btn" aria-label="Search lessons" data-icon="search"><span>Search lessons, questions, terms…</span><kbd>Ctrl K</kbd></button>
+    <nav class="topnav">
+      <a href="#/" data-nav="home" data-icon="home"><span>Home</span></a>
+      <a href="#/m/start" data-nav="learn" data-icon="cap"><span>Learn</span></a>
+      <a href="#/problems" data-nav="problems" data-icon="target"><span>Challenges</span></a>
+      <a href="#/qa" data-nav="qa" data-icon="message"><span>Q&amp;A bank</span></a>
+      <a href="#/glossary" data-nav="glossary" data-icon="book"><span>Glossary</span></a>
+    </nav>
+    <span class="runtime-pill" id="runtime-pill" data-state="idle" title="Unchanged examples show output recorded from real Node.js 22 when the course was built. Edited code runs live in your browser."><span class="dot"></span><span class="rt-label">JS ready</span></span>
+    <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation"></aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="palette-backdrop" id="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette">
+      <div class="palette-input"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="palette-q" placeholder="Search lessons, questions and definitions…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div>
+      <div class="palette-results" id="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to move</span><span><kbd>Enter</kbd> to open</span><span><kbd>/</kbd> or <kbd>Ctrl K</kbd> anywhere</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../shared/vendor/marked.min.js"></script>
+  <script src="../shared/vendor/katex/katex.min.js"></script>
+  <script src="../shared/vendor/cm/codemirror.min.js"></script>
+  <script src="../shared/vendor/cm/mode/javascript.min.js"></script>
+  <script src="../shared/vendor/cm/mode/xml.min.js"></script>
+  <script src="../shared/vendor/cm/mode/css.min.js"></script>
+  <script src="../shared/vendor/cm/mode/htmlmixed.min.js"></script>
+  <script src="../shared/vendor/cm/mode/shell.min.js"></script>
+  <script src="../shared/vendor/cm/addon/runmode.min.js"></script>
+  <script src="../shared/vendor/cm/addon/matchbrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/closebrackets.min.js"></script>
+  <script src="../shared/vendor/cm/addon/comment.min.js"></script>
+  <script>
+    window.SITE = {
+      name: "JSLab",
+      storageKey: "jslab",
+      langName: "JavaScript",
+      modes: { html: "htmlmixed" },
+      heroStatus: "✓ verified with Node 22",
+      glossaryHint: "Filter terms… (e.g. closure, hoisting, microtask)",
+      tagline: "JavaScript for senior interviews",
+      badge: "Interview prep",
+      eyebrow: "Core JS → Async & event loop → Advanced JS → Node.js → Browser → Security → React → Interview bank",
+      heroTitle: 'Master JavaScript. <span class="grad">Ace the senior round.</span>',
+      heroSub: "Everything a senior full-stack interview asks about the language: execution context, closures, this, prototypes, the event loop, promises, memory, streams and the Node.js internals, browser fundamentals, security and the JavaScript behind React. Short plain-English lessons, examples that run, coding challenges, output puzzles and a topic-wise question bank with answers you can say aloud.",
+      heroNote: "Nothing to install. Unchanged examples show the output recorded from real Node.js 22. Edit one and it runs live in your browser.",
+      pathGoal: "interview-ready",
+      runTitle: "Try it yourself",
+      localHint: "Run this on your computer with Node.js",
+      tocTip: "Every ▶ Run block is editable. Change a line, break the code on purpose, and read the error. Event-loop and diagram blocks can be stepped one move at a time.",
+      footer: "Built for learning. JavaScript runs in your browser or is shown from a recorded Node.js 22 run; nothing leaves your device.",
+      levelLabels: { easy: "Basic", medium: "Intermediate", hard: "Advanced" },
+      problemStat: "coding challenges, worked end to end",
+      vizLabel: "diagrams & simulators",
+      problemsHomeTitle: "{n} coding challenges: write it yourself, then compare",
+      problemsHomeSub: "The utilities interviewers ask you to implement: debounce, throttle, curry, deep clone, polyfills for bind and Promise.all, an event emitter, an LRU cache, a retry helper and more. Each has the requirements, a hint, a tested solution with its output, and the follow-up questions.",
+      problemsTitle: "Coding challenges, by level",
+      problemsSub: "Filter by Basic, Intermediate or Advanced. Try each one on your own for 15 to 20 minutes, then open the walkthrough, compare, and tick it off. Your progress is saved on this device.",
+      qa: {
+        title: "Interview questions, in one place",
+        sub: "Every question from the course, grouped by topic, with a short answer you can say out loud. Open a question, answer it in your head first, then check. Mark the ones you know; your progress stays on this device.",
+        groups: [
+          { id: "core", label: "Core JavaScript", icon: "cube", modules: ["execution", "closures", "this-keyword", "prototypes", "classes", "functions", "arrays-fp", "core-bank"] },
+          { id: "async", label: "Async & event loop", icon: "zap", modules: ["event-loop", "promises-async", "async-bank"] },
+          { id: "advanced", label: "Advanced JS & performance", icon: "layers", modules: ["objects", "types-equality", "modern-js", "memory-performance", "advanced-bank"] },
+          { id: "node", label: "Node.js", icon: "terminal", modules: ["node-runtime", "node-streams", "node-production", "node-bank"] },
+          { id: "web", label: "Browser, security & React", icon: "eye", modules: ["browser", "security", "react-js", "web-bank"] },
+          { id: "coding", label: "Coding challenge follow-ups", icon: "code", modules: ["challenges-basic", "challenges-intermediate", "challenges-advanced"] },
+          { id: "puzzles", label: "Output puzzles & find the bug", icon: "flask", modules: ["puzzles-bank"] },
+        ],
+      },
+      features: [
+        { icon: "smile", title: "Plain English first", text: "Every concept starts with an everyday picture and a tiny example. The exact rules and the corner cases come right after." },
+        { icon: "code", title: "Real, running code", text: "Hundreds of examples, each run with real Node.js 22 when the course is built. The output you see is the output the code really prints." },
+        { icon: "puzzle", title: "Built around the interview", text: "Output puzzles, polyfills, find-the-bug drills and the senior follow-ups: why, when, what breaks, and what you would do instead." },
+        { icon: "message", title: "One question bank", text: "Hundreds of questions grouped by topic, each with a short answer to say aloud and a simple explanation." },
+      ],
+      hero: {
+        file: "order.js",
+        lang: "js",
+        code: `console.log("1: start");
+
+setTimeout(() => console.log("4: timeout"), 0);
+
+Promise.resolve().then(() => console.log("3: promise"));
+
+console.log("2: end");`,
+        output: `1: start
+2: end
+3: promise
+4: timeout`,
+      },
+    };
+  </script>
+  <script src="assets/js/content.js"></script>
+  <script src="assets/js/runner-js.js"></script>
+  <script src="assets/js/viz-js.js"></script>
+  <script src="../courses.js"></script>
+  <script src="../shared/js/app.js"></script>
+</body>
+</html>
