@@ -8,6 +8,14 @@ window.COURSE_STATS = {
     "examples": 586,
     "problems": 0
   },
+  "javascript": {
+    "modules": 30,
+    "lessons": 224,
+    "projects": 0,
+    "apps": 0,
+    "examples": 1016,
+    "problems": 45
+  },
   "typescript": {
     "modules": 5,
     "lessons": 32,
